@@ -3,11 +3,13 @@
    GLAS AI — test harness (BRIEF §9, Round 1)
    Runs the real page in Chromium and prints a pass/fail table.
 
-   node audit.js            all rounds
-   node audit.js --quick    skip the 3-cycle loop-integrity round
+   Setup (once):   cd .audit && npm install     # gsap + lenis, served locally
+   Run:            node audit.js                 all rounds
+                   node audit.js --quick         skip the 3-cycle loop round
+   Copy check:     node .audit/copy-check.mjs    BRIEF §9 round 4
    ══════════════════════════════════════════════════════════════════════════
 
-   The page links GSAP/ScrollTrigger (cdnjs) and Lenis (cdnjs). This sandbox's
+   The page links GSAP/ScrollTrigger (cdnjs) and Lenis (jsDelivr). This sandbox's
    egress policy blocks those hosts, so every run serves the *real* library
    bytes from node_modules and the *real* Google Fonts CSS + woff2 files from
    .audit/fixtures via route fulfilment. That makes the run hermetic and lets
@@ -16,7 +18,7 @@
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
-const { chromium } = require(process.env.PW || '/opt/node22/lib/node_modules/playwright');
+const { chromium, devices } = require(process.env.PW || '/opt/node22/lib/node_modules/playwright');
 
 const ROOT = __dirname;
 const EXE = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
@@ -79,7 +81,7 @@ async function wire(ctx, { blockCdn = false, blockFonts = false } = {}) {
     if (!fs.existsSync(f)) return r.abort('failed');
     r.fulfill({ status: 200, contentType: 'font/woff2', body: fs.readFileSync(f) });
   });
-  await ctx.route(/cdnjs\.cloudflare\.com/, r => {
+  await ctx.route(/cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net/, r => {
     if (blockCdn) return r.abort('failed');
     const u = r.request().url();
     let f = null;
@@ -92,7 +94,7 @@ async function wire(ctx, { blockCdn = false, blockFonts = false } = {}) {
 }
 
 /* ── console / error collector ────────────────────────────────────────── */
-const EXPECTED_HOST = /cdnjs\.cloudflare\.com|fonts\.g(oogleapis|static)\.com|lenis/;
+const EXPECTED_HOST = /cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|fonts\.g(oogleapis|static)\.com|lenis/;
 function watch(page, bag) {
   page.on('console', m => {
     if (m.type() !== 'error') return;
@@ -104,7 +106,7 @@ function watch(page, bag) {
   page.on('pageerror', e => bag.push('pageerror: ' + (e && e.message)));
   page.on('requestfailed', r => {
     const u = r.url();
-    if (/cdnjs\.cloudflare\.com|fonts\.g(oogleapis|static)\.com/.test(u)) return; // intentional in blocked runs
+    if (/cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|fonts\.g(oogleapis|static)\.com/.test(u)) return; // intentional in blocked runs
     bag.push('requestfailed: ' + u);
   });
 }
@@ -225,7 +227,7 @@ const PHONE_STATE = `(() => {
   rec(3, `stepped viewport frames + one full-page reference for ${WIDTHS.length} widths`, true, SHOTS);
 
   /* ── 4 · CDN failure (F1) ────────────────────────────────────────────── */
-  head('4 · CDN blocked (F1) — cdnjs aborted at the network layer');
+  head('4 · CDN blocked (F1) — cdnjs + jsDelivr aborted at the network layer');
   {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
     await wire(ctx, { blockCdn: true });
@@ -685,6 +687,53 @@ const PHONE_STATE = `(() => {
     rec(12, 'page still boots and scrolls under 4× throttle', usable.booted && usable.y > 100 && usable.reveals > 5, JSON.stringify(usable) + ` (${Date.now() - t0} ms)`);
     rec(12, 'zero console errors under throttle', bag.length === 0, bag.slice(0, 3).join(' | '));
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+    await ctx.close();
+  }
+
+  /* ── 13 · touch device — F10, every pointer effect needs a real alternative ─ */
+  head('13 · Touch (Pixel 7) — no dead elements where hover is impossible');
+  {
+    const ctx = await browser.newContext({ ...devices['Pixel 7'] });
+    await wire(ctx);
+    const page = await ctx.newPage(); const bag = [];
+    watch(page, bag);
+    await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(2500);
+    const t1 = await page.evaluate(`document.querySelector('#phone-tilt').style.transform`);
+    await page.waitForTimeout(1600);
+    const t2 = await page.evaluate(`document.querySelector('#phone-tilt').style.transform`);
+    const env = await page.evaluate(`({
+      coarse: matchMedia('(pointer: coarse)').matches,
+      magnetic: Array.from(document.querySelectorAll('.btn--magnetic')).map(e => e.style.transform).filter(Boolean).length,
+      glow: getComputedStyle(document.querySelector('#cursor-glow')).display,
+      pinned: !!document.querySelector('.pin-spacer')
+    })`);
+    rec(13, 'coarse pointer detected', env.coarse === true);
+    rec(13, 'cursor tilt is replaced by a slow automatic sway', t1 !== t2 && !!t1, `${t1} → ${t2}`);
+    rec(13, 'magnetic buttons never engage on touch', env.magnetic === 0);
+    rec(13, 'cursor glow is off', env.glow === 'none');
+    rec(13, 'the hero is not pinned on a phone', env.pinned === false);
+
+    await page.locator('#burger').tap();
+    await page.waitForTimeout(700);
+    const open = await page.evaluate(`({exp: document.querySelector('#burger').getAttribute('aria-expanded'), lock: document.body.style.overflow})`);
+    await page.locator('.menu-link[href="#cene"]').tap();
+    await page.waitForTimeout(1700);
+    const after = await page.evaluate(`({exp: document.querySelector('#burger').getAttribute('aria-expanded'), lock: document.body.style.overflow,
+      atCene: Math.abs(document.querySelector('#cene').getBoundingClientRect().top) < 160})`);
+    rec(13, 'menu opens on tap, closes on link tap, scrolls, and unlocks the page',
+        open.exp === 'true' && open.lock === 'hidden' && after.exp === 'false' && after.lock === '' && after.atCene,
+        JSON.stringify({ open, after }));
+
+    await page.evaluate(`(() => { const el = document.querySelector('#glas'); window.__glasLenis ? window.__glasLenis.scrollTo(el, {immediate:true}) : el.scrollIntoView(); })()`);
+    await page.waitForTimeout(1200);
+    /* aria-disabled (not [disabled]) keeps the control focusable and tappable —
+       Playwright's actionability check refuses it, a real finger does not. */
+    await page.locator('#play').tap({ force: true });
+    await page.waitForTimeout(900);
+    const stillFocusable = await page.evaluate(`(() => { const b = document.querySelector('#play'); b.focus(); return document.activeElement === b; })()`);
+    rec(13, 'the „uskoro” player answers a tap without erroring and stays focusable', stillFocusable && bag.length === 0, bag.slice(0, 3).join(' | '));
+    await page.screenshot({ path: path.join(SHOTS, 'touch-pixel7.png') });
     await ctx.close();
   }
 

@@ -132,7 +132,7 @@ const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-119
 const ctx = await b.newContext({ viewport: { width: 1440, height: 900 } });
 await ctx.route(/fonts\.googleapis\.com/, r => r.fulfill({ status: 200, contentType: 'text/css', body: fontCss }));
 await ctx.route(/fonts\.gstatic\.com/, r => { const f = path.join(FIX, 'gstatic', r.request().url().replace('https://fonts.gstatic.com/', '').replace(/\//g, '_')); r.fulfill({ status: 200, contentType: 'font/woff2', body: fs.readFileSync(f) }); });
-await ctx.route(/cdnjs\.cloudflare\.com/, r => { const u = r.request().url(); const f = /gsap\.min/.test(u) ? 'gsap/dist/gsap.min.js' : /ScrollTrigger/.test(u) ? 'gsap/dist/ScrollTrigger.min.js' : 'lenis/dist/lenis.min.js'; r.fulfill({ status: 200, contentType: 'text/javascript', body: fs.readFileSync(path.join(NM, f)) }); });
+await ctx.route(/cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net/, r => { const u = r.request().url(); const f = /gsap\.min/.test(u) ? 'gsap/dist/gsap.min.js' : /ScrollTrigger/.test(u) ? 'gsap/dist/ScrollTrigger.min.js' : 'lenis/dist/lenis.min.js'; r.fulfill({ status: 200, contentType: 'text/javascript', body: fs.readFileSync(path.join(NM, f)) }); });
 const page = await ctx.newPage();
 await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
 await page.waitForTimeout(2200);
