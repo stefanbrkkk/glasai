@@ -1,0 +1,709 @@
+#!/usr/bin/env node
+/* ══════════════════════════════════════════════════════════════════════════
+   GLAS AI — test harness (BRIEF §9, Round 1)
+   Runs the real page in Chromium and prints a pass/fail table.
+
+   node audit.js            all rounds
+   node audit.js --quick    skip the 3-cycle loop-integrity round
+   ══════════════════════════════════════════════════════════════════════════
+
+   The page links GSAP/ScrollTrigger (cdnjs) and Lenis (cdnjs). This sandbox's
+   egress policy blocks those hosts, so every run serves the *real* library
+   bytes from node_modules and the *real* Google Fonts CSS + woff2 files from
+   .audit/fixtures via route fulfilment. That makes the run hermetic and lets
+   the CDN-blocked round (F1) be a genuine abort rather than an artefact.
+*/
+const path = require('path');
+const fs = require('fs');
+const http = require('http');
+const { chromium } = require(process.env.PW || '/opt/node22/lib/node_modules/playwright');
+
+const ROOT = __dirname;
+const EXE = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+const SHOTS = path.join(ROOT, '.audit', 'shots');
+const FIX = path.join(ROOT, '.audit', 'fixtures');
+const NM = path.join(ROOT, '.audit', 'node_modules');
+const WIDTHS = [360, 390, 414, 768, 1024, 1280, 1440, 1920];
+const QUICK = process.argv.includes('--quick');
+
+fs.mkdirSync(SHOTS, { recursive: true });
+
+/* 0.4 s of silence — a real decodable file, so the filled CONFIG path is not
+   quietly testing a media error instead of the player. */
+function silentWav() {
+  const rate = 8000, n = rate * 0.4, b = Buffer.alloc(44 + n * 2);
+  b.write('RIFF', 0); b.writeUInt32LE(36 + n * 2, 4); b.write('WAVE', 8);
+  b.write('fmt ', 12); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22);
+  b.writeUInt32LE(rate, 24); b.writeUInt32LE(rate * 2, 28); b.writeUInt16LE(2, 32); b.writeUInt16LE(16, 34);
+  b.write('data', 36); b.writeUInt32LE(n * 2, 40);
+  return b;
+}
+
+/* ── result table ─────────────────────────────────────────────────────── */
+const rows = [];
+function rec(round, check, pass, detail) {
+  rows.push({ round, check, pass: !!pass, detail: detail || '' });
+  const tag = pass ? '\x1b[32mPASS\x1b[0m' : '\x1b[31mFAIL\x1b[0m';
+  console.log(`  ${tag}  ${check}${detail ? '  — ' + detail : ''}`);
+}
+function head(t) { console.log(`\n\x1b[1m${t}\x1b[0m`); }
+
+/* ── static server for index.html ─────────────────────────────────────── */
+const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.woff2': 'font/woff2', '.mp3': 'audio/mpeg' };
+function serve() {
+  return new Promise(res => {
+    const srv = http.createServer((req, rq) => {
+      const u = decodeURIComponent(req.url.split('?')[0]);
+      const f = path.join(ROOT, u === '/' ? 'index.html' : u);
+      if (!f.startsWith(ROOT) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { rq.writeHead(404); rq.end('404'); return; }
+      rq.writeHead(200, { 'content-type': MIME[path.extname(f)] || 'application/octet-stream' });
+      fs.createReadStream(f).pipe(rq);
+    });
+    srv.listen(0, '127.0.0.1', () => res({ srv, base: `http://127.0.0.1:${srv.address().port}` }));
+  });
+}
+
+/* ── route table ──────────────────────────────────────────────────────── */
+const fontCss = fs.readFileSync(path.join(FIX, 'fonts.css'), 'utf8');
+function gstaticFile(url) {
+  return path.join(FIX, 'gstatic', url.replace('https://fonts.gstatic.com/', '').replace(/\//g, '_'));
+}
+async function wire(ctx, { blockCdn = false, blockFonts = false } = {}) {
+  await ctx.route(/fonts\.googleapis\.com/, r => {
+    if (blockFonts) return r.abort('failed');
+    r.fulfill({ status: 200, contentType: 'text/css; charset=utf-8', body: fontCss });
+  });
+  await ctx.route(/fonts\.gstatic\.com/, r => {
+    if (blockFonts) return r.abort('failed');
+    const f = gstaticFile(r.request().url());
+    if (!fs.existsSync(f)) return r.abort('failed');
+    r.fulfill({ status: 200, contentType: 'font/woff2', body: fs.readFileSync(f) });
+  });
+  await ctx.route(/cdnjs\.cloudflare\.com/, r => {
+    if (blockCdn) return r.abort('failed');
+    const u = r.request().url();
+    let f = null;
+    if (/gsap\.min\.js/.test(u)) f = path.join(NM, 'gsap/dist/gsap.min.js');
+    else if (/ScrollTrigger\.min\.js/.test(u)) f = path.join(NM, 'gsap/dist/ScrollTrigger.min.js');
+    else if (/lenis(\.min)?\.js/.test(u)) f = path.join(NM, 'lenis/dist/lenis.min.js');
+    if (!f || !fs.existsSync(f)) return r.abort('failed');
+    r.fulfill({ status: 200, contentType: 'text/javascript; charset=utf-8', body: fs.readFileSync(f) });
+  });
+}
+
+/* ── console / error collector ────────────────────────────────────────── */
+const EXPECTED_HOST = /cdnjs\.cloudflare\.com|fonts\.g(oogleapis|static)\.com|lenis/;
+function watch(page, bag) {
+  page.on('console', m => {
+    if (m.type() !== 'error') return;
+    const loc = (m.location() && m.location().url) || '';
+    // the browser logs the aborted CDN fetch itself — that abort is the test
+    if (EXPECTED_HOST.test(loc) || (/net::ERR_FAILED|Failed to load resource/.test(m.text()) && EXPECTED_HOST.test(loc + m.text()))) return;
+    bag.push('console.error: ' + m.text() + (loc ? ' @ ' + loc : ''));
+  });
+  page.on('pageerror', e => bag.push('pageerror: ' + (e && e.message)));
+  page.on('requestfailed', r => {
+    const u = r.url();
+    if (/cdnjs\.cloudflare\.com|fonts\.g(oogleapis|static)\.com/.test(u)) return; // intentional in blocked runs
+    bag.push('requestfailed: ' + u);
+  });
+}
+
+/* ── contrast maths ───────────────────────────────────────────────────── */
+function lum(hex) {
+  const n = hex.replace('#', '');
+  const v = [0, 2, 4].map(i => parseInt(n.substr(i, 2), 16) / 255)
+    .map(c => c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+  return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2];
+}
+const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+
+/* ── helpers run inside the page ──────────────────────────────────────── */
+const SCROLL_TO = `(y => { if (window.__glasLenis) window.__glasLenis.scrollTo(y, { immediate: true }); else window.scrollTo(0, y); })`;
+
+const OVERFLOW_PROBE = `(() => {
+  const w = document.documentElement.clientWidth;
+  const bad = [];
+  document.querySelectorAll('body *').forEach(el => {
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) return;
+    if (r.right > w + 1) {
+      const cs = getComputedStyle(el);
+      if (cs.position === 'fixed' && cs.visibility === 'hidden') return;
+      let n = el.parentElement, clipped = false;
+      while (n && n !== document.documentElement) {
+        const p = getComputedStyle(n);
+        if (/hidden|clip|auto|scroll/.test(p.overflowX)) { clipped = true; break; }
+        n = n.parentElement;
+      }
+      if (clipped) return;
+      bad.push({ t: el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\\s+/).join('.') : ''), l: Math.round(r.left), r: Math.round(r.right) });
+    }
+  });
+  return { scrollWidth: document.documentElement.scrollWidth, clientWidth: w, bad: bad.slice(0, 6) };
+})()`;
+
+const PHONE_STATE = `(() => {
+  const g = s => document.querySelector(s);
+  const op = e => e ? parseFloat(getComputedStyle(e).opacity) : -1;
+  const disp = e => e ? getComputedStyle(e).display : 'x';
+  return {
+    t: g('#ph-timer') ? g('#ph-timer').textContent : '',
+    incoming: op(g('#ph-incoming')),
+    call: op(g('#ph-call')),
+    content: op(g('#ph-content')),
+    confirm: disp(g('#ph-confirm')) === 'none' ? 0 : op(g('#ph-confirm')),
+    turns: Array.from(document.querySelectorAll('.ph-turn')).map(e => disp(e) === 'none' ? 0 : +op(e).toFixed(2)),
+    typing: Array.from(document.querySelectorAll('.ph-typing')).map(e => disp(e) === 'none' ? 0 : +op(e).toFixed(2))
+  };
+})()`;
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ROUNDS
+   ══════════════════════════════════════════════════════════════════════ */
+(async () => {
+  const { srv, base } = await serve();
+  const browser = await chromium.launch({ executablePath: EXE, args: ['--font-render-hinting=none'] });
+
+  /* ── 1 · console cleanliness ─────────────────────────────────────────── */
+  head('1 · Console — normal load, network idle + 5 s of animation');
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
+    await wire(ctx);
+    const page = await ctx.newPage(); const bag = [];
+    watch(page, bag);
+    await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(5000);
+    rec(1, 'zero console errors / pageerrors / unhandled rejections', bag.length === 0, bag.slice(0, 4).join(' | '));
+    const libs = await page.evaluate(`({gsap: !!window.gsap, st: !!window.ScrollTrigger, lenis: !!window.Lenis, lenisLive: !!window.__glasLenis, motion: document.documentElement.classList.contains('js-motion'), loop: document.documentElement.classList.contains('js-loop')})`);
+    rec(1, 'GSAP + ScrollTrigger + Lenis all active', libs.gsap && libs.st && libs.lenis && libs.lenisLive, JSON.stringify(libs));
+    await ctx.close();
+  }
+
+  /* ── 2 · overflow at every width ─────────────────────────────────────── */
+  head('2 · Horizontal overflow — 360 → 1920');
+  for (const w of WIDTHS) {
+    const ctx = await browser.newContext({ viewport: { width: w, height: 900 }, deviceScaleFactor: 1 });
+    await wire(ctx);
+    const page = await ctx.newPage();
+    await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1200);
+    // check top of page and after a full scroll-through
+    const top = await page.evaluate(OVERFLOW_PROBE);
+    await page.evaluate(SCROLL_TO + `(document.body.scrollHeight)`);
+    await page.waitForTimeout(1600);
+    const bottom = await page.evaluate(OVERFLOW_PROBE);
+    const ok = top.scrollWidth <= top.clientWidth + 1 && bottom.scrollWidth <= bottom.clientWidth + 1;
+    rec(2, `no horizontal scroll @ ${w}px`, ok,
+      ok ? '' : `sw ${top.scrollWidth}/${bottom.scrollWidth} vs ${top.clientWidth} :: ` + JSON.stringify(top.bad.concat(bottom.bad).slice(0, 4)));
+    await ctx.close();
+  }
+
+  /* ── 3 · screenshots ─────────────────────────────────────────────────── */
+  head('3 · Screenshots — stepped viewport frames at every width');
+  /* Full-page capture uses captureBeyondViewport, which re-lays-out a pinned
+     section and a fixed nav. Stepped viewport frames are what actually ships. */
+  for (const w of WIDTHS) {
+    const ctx = await browser.newContext({ viewport: { width: w, height: 900 }, deviceScaleFactor: 1 });
+    await wire(ctx);
+    const page = await ctx.newPage();
+    await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1900);
+    const total = await page.evaluate(`document.body.scrollHeight`);
+    const step = 900;
+    let i = 0;
+    for (let y = 0; y < total - 200 && i < 12; y += step, i++) {
+      await page.evaluate(SCROLL_TO + '(' + y + ')');
+      await page.waitForTimeout(720);
+      await page.screenshot({ path: path.join(SHOTS, `v${w}-${String(i).padStart(2, '0')}.png`) });
+    }
+    await page.evaluate(SCROLL_TO + `(0)`);
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: path.join(SHOTS, `w${w}.png`), fullPage: true });
+    await ctx.close();
+  }
+  rec(3, `stepped viewport frames + one full-page reference for ${WIDTHS.length} widths`, true, SHOTS);
+
+  /* ── 4 · CDN failure (F1) ────────────────────────────────────────────── */
+  head('4 · CDN blocked (F1) — cdnjs aborted at the network layer');
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    await wire(ctx, { blockCdn: true });
+    const page = await ctx.newPage(); const bag = [];
+    watch(page, bag);
+    await page.goto(base + '/index.html', { waitUntil: 'load' });
+    await page.waitForTimeout(4000);
+    const st = await page.evaluate(`({
+      gsap: !!window.gsap,
+      booted: !!window.__glasBooted,
+      hiddenReveals: Array.from(document.querySelectorAll('[data-reveal]')).filter(e => parseFloat(getComputedStyle(e).opacity) < 0.9).length,
+      totalReveals: document.querySelectorAll('[data-reveal]').length,
+      h1: getComputedStyle(document.querySelector('h1')).opacity,
+      heroVisible: Array.from(document.querySelectorAll('[data-hero]')).every(e => parseFloat(getComputedStyle(e).opacity) > 0.9),
+      canScroll: document.body.scrollHeight > window.innerHeight,
+      text: document.body.innerText.length,
+      bubbles: Array.from(document.querySelectorAll('.ph-bubble')).every(e => parseFloat(getComputedStyle(e).opacity) > 0.9),
+      confirmShown: getComputedStyle(document.querySelector('#ph-confirm')).display !== 'none'
+    })`);
+    rec(4, 'GSAP genuinely absent', st.gsap === false);
+    rec(4, 'page still booted its own modules', st.booted === true);
+    rec(4, 'zero console errors with the CDN down', bag.length === 0, bag.slice(0, 3).join(' | '));
+    rec(4, 'every [data-reveal] block is visible', st.hiddenReveals === 0, `${st.hiddenReveals}/${st.totalReveals} hidden`);
+    rec(4, 'hero copy fully visible', st.heroVisible === true);
+    rec(4, 'phone falls back to the booked state (transcript + confirmation readable)', st.bubbles && st.confirmShown);
+    rec(4, 'page scrolls', st.canScroll === true);
+    rec(4, 'body text present', st.text > 2500, st.text + ' chars');
+    await page.evaluate(SCROLL_TO + `(document.body.scrollHeight)`);
+    await page.waitForTimeout(900);
+    await page.screenshot({ path: path.join(SHOTS, 'cdn-blocked-bottom.png'), fullPage: false });
+    await page.evaluate(SCROLL_TO + `(0)`); await page.waitForTimeout(500);
+    await page.screenshot({ path: path.join(SHOTS, 'cdn-blocked.png'), fullPage: true });
+    await ctx.close();
+  }
+
+  /* ── 5 · reduced motion ──────────────────────────────────────────────── */
+  head('5 · prefers-reduced-motion: reduce');
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' });
+    await wire(ctx);
+    const page = await ctx.newPage(); const bag = [];
+    watch(page, bag);
+    await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(3000);
+    const a = await page.evaluate(`(() => {
+      const tr = document.querySelector('.marquee-track');
+      const m1 = getComputedStyle(tr).transform;
+      return { m1, lenis: !!window.__glasLenis, lenisCls: document.documentElement.classList.contains('lenis'),
+               motionCls: document.documentElement.classList.contains('js-motion'),
+               loopCls: document.documentElement.classList.contains('js-loop'),
+               confirm: getComputedStyle(document.querySelector('#ph-confirm')).display,
+               confirmOp: getComputedStyle(document.querySelector('#ph-confirm')).opacity,
+               bubbles: Array.from(document.querySelectorAll('.ph-bubble')).every(e=>parseFloat(getComputedStyle(e).opacity)>0.9),
+               incoming: getComputedStyle(document.querySelector('#ph-incoming')).visibility,
+               anim: getComputedStyle(tr).animationName };
+    })()`);
+    await page.waitForTimeout(1500);
+    const m2 = await page.evaluate(`getComputedStyle(document.querySelector('.marquee-track')).transform`);
+    rec(5, 'marquee is static', a.m1 === m2, `${a.m1} → ${m2} (animation-name: ${a.anim})`);
+    rec(5, 'Lenis never initialised', a.lenis === false && a.lenisCls === false);
+    rec(5, 'no js-motion / js-loop class', a.motionCls === false && a.loopCls === false);
+    rec(5, 'phone rests in the booked state', a.bubbles && a.confirm !== 'none' && parseFloat(a.confirmOp) > 0.9 && a.incoming === 'hidden');
+    rec(5, 'zero console errors', bag.length === 0, bag.slice(0, 3).join(' | '));
+    await page.screenshot({ path: path.join(SHOTS, 'reduced-motion.png'), fullPage: true });
+    await ctx.close();
+  }
+
+  /* ── 6 · diacritics ──────────────────────────────────────────────────── */
+  head('6 · Diacritics — latin-ext coverage in all three families');
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 420 }, deviceScaleFactor: 2 });
+    await wire(ctx);
+    const page = await ctx.newPage(); const bag = [];
+    watch(page, bag);
+    await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
+    const probe = await page.evaluate(async () => {
+      const S = 'Već danas — čćšžđ ČĆŠŽĐ';
+      const FAM = [
+        ['display', 'Bricolage Grotesque', '700 30px "Bricolage Grotesque"'],
+        ['body',    'Instrument Sans',     '400 30px "Instrument Sans"'],
+        ['mono',    'JetBrains Mono',      '400 30px "JetBrains Mono"']
+      ];
+      const host = document.createElement('div');
+      host.id = 'diacritic-probe';
+      host.style.cssText = 'position:fixed;left:0;top:0;z-index:9999;background:#070A12;color:#F2EDE4;padding:16px 20px;display:flex;flex-direction:column;gap:12px';
+      for (const [k, name] of FAM) {
+        const el = document.createElement('p');
+        el.style.cssText = 'font-family:"' + name + '";font-size:30px;font-weight:' + (k === 'display' ? 700 : 400) + ';margin:0;white-space:nowrap';
+        el.textContent = name.padEnd(20, ' ') + '  ' + S;
+        host.appendChild(el);
+      }
+      document.body.appendChild(host);
+      /* Google Fonts splits đ/Đ (U+0110-0111) into the *vietnamese* subset, which
+         the page only fetches if some rendered text needs it. Force the load for
+         each family before asking whether it covers the string. */
+      await Promise.all(FAM.map(([, , font]) => document.fonts.load(font, S).catch(() => null)));
+      await document.fonts.ready;
+
+      const cv = document.createElement('canvas'); cv.width = 90; cv.height = 90;
+      const cx = cv.getContext('2d', { willReadFrequently: true });
+      const ink = (font, ch) => {                    // pixel signature of one glyph
+        cx.clearRect(0, 0, 90, 90); cx.fillStyle = '#fff'; cx.font = font;
+        cx.textBaseline = 'alphabetic'; cx.fillText(ch, 10, 62);
+        const d = cx.getImageData(0, 0, 90, 90).data;
+        let h = 5381;
+        for (let i = 3; i < d.length; i += 4) h = ((h * 33) ^ d[i]) >>> 0;
+        return h;
+      };
+      const ACC = ['č','ć','š','ž','đ','Č','Ć','Š','Ž','Đ'];
+      const BASE = ['c','c','s','z','d','C','C','S','Z','D'];
+      const out = {};
+      for (const [k, name, font] of FAM) {
+        const loaded = Array.from(document.fonts).filter(f => f.family === name && f.status === 'loaded');
+        out[k] = {
+          name,
+          covers: document.fonts.check(font, S),
+          loadedFaces: loaded.length,
+          distinct: ACC.every((c, i) => ink(font, c) !== ink(font, BASE[i])),
+          notdef: ACC.some(c => ink(font, c) === ink(font, '\uE000'))
+        };
+      }
+      return out;
+    });
+    for (const k of ['display', 'body', 'mono']) {
+      const r = probe[k];
+      const ok = r.covers && r.loadedFaces > 0 && r.distinct && !r.notdef;
+      rec(6, `č ć š ž đ Č Ć Š Ž Đ render in ${r.name}`, ok, `fonts.check=${r.covers} faces=${r.loadedFaces} distinct=${r.distinct} notdef=${r.notdef}`);
+    }
+    await page.locator('#diacritic-probe').screenshot({ path: path.join(SHOTS, 'diacritics.png') });
+    rec(6, 'diacritic proof sheet written for visual inspection', true, 'diacritics.png');
+    await page.evaluate(`document.getElementById('diacritic-probe').remove()`);
+    rec(6, 'zero console errors', bag.length === 0, bag.slice(0, 3).join(' | '));
+    await ctx.close();
+  }
+
+  /* ── 7 · CONFIG placeholders, both states ────────────────────────────── */
+  head('7 · CONFIG placeholders — empty and filled');
+  for (const filled of [false, true]) {
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    await wire(ctx);
+    if (filled) {
+      // rewrite the two CONFIG lines on the wire — exactly what the client edits
+      await ctx.route('**/index.html', async r => {
+        const res = await r.fetch();
+        let body = await res.text();
+        body = body.replace('DEMO_TELEFON: ""', 'DEMO_TELEFON: "+381 64 123 4567"')
+                   .replace('DEMO_AUDIO:   ""', 'DEMO_AUDIO:   "demo.wav"');
+        r.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body });
+      });
+      await ctx.route('**/demo.wav', r => r.fulfill({ status: 200, contentType: 'audio/wav', body: silentWav() }));
+    }
+    const page = await ctx.newPage(); const bag = [];
+    watch(page, bag);
+    await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(2200);
+    await page.locator('#play').click({ force: true });
+    await page.waitForTimeout(900);
+    const s = await page.evaluate(`(() => {
+      const chips = Array.from(document.querySelectorAll('.chip-off')).map(e => e.textContent.trim());
+      const tels = Array.from(document.querySelectorAll('a[href^="tel:"]')).map(e => ({ href: e.getAttribute('href'), text: e.textContent.trim() }));
+      const play = document.querySelector('#play');
+      return { chips, tels, audioEls: document.querySelectorAll('audio').length,
+               playDisabled: play.getAttribute('aria-disabled'),
+               playLabel: document.querySelector('#play-label').textContent.trim(),
+               playCursor: getComputedStyle(play).cursor,
+               playBorder: getComputedStyle(play).borderStyle };
+    })()`);
+    if (!filled) {
+      rec(7, 'empty: inert chips rendered, no tel: link, no fake number', s.chips.length >= 2 && s.tels.length === 0 && s.chips.every(c => c === 'Demo broj — uskoro'), JSON.stringify(s.chips));
+      rec(7, 'empty: no <audio> element created at all', s.audioEls === 0);
+      rec(7, 'empty: play button is a designed „uskoro” state', s.playDisabled === 'true' && s.playLabel === 'Snimak uskoro' && s.playCursor === 'default' && s.playBorder === 'dashed', `${s.playLabel} / ${s.playCursor} / ${s.playBorder}`);
+      rec(7, 'empty: clicking the inert player throws nothing', bag.length === 0, bag.slice(0, 3).join(' | '));
+    } else {
+      rec(7, 'filled: live tel: links in nav + CTA', s.tels.length >= 2 && s.tels.every(t => t.href === 'tel:+381641234567' && t.text === '+381 64 123 4567'), JSON.stringify(s.tels[0] || {}));
+      rec(7, 'filled: no inert chips remain', s.chips.length === 0);
+      rec(7, 'filled: real player, enabled', s.playDisabled === 'false' && s.playBorder === 'solid', `${s.playLabel} / ${s.playBorder}`);
+      rec(7, 'filled: zero console errors', bag.length === 0, bag.slice(0, 3).join(' | '));
+      await page.screenshot({ path: path.join(SHOTS, 'config-filled.png'), fullPage: false });
+    }
+    await ctx.close();
+  }
+
+  /* ── 8 · loop integrity ──────────────────────────────────────────────── */
+  head('8 · Phone loop — three cycles + a 30 s tab switch');
+  if (!QUICK) {
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    await wire(ctx);
+    const page = await ctx.newPage(); const bag = [];
+    watch(page, bag);
+    await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1500);
+
+    const samples = [];
+    const until = Date.now() + 74000;              // ~3 × 24 s
+    while (Date.now() < until) {
+      samples.push(await page.evaluate(PHONE_STATE));
+      await page.waitForTimeout(180);
+    }
+    // a) never two conversational states at once
+    // a 0.4 s cross-fade is the design; two states *both* legible is the bug
+    const overlap = samples.filter(s => s.incoming > 0.55 && s.call > 0.55 && s.content > 0.5);
+    rec(8, 'incoming and in-call views never both visible', overlap.length === 0, overlap.length + ' samples');
+    // b) a typing indicator is never up while its own bubble is
+    const badTyping = samples.filter(s => s.typing.some((t, i) => t > 0.1 && s.turns[i] > 0.1));
+    rec(8, 'typing indicator never overlaps its own bubble', badTyping.length === 0, badTyping.length + ' samples');
+    // c) the timer only ever falls back to 00:00
+    const secs = samples.map(s => parseInt((s.t || '00:00').split(':')[1], 10));
+    let back = 0;
+    for (let i = 1; i < secs.length; i++) if (secs[i] < secs[i - 1] && secs[i] !== 0) back++;
+    rec(8, 'timer never runs backwards (only resets to 00:00)', back === 0, back + ' regressions');
+    // d) three confirmations seen => at least three cycles observed
+    let cycles = 0, wasIdle = true;
+    for (const s of samples) { if (s.incoming > 0.8 && !wasIdle) { cycles++; wasIdle = true; } if (s.confirm > 0.8) wasIdle = false; }
+    rec(8, 'three full cycles observed with a clean wrap', cycles >= 2, cycles + ' wraps seen in ~74 s');
+    // e) the seam is dark — no flash of the old state
+    const flash = samples.filter(s => s.content < 0.9 && s.content > 0.05 && s.confirm > 0.5 && s.incoming > 0.5);
+    rec(8, 'no flash of the previous state across the seam', flash.length === 0);
+
+    // f) background the tab for 30 s
+    const before = await page.evaluate(PHONE_STATE);
+    const other = await ctx.newPage();
+    await other.goto('about:blank');
+    await other.bringToFront();
+    await other.waitForTimeout(30000);
+    await page.bringToFront();
+    await page.waitForTimeout(2500);
+    const after = await page.evaluate(PHONE_STATE);
+    const coherent = !(after.incoming > 0.55 && after.call > 0.55) &&
+                     !after.typing.some((t, i) => t > 0.1 && after.turns[i] > 0.1);
+    rec(8, 'loop is coherent after a 30 s background', coherent, JSON.stringify({ before: before.t, after: after.t, inc: after.incoming.toFixed(2), call: after.call.toFixed(2) }));
+    rec(8, 'zero console errors across three cycles', bag.length === 0, bag.slice(0, 3).join(' | '));
+    await other.close();
+    await ctx.close();
+  } else {
+    rec(8, 'loop integrity (skipped by --quick)', true, 'skipped');
+  }
+
+  /* ── 9 · contrast ────────────────────────────────────────────────────── */
+  head('9 · Contrast — every text/background token pair actually used');
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    await wire(ctx);
+    const page = await ctx.newPage();
+    await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
+    const tok = await page.evaluate(`(() => {
+      const cs = getComputedStyle(document.documentElement);
+      const get = n => cs.getPropertyValue(n).trim();
+      return { ink: get('--ink'), ink2: get('--ink-2'), surface: get('--surface'),
+               text: get('--text'), muted: get('--muted'), mutedHi: get('--muted-hi'),
+               signal: get('--signal'), signalHi: get('--signal-hi'),
+               machine: get('--machine'), confirm: get('--confirm') };
+    })()`);
+    const PAIRS = [
+      ['--text  on --ink', tok.text, tok.ink, 4.5],
+      ['--text  on --ink-2', tok.text, tok.ink2, 4.5],
+      ['--text  on --surface', tok.text, tok.surface, 4.5],
+      ['--muted on --ink', tok.muted, tok.ink, 4.5],
+      ['--muted on --ink-2', tok.muted, tok.ink2, 4.5],
+      ['--muted on --surface', tok.muted, tok.surface, 4.5],
+      ['--muted-hi on --ink', tok.mutedHi, tok.ink, 4.5],
+      ['--muted-hi on --surface', tok.mutedHi, tok.surface, 4.5],
+      ['--signal on --ink (eyebrow/mono)', tok.signal, tok.ink, 4.5],
+      ['--signal on --ink-2', tok.signal, tok.ink2, 4.5],
+      ['--signal on --surface', tok.signal, tok.surface, 4.5],
+      ['--machine on --ink', tok.machine, tok.ink, 4.5],
+      ['--confirm on --ink', tok.confirm, tok.ink, 4.5],
+      ['--ink on --signal (primary button)', tok.ink, tok.signal, 4.5],
+      ['--ink on --signal-hi (button hover)', tok.ink, tok.signalHi, 4.5]
+    ];
+    for (const [name, fg, bg, min] of PAIRS) {
+      const r = ratio(fg, bg);
+      rec(9, `${name} ≥ ${min}:1`, r >= min, r.toFixed(2) + ':1');
+    }
+    // measured, in situ — catches anything the token maths misses
+    const live = await page.evaluate(`(() => {
+      function px(c){const m=c.match(/\\d+(\\.\\d+)?/g).map(Number);return m;}
+      function L(r,g,b){const v=[r,g,b].map(c=>{c/=255;return c<=0.03928?c/12.92:Math.pow((c+0.055)/1.055,2.4)});return 0.2126*v[0]+0.7152*v[1]+0.0722*v[2];}
+      function bgOf(el){let n=el;while(n&&n!==document.documentElement){const c=getComputedStyle(n).backgroundColor;const m=px(c);if(m.length<4||m[3]>0.92)return m;n=n.parentElement;}return [7,10,18];}
+      const out=[];
+      document.querySelectorAll('p, li, h1, h2, h3, a, button, span').forEach(el=>{
+        if(!el.textContent.trim()) return;
+        if(el.closest('.vh, .skip, .phone')) return;
+        const cs=getComputedStyle(el);
+        if(parseFloat(cs.opacity)<0.9) return;
+        if(el.children.length && !Array.from(el.childNodes).some(n=>n.nodeType===3&&n.textContent.trim())) return;
+        const f=px(cs.color), b=bgOf(el);
+        const l1=L(f[0],f[1],f[2]), l2=L(b[0],b[1],b[2]);
+        const r=(Math.max(l1,l2)+0.05)/(Math.min(l1,l2)+0.05);
+        const size=parseFloat(cs.fontSize), bold=parseInt(cs.fontWeight,10)>=700;
+        const large=size>=24||(size>=18.66&&bold);
+        const min=large?3:4.5;
+        if(r<min) out.push({sel:el.tagName.toLowerCase()+'.'+(el.className||'').toString().trim().split(/\\s+/)[0], r:+r.toFixed(2), min, size:+size.toFixed(1), t:el.textContent.trim().slice(0,42)});
+      });
+      return out.slice(0,10);
+    })()`);
+    rec(9, 'measured in-situ contrast on every text node', live.length === 0, live.length ? JSON.stringify(live) : '0 failures');
+    await ctx.close();
+  }
+
+  /* ── 10 · a11y + semantics + interaction ─────────────────────────────── */
+  head('10 · Accessibility & interaction');
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    await wire(ctx);
+    const page = await ctx.newPage(); const bag = [];
+    watch(page, bag);
+    await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1800);
+    const a = await page.evaluate(`(() => {
+      const heads = Array.from(document.querySelectorAll('h1,h2,h3')).map(h => +h.tagName[1]);
+      let orderOk = true;
+      for (let i = 1; i < heads.length; i++) if (heads[i] - heads[i-1] > 1) orderOk = false;
+      const iconOnly = Array.from(document.querySelectorAll('button')).filter(b => !b.textContent.trim() && !b.getAttribute('aria-label') && !b.getAttribute('aria-labelledby'));
+      return {
+        lang: document.documentElement.lang,
+        h1: document.querySelectorAll('h1').length,
+        orderOk,
+        landmarks: ['header','nav','main','footer'].map(t => document.querySelectorAll(t).length),
+        skip: !!document.querySelector('a.skip[href="#sadrzaj"]'),
+        faqBtns: document.querySelectorAll('.faq-q[aria-expanded][aria-controls]').length,
+        faqOpen: document.querySelectorAll('.faq-q[aria-expanded="true"]').length,
+        iconOnly: iconOnly.length,
+        burgerName: (document.querySelector('#burger') || {}).textContent,
+        marqueeDup: document.querySelectorAll('.marquee-run[aria-hidden="true"]').length,
+        imgs: document.querySelectorAll('img').length
+      };
+    })()`);
+    rec(10, 'lang="sr-Latn"', a.lang === 'sr-Latn', a.lang);
+    rec(10, 'exactly one <h1>', a.h1 === 1, String(a.h1));
+    rec(10, 'no skipped heading levels', a.orderOk === true);
+    rec(10, 'header / nav / main / footer landmarks present', a.landmarks[0] >= 1 && a.landmarks[1] >= 1 && a.landmarks[2] === 1 && a.landmarks[3] === 1, JSON.stringify(a.landmarks));
+    rec(10, 'skip-to-content link present', a.skip === true);
+    rec(10, 'accordion uses real buttons with aria-expanded + aria-controls', a.faqBtns === 8, String(a.faqBtns));
+    rec(10, 'exactly one accordion panel open at load', a.faqOpen === 1, String(a.faqOpen));
+    rec(10, 'no unnamed icon-only buttons', a.iconOnly === 0);
+    rec(10, 'marquee duplicate is aria-hidden', a.marqueeDup === 1);
+    rec(10, 'zero <img> — every visual is CSS / SVG / canvas', a.imgs === 0);
+
+    // accordion behaviour
+    await page.locator('#faq-q3').click();
+    await page.waitForTimeout(600);
+    const acc = await page.evaluate(`({open: document.querySelectorAll('.faq-q[aria-expanded="true"]').length,
+      p3: document.querySelector('#faq-p3').getBoundingClientRect().height,
+      p1: document.querySelector('#faq-p1').getBoundingClientRect().height})`);
+    rec(10, 'accordion: opening one closes the other', acc.open === 1 && acc.p3 > 20 && acc.p1 < 2, JSON.stringify(acc));
+
+    // focus ring — driven by real Tab presses so :focus-visible actually applies
+    await page.evaluate(`window.scrollTo(0,0)`);
+    await page.waitForTimeout(400);
+    await page.locator('body').click({ position: { x: 5, y: 5 } });
+    const noRing = [], order = [];
+    for (let i = 0; i < 34; i++) {
+      await page.keyboard.press('Tab');
+      const f = await page.evaluate(`(() => {
+        const el = document.activeElement;
+        if (!el || el === document.body) return null;
+        const cs = getComputedStyle(el);
+        const ring = (cs.boxShadow && cs.boxShadow !== 'none') || (cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) > 0);
+        const insideClosedPanel = !!el.closest('.faq-panel:not([data-open])') || !!(el.closest('#menu') && document.querySelector('#menu').hidden);
+        return { tag: el.tagName, cls: (el.className || '').toString().trim().split(/\\s+/)[0], ring, insideClosedPanel, txt: (el.textContent||'').trim().slice(0,24) };
+      })()`);
+      if (!f) break;
+      order.push(f.tag + '.' + f.cls);
+      if (!f.ring) noRing.push(f.tag + '.' + f.cls);
+      if (f.insideClosedPanel) noRing.push('TRAPPED:' + f.tag + '.' + f.cls);
+    }
+    rec(10, 'a designed focus ring on every tab stop', noRing.length === 0, noRing.length ? JSON.stringify(noRing.slice(0,6)) : order.length + ' tab stops walked');
+    rec(10, 'focus never lands in a closed panel or the hidden menu', !noRing.some(x => x.startsWith('TRAPPED')));
+
+    // mobile menu open → resize to desktop → page must not stay locked
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(500);
+    await page.locator('#burger').click();
+    await page.waitForTimeout(600);
+    const openState = await page.evaluate(`({exp: document.querySelector('#burger').getAttribute('aria-expanded'), lock: document.body.style.overflow, focus: document.activeElement.className})`);
+    rec(10, 'mobile menu opens and moves focus inside', openState.exp === 'true' && openState.lock === 'hidden' && /menu-link/.test(openState.focus), JSON.stringify(openState));
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.waitForTimeout(900);
+    const unlocked = await page.evaluate(`({lock: document.body.style.overflow, exp: document.querySelector('#burger').getAttribute('aria-expanded'), hidden: document.querySelector('#menu').hidden})`);
+    rec(10, 'resizing to desktop unlocks the page and closes the menu', unlocked.lock === '' && unlocked.exp === 'false', JSON.stringify(unlocked));
+    rec(10, 'zero console errors', bag.length === 0, bag.slice(0, 3).join(' | '));
+    await ctx.close();
+  }
+
+  /* ── 11 · resize during the pin, orientation flip, fast scroll ───────── */
+  head('11 · Motion QA — resize under the pin, orientation flip, fast scroll');
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1920, height: 1000 } });
+    await wire(ctx);
+    const page = await ctx.newPage(); const bag = [];
+    watch(page, bag);
+    await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1800);
+    await page.evaluate(SCROLL_TO + `(window.innerHeight * 0.45)`);   // mid-pin
+    await page.waitForTimeout(700);
+    let worst = null;
+    for (let w = 1920; w >= 360; w -= 130) {
+      await page.setViewportSize({ width: w, height: 1000 });
+      await page.waitForTimeout(340);
+      const r = await page.evaluate(OVERFLOW_PROBE);
+      // a pin that misbehaves leaves a hole: nothing but <body>/<html> under a probe point
+      const gap = await page.evaluate(`(() => {
+        const holes = [];
+        for (const f of [0.2, 0.45, 0.7, 0.9]) {
+          const el = document.elementFromPoint(Math.round(innerWidth * 0.5), Math.round(innerHeight * f));
+          const tag = el ? el.tagName : 'NONE';
+          if (tag === 'BODY' || tag === 'HTML' || tag === 'NONE') holes.push(f + ':' + tag);
+        }
+        const ph = document.querySelector('.phone');
+        const pr = ph ? ph.getBoundingClientRect() : null;
+        return { holes, phoneOffscreen: pr ? (pr.bottom < -40 || pr.top > innerHeight + 40) : true };
+      })()`);
+      if (r.scrollWidth > r.clientWidth + 1) worst = { w, sw: r.scrollWidth, cw: r.clientWidth, bad: r.bad.slice(0,3) };
+      if (gap.holes.length) worst = worst || { w, holes: gap.holes };
+    }
+    rec(11, 'slow 1920 → 360 resize while pinned: no overflow, no gap or overlap', worst === null, worst ? JSON.stringify(worst).slice(0, 220) : '');
+    rec(11, 'zero console errors during the resize sweep', bag.length === 0, bag.slice(0, 3).join(' | '));
+
+    // orientation flip mid-scroll
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(600);
+    await page.evaluate(SCROLL_TO + `(document.body.scrollHeight * 0.35)`);
+    await page.waitForTimeout(600);
+    await page.setViewportSize({ width: 844, height: 390 });
+    await page.waitForTimeout(900);
+    const flip = await page.evaluate(OVERFLOW_PROBE);
+    rec(11, 'portrait → landscape mid-scroll survives', flip.scrollWidth <= flip.clientWidth + 1, JSON.stringify(flip.bad.slice(0, 3)));
+
+    // maximum-speed scroll — no reveal may be skipped
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.waitForTimeout(700);
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForTimeout(1600);
+    await page.evaluate(SCROLL_TO + `(document.body.scrollHeight)`);
+    await page.waitForTimeout(2800);
+    const skipped = await page.evaluate(`Array.from(document.querySelectorAll('[data-reveal]')).filter(e => parseFloat(getComputedStyle(e).opacity) < 0.95).map(e => e.className).slice(0,6)`);
+    rec(11, 'instant scroll to the bottom skips no reveal', skipped.length === 0, JSON.stringify(skipped));
+    rec(11, 'zero console errors overall', bag.length === 0, bag.slice(0, 3).join(' | '));
+    await ctx.close();
+  }
+
+  /* ── 12 · 4× CPU throttle ────────────────────────────────────────────── */
+  head('12 · 4× CPU throttle');
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    await wire(ctx);
+    const page = await ctx.newPage(); const bag = [];
+    watch(page, bag);
+    const cdp = await ctx.newCDPSession(page);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+    await page.goto(base + '/index.html', { waitUntil: 'load' });
+    await page.waitForTimeout(6000);
+    const t0 = Date.now();
+    await page.evaluate(SCROLL_TO + `(document.body.scrollHeight * 0.5)`);
+    await page.waitForTimeout(1500);
+    const usable = await page.evaluate(`({ booted: !!window.__glasBooted, y: Math.round(window.scrollY), reveals: Array.from(document.querySelectorAll('[data-reveal]')).filter(e=>parseFloat(getComputedStyle(e).opacity)>0.9).length })`);
+    rec(12, 'page still boots and scrolls under 4× throttle', usable.booted && usable.y > 100 && usable.reveals > 5, JSON.stringify(usable) + ` (${Date.now() - t0} ms)`);
+    rec(12, 'zero console errors under throttle', bag.length === 0, bag.slice(0, 3).join(' | '));
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+    await ctx.close();
+  }
+
+  await browser.close();
+  srv.close();
+
+  /* ── summary ─────────────────────────────────────────────────────────── */
+  const fails = rows.filter(r => !r.pass);
+  console.log('\n' + '─'.repeat(78));
+  console.log('  ROUND 1 — RESULT TABLE');
+  console.log('─'.repeat(78));
+  let cur = 0;
+  for (const r of rows) {
+    if (r.round !== cur) { cur = r.round; console.log(''); }
+    console.log(`  ${r.pass ? '\x1b[32m✓\x1b[0m' : '\x1b[31m✗\x1b[0m'}  [${String(r.round).padStart(2)}] ${r.check}${r.detail ? '   · ' + r.detail : ''}`);
+  }
+  console.log('─'.repeat(78));
+  console.log(`  ${rows.length - fails.length}/${rows.length} passed` + (fails.length ? `   \x1b[31m${fails.length} FAILING\x1b[0m` : '   \x1b[32mall green\x1b[0m'));
+  console.log('─'.repeat(78) + '\n');
+  fs.writeFileSync(path.join(ROOT, '.audit', 'result.json'), JSON.stringify(rows, null, 2));
+  process.exit(fails.length ? 1 : 0);
+})().catch(e => { console.error('HARNESS ERROR', e); process.exit(2); });
