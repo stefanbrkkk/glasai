@@ -137,8 +137,12 @@ const page = await ctx.newPage();
 await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
 await page.waitForTimeout(2200);
 
-const T = sel => page.$$eval(sel, es => es.map(e => e.textContent));
-const T1 = async sel => (await page.$eval(sel, e => e.textContent).catch(() => null));
+/* A counting numeral is aria-hidden with a visually-hidden twin carrying the
+   real value, so assistive tech never reads a value mid-animation. Strip the
+   twin before diffing, or every count-up would read as a doubled digit. */
+const VISIBLE = `(e => { const c = e.cloneNode(true); c.querySelectorAll('.vh').forEach(n => n.remove()); return c.textContent; })`;
+const T = sel => page.$$eval(sel, (es, fn) => es.map(eval(fn)), VISIBLE);
+const T1 = async sel => (await page.$eval(sel, (e, fn) => eval(fn)(e), VISIBLE).catch(() => null));
 
 console.log('\n\x1b[1mROUND 4 · content, language and claims\x1b[0m\n');
 
@@ -154,7 +158,7 @@ eq('micro-stats', (await T('.microstat')).join('|'), EXPECT.microstats.join('|')
 /* problem */
 eq('problem eyebrow', await T1('#problem .eyebrow'), EXPECT.problemEyebrow);
 eq('problem h2', await T1('#problem h2'), EXPECT.problemH2);
-eq('problem body', await T1('#problem .body-text'), EXPECT.problemBody);
+eq('problem body', await T1('#problem .lede'), EXPECT.problemBody);
 eq('stat figures', (await T('.stat-fig')).join('|'), EXPECT.stats.map(s => s[0]).join('|'));
 eq('stat captions', (await T('.stat-cap')).join('|'), EXPECT.stats.map(s => s[1]).join('|'));
 ok('no unsourced percentage published anywhere', !/\b(30|85)\s*%/.test(await page.evaluate('document.body.innerText')));
@@ -180,6 +184,7 @@ eq('play label', await T1('#play-label'), EXPECT.playLabel);
 
 /* marquee */
 eq('marquee', await T1('.marquee-run'), EXPECT.marquee);
+eq('marquee section label', await T1('.marquee-label'), 'Za koga');
 
 /* pricing */
 eq('pricing h2', await T1('#cene h2'), EXPECT.priceH2);
@@ -212,7 +217,7 @@ eq('transcript speakers', (await T('.ph-who')).join('|'), EXPECT.transcript.map(
 eq('transcript bubbles', (await T('.ph-bubble')).join('|'), EXPECT.transcript.map(t => t[1]).join('|'));
 ok('legal disclosure is the FIRST thing the agent says',
    norm(await T1('.ph-bubble')) === norm(EXPECT.transcript[0][1]) && /veštačka inteligencija/.test(await T1('.ph-bubble')));
-for (const p of EXPECT.phone) ok(`phone UI string present: "${p}"`, (await page.evaluate('document.querySelector("#hero").innerText')).includes(p) || (await page.evaluate('document.querySelector("#hero").textContent')).includes(p));
+for (const p of EXPECT.phone) ok(`phone UI string present: "${p}"`, (await page.evaluate('document.querySelector("#hero").textContent')).includes(p));
 
 /* meta + language */
 const meta = await page.evaluate(`({
@@ -256,7 +261,7 @@ ok('a human is always reachable — stated in copy', /Dovoljno je re(ć|c)i „o
 
 /* aria-label / title / alt must not contain generated Serbian beyond the declared set */
 const ARIA = await page.evaluate(`Array.from(document.querySelectorAll('[aria-label],[title],[alt]')).map(e => e.getAttribute('aria-label') || e.getAttribute('title') || e.getAttribute('alt'))`);
-const ALLOWED_ARIA = new Set(['GLAS AI', 'Meni', 'Stomatološke ordinacije']);
+const ALLOWED_ARIA = new Set(['GLAS AI', 'Meni']);
 const strayAria = ARIA.filter(a => a && !ALLOWED_ARIA.has(a.trim()));
 ok('no generated Serbian in aria-label / title / alt', strayAria.length === 0, JSON.stringify(strayAria));
 

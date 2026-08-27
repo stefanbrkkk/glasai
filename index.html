@@ -59,7 +59,7 @@ a { color: inherit; text-decoration: none; }
   --signal-hi:  #FFD9A0;
   --signal-dim: rgba(255,180,84,0.12);
   --machine:    #56C8DA;
-  --machine-hi: #A8E6F0;
+  --machine-hi: #A8E6F0;   /* cyan text on a cyan-tinted surface, nothing else */
   --machine-dim:rgba(86,200,218,0.10);
   --confirm:    #6FD48A;
   --glow:       rgba(255,180,90,0.22);
@@ -216,7 +216,6 @@ h3 {
   max-width: var(--measure);
   text-wrap: pretty;
 }
-.body-text { color: var(--muted); text-wrap: pretty; max-width: var(--measure); }
 .num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
 
 /* ─── 5 · ATMOSPHERE ────────────────────────────────────────────────────── */
@@ -262,12 +261,12 @@ h3 {
 
 .band--hero {
   position: absolute; left: 38%; right: 0; z-index: 0;
-  top: 54%; height: 10.5rem;
+  top: 85%; height: 9rem;
   transform: translateY(-50%);
   pointer-events: none;
   opacity: 0.8;
-  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 24%, #000 90%, transparent 100%);
-          mask-image: linear-gradient(90deg, transparent 0%, #000 24%, #000 90%, transparent 100%);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, transparent 14%, #000 34%, #000 92%, transparent 100%);
+          mask-image: linear-gradient(90deg, transparent 0%, transparent 14%, #000 34%, #000 92%, transparent 100%);
 }
 .band--divider {
   height: 4.75rem;
@@ -281,7 +280,14 @@ h3 {
   transition: opacity var(--d-mid) var(--ease);
 }
 
-.band-rule { position: relative; padding-block: clamp(1rem, 3vw, 2.25rem); }
+/* Pulled back into the gap it sits in, so a boundary with a divider and a
+   boundary without one measure the same. */
+.band-rule {
+  position: relative;
+  padding-block: 0;
+  margin-block: calc(var(--sect-pad) * -0.42);
+}
+.marquee + .band-rule { margin-top: 0; }
 .band-rule::before {
   content: ""; position: absolute; left: var(--gut); right: var(--gut); top: 50%;
   height: 1px; background: var(--line-soft);
@@ -289,6 +295,7 @@ h3 {
 
 /* frequency guide rails, rendered as real text for the voice section */
 .band-frame { position: relative; }
+.band-marks .band-mark { bottom: 2.4rem; }
 .band-marks { position: absolute; inset: 0; pointer-events: none; }
 .band-mark {
   position: absolute; top: 0; bottom: 0;
@@ -318,16 +325,17 @@ h3 {
   transition: color var(--d-micro) var(--ease),
               background-color var(--d-micro) var(--ease),
               border-color var(--d-micro) var(--ease),
-              transform 120ms var(--ease);
+              scale 120ms var(--ease);
 }
 .btn > :not(.band) { position: relative; z-index: 2; }
-.btn:active { transform: scale(0.978); }
+.btn:active { scale: 0.978; }
 
 .btn--primary { color: var(--ink); background: var(--signal); border: 1px solid var(--signal); }
-.btn--primary:hover { background: var(--signal-hi); border-color: var(--signal-hi); }
-
 .btn--ghost { color: var(--text); border: 1px solid var(--line-hard); background: transparent; }
-.btn--ghost:hover { border-color: var(--signal); color: var(--signal-hi); background: var(--signal-dim); }
+@media (hover: hover) and (pointer: fine) {
+  .btn--primary:hover { background: var(--signal-hi); border-color: var(--signal-hi); }
+  .btn--ghost:hover { border-color: var(--signal); color: var(--signal-hi); background: var(--signal-dim); }
+}
 
 .btn--nav { padding: 0.7em 1.1em; font-size: var(--t-xs); }
 
@@ -352,8 +360,9 @@ h3 {
   .btn--magnetic:hover::before, .btn--magnetic:focus-visible::before { opacity: 1; }
   .btn--cta:hover .band--btn { opacity: 0.45; }
 }
-@media (prefers-reduced-motion: no-preference) {
-  .js-motion .btn--magnetic::before { animation: spin-ang 5.5s linear infinite; }
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .js-motion .btn--magnetic:hover::before,
+  .js-motion .btn--magnetic:focus-visible::before { animation: spin-ang 5.5s linear infinite; }
 }
 @property --ang { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
 @keyframes spin-ang { to { --ang: 360deg; } }
@@ -394,10 +403,10 @@ h3 {
 .nav-inner { display: flex; align-items: center; gap: clamp(1rem, 3vw, 2.5rem); width: 100%; }
 .nav.is-stuck {
   height: calc(var(--nav-h) - 12px);
-  background: rgba(7,10,18,0.62);
+  background: rgba(7,10,18,0.975);
   border-bottom-color: var(--line-soft);
-  -webkit-backdrop-filter: blur(18px) saturate(150%);
-          backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px);
+          backdrop-filter: blur(24px);
 }
 @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
   .nav.is-stuck { background: #080C15; }
@@ -432,8 +441,11 @@ h3 {
   transform: scaleX(0); transform-origin: left;
   transition: transform 280ms var(--ease);
 }
-.nav-link:hover { color: var(--text); }
-.nav-link:hover::after { transform: scaleX(1); }
+@media (hover: hover) and (pointer: fine) {
+  .nav-link:hover { color: var(--text); }
+  .nav-link:hover::after { transform: scaleX(1); }
+}
+.nav-link:focus-visible::after { transform: scaleX(1); }
 
 .nav-actions { display: flex; align-items: center; gap: 0.6rem; }
 
@@ -543,18 +555,18 @@ h3 {
 @keyframes bob { from { transform: translate3d(0, -8px, 0); } to { transform: translate3d(0, 8px, 0); } }
 
 .phone-badge {
-  position: absolute; left: 50%; top: -1px;
-  transform: translate(-50%, -140%);
-  display: inline-flex; align-items: center; gap: 0.55em;
-  padding: 0.5em 0.85em;
+  position: absolute; left: 0; top: 0;
+  transform: translateY(-185%);
+  display: inline-flex; align-items: center; gap: 0.7em;
   font-family: var(--f-mono); font-size: 0.6875rem; font-weight: 600;
   letter-spacing: var(--track-mono); text-transform: uppercase;
-  color: var(--machine-hi);
-  background: rgba(10,22,28,0.86);
-  border: 1px solid rgba(86,200,218,0.28);
-  border-radius: var(--r-pill);
+  color: var(--machine);
   white-space: nowrap;
   z-index: 4;
+}
+.phone-badge::before {
+  content: ""; width: 1.6rem; height: 1px; flex: none;
+  background: linear-gradient(90deg, transparent, var(--machine));
 }
 .phone-badge i {
   width: 0.45rem; height: 0.45rem; border-radius: 50%;
@@ -681,13 +693,13 @@ h3 {
   position: relative;
   width: 4.4em; height: 4.4em; border-radius: 50%;
   display: grid; place-items: center;
-  background: var(--confirm);
-  color: #06210F;
+  background: var(--signal);
+  color: #241503;
 }
 .ph-answer svg { width: 1.9em; height: 1.9em; }
 .ph-answer::before, .ph-answer::after {
   content: ""; position: absolute; inset: 0; border-radius: 50%;
-  border: 1px solid var(--confirm);
+  border: 1px solid var(--signal);
   opacity: 0;
 }
 @media (prefers-reduced-motion: no-preference) {
@@ -716,7 +728,7 @@ h3 {
 }
 .ph-timer::before {
   content: ""; width: 0.42em; height: 0.42em; border-radius: 50%;
-  background: var(--confirm);
+  background: var(--signal);
 }
 .ph-wave { display: flex; align-items: center; gap: 0.24em; height: 1.6em; }
 .ph-wave i {
@@ -869,19 +881,23 @@ h3 {
 }
 .stat {
   background: var(--ink);
-  padding: clamp(1.25rem, 2.6vw, 2rem) clamp(1rem, 2vw, 1.6rem);
-  display: flex; flex-direction: column; gap: 0.5rem;
+  padding: clamp(1.25rem, 2.6vw, 2rem) clamp(1.25rem, 2.4vw, 2rem);
   transition: background-color var(--d-mid) var(--ease);
+  font-size: var(--t-md);
+  line-height: 1.45;
+  color: var(--muted-hi);
+  text-wrap: pretty;
 }
-.stat:hover { background: var(--ink-2); }
+@media (hover: hover) and (pointer: fine) { .stat:hover { background: var(--ink-2); } }
 .stat-fig {
   font-family: var(--f-display); font-weight: 700;
-  font-size: clamp(1.65rem, 3.4vw, 2.6rem);
-  line-height: 1; letter-spacing: -0.035em;
+  font-size: 1.22em; letter-spacing: -0.02em;
   color: var(--signal);
   font-variant-numeric: tabular-nums;
 }
-.stat-cap { font-size: var(--t-sm); color: var(--muted); line-height: 1.45; text-wrap: pretty; }
+.stat-cap { color: inherit; }
+.stat:first-child { padding-left: 0; }
+.stat:last-child  { padding-right: 0; }
 
 /* ─── 12 · STEPS ────────────────────────────────────────────────────────── */
 .steps { position: relative; margin-top: var(--stack-lg); }
@@ -935,7 +951,8 @@ h3 {
   gap: 1px;
   margin-top: var(--stack-lg);
   background: var(--line-soft);
-  border: 1px solid var(--line-soft);
+  outline: 1px solid var(--line-soft);   /* same token in, same token out */
+  outline-offset: 0;
   border-radius: var(--r-sm);
   overflow: hidden;
 }
@@ -983,9 +1000,7 @@ h3 {
   .feat:hover .feat-ico .anim--slide { transform: translateX(2.4px); }
   .feat:hover .feat-ico .anim--fade  { opacity: 0.3; }
 }
-@media (prefers-reduced-motion: reduce) {
-  .feat-ico .anim { transition: none; }
-}
+
 
 /* ─── 14 · VOICE ────────────────────────────────────────────────────────── */
 .voice { position: relative; overflow: hidden; background: var(--ink-2); }
@@ -996,12 +1011,13 @@ h3 {
 .voice-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(1.5rem, 4vw, 4rem); align-items: end; }
 .voice-stage {
   position: relative; z-index: 1;
-  margin-top: clamp(3rem, 7vw, 5.5rem);
-  padding-bottom: 2.4rem;
+  margin-top: clamp(2.75rem, 6vw, 4.5rem);
 }
+.band-frame { padding-bottom: 2.4rem; }
 .voice-play-wrap {
-  position: absolute; left: 50%; top: calc(50% - 1.2rem); z-index: 3;
-  transform: translate(-50%, -50%);
+  margin-top: clamp(1.75rem, 3.2vw, 2.5rem);
+  display: flex; align-items: center; justify-content: center;
+  gap: clamp(0.85rem, 1.8vw, 1.25rem);
 }
 .play {
   position: relative;
@@ -1027,10 +1043,10 @@ h3 {
   border-color: var(--signal);
   box-shadow: 0 0 0 0.6rem rgba(255,180,84,0.05);
 }
-.play:not([aria-disabled="true"]):hover { background: var(--signal); color: var(--ink); border-color: var(--signal); }
+@media (hover: hover) and (pointer: fine) {
+  .play:not([aria-disabled="true"]):hover { background: var(--signal); color: var(--ink); border-color: var(--signal); }
+}
 .play-label {
-  position: absolute; left: 50%; top: calc(100% + 1rem);
-  transform: translateX(-50%);
   font-family: var(--f-mono); font-size: var(--t-xs);
   letter-spacing: var(--track-mono); text-transform: uppercase;
   color: var(--muted); text-align: center;
@@ -1045,7 +1061,7 @@ h3 {
 .play.is-playing .ico-pause { display: block; }
 
 .voice-cap {
-  margin-top: clamp(2.25rem, 4vw, 3rem);
+  margin-top: clamp(2.5rem, 4.5vw, 3.5rem);
   font-family: var(--f-mono); font-size: var(--t-xs);
   letter-spacing: var(--track-mono); text-transform: uppercase;
   color: var(--muted); text-align: center;
@@ -1054,11 +1070,28 @@ h3 {
 /* ─── 15 · MARQUEE ──────────────────────────────────────────────────────── */
 .marquee {
   position: relative;
-  padding-block: clamp(1.6rem, 3.2vw, 2.4rem);
+  padding-block: clamp(1.4rem, 2.8vw, 2rem);
   border-block: 1px solid var(--line-soft);
   overflow: hidden;
-  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
-          mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+.marquee-label {
+  width: 100%; max-width: var(--maxw); margin: 0 auto clamp(0.75rem, 1.6vw, 1.1rem);
+  padding-inline: var(--gut);
+  font-family: var(--f-mono); font-size: var(--t-xs); font-weight: 600;
+  letter-spacing: var(--track-mono); text-transform: uppercase;
+  color: var(--signal);
+  display: flex; align-items: center; gap: 0.7em;
+}
+.marquee-label::before {
+  content: ""; width: 1.75rem; height: 1px; flex: none;
+  background: linear-gradient(90deg, transparent, var(--signal));
+}
+.marquee-vp {
+  overflow: hidden;                          /* the mask box, so it cannot tile */
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
+          mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
+  -webkit-mask-repeat: no-repeat;
+          mask-repeat: no-repeat;
 }
 .marquee-track { display: flex; width: max-content; }
 .marquee-run {
@@ -1072,8 +1105,10 @@ h3 {
 .marquee-run b { font-weight: 400; color: var(--signal); padding-inline: 0.85ch; }
 @media (prefers-reduced-motion: no-preference) {
   .marquee-track { animation: slide 46s linear infinite; }
-  .marquee:hover .marquee-track,
   .marquee:focus-within .marquee-track { animation-play-state: paused; }
+}
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .marquee:hover .marquee-track { animation-play-state: paused; }
 }
 @keyframes slide { from { transform: translate3d(0,0,0); } to { transform: translate3d(-50%,0,0); } }
 
@@ -1093,21 +1128,21 @@ h3 {
   border-radius: var(--r-md);
   transition: border-color var(--d-mid) var(--ease), background-color var(--d-mid) var(--ease);
 }
-.price:hover { border-color: var(--line); background: var(--surface); }
 @media (hover: hover) and (pointer: fine) {
+  .price:hover { border-color: var(--line); background: var(--surface); }
   .price--hi:hover .price-badge { transform: translateY(-50%) scale(1.05); }
 }
 .price--hi {
   background: var(--surface);
   border-color: transparent;
-  transform: translateY(-0.85rem);
+  top: -0.85rem;              /* not `transform` — [data-reveal] animates that */
   box-shadow: 0 2.2em 4em -2em rgba(0,0,0,0.75);
 }
 .price--hi::before {
   content: ""; position: absolute; inset: 0; z-index: 0;
   border-radius: inherit;
   padding: 1px;
-  background: linear-gradient(160deg, var(--signal), rgba(255,180,84,0.14) 46%, rgba(86,200,218,0.30));
+  background: linear-gradient(160deg, var(--signal), rgba(255,180,84,0.10) 52%, rgba(255,217,160,0.75));
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
           mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
@@ -1163,7 +1198,7 @@ h3 {
 @media (min-width: 1081px) {
   .faq > .sec-head { position: sticky; top: calc(var(--nav-h) + 2.5rem); }
 }
-.faq-list { border-top: 1px solid var(--line-soft); }
+.faq-list { border-top: 1px solid var(--line-soft); margin-top: -0.5rem; }
 .faq-item { border-bottom: 1px solid var(--line-soft); }
 .faq-q {
   width: 100%;
@@ -1177,8 +1212,8 @@ h3 {
   cursor: pointer;
   transition: color var(--d-micro) var(--ease);
 }
-.faq-q:hover { color: var(--signal); }
 .faq-q[aria-expanded="true"] { color: var(--signal); }
+@media (hover: hover) and (pointer: fine) { .faq-q:hover { color: var(--signal); } }
 .faq-chev {
   flex: none; width: 1.1rem; height: 1.1rem;
   color: currentColor;
@@ -1193,7 +1228,13 @@ h3 {
 }
 .js .faq-panel { grid-template-rows: 0fr; }
 .js .faq-panel[data-open="true"] { grid-template-rows: 1fr; }
-.faq-panel > div { overflow: hidden; min-height: 0; }
+.faq-panel > div {
+  overflow: hidden; min-height: 0;
+  visibility: hidden;                       /* out of the a11y tree and Ctrl+F */
+  transition: visibility 0s linear 400ms;
+}
+html:not(.js) .faq-panel > div,
+.faq-panel[data-open="true"] > div { visibility: visible; transition-delay: 0s; }
 .faq-panel p {
   padding-bottom: clamp(1.1rem, 2.2vw, 1.5rem);
   padding-right: 2.4rem;
@@ -1205,6 +1246,7 @@ h3 {
 }
 @media (prefers-reduced-motion: reduce) {
   .faq-panel, .faq-chev { transition: none; }
+  .faq-panel > div { transition-delay: 0s; }
 }
 
 /* ─── 18 · FINAL CTA ────────────────────────────────────────────────────── */
@@ -1224,13 +1266,14 @@ h3 {
 .footer { border-top: 1px solid var(--line-soft); padding-block: clamp(2.5rem, 5vw, 4rem); }
 .footer-top { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem clamp(1rem, 3vw, 2.25rem); }
 .footer-nav { display: flex; flex-wrap: wrap; gap: 0.4rem clamp(1rem, 2.5vw, 1.8rem); margin-right: auto; }
+.footer-nav li { display: contents; }
 .footer-nav a {
   font-family: var(--f-mono); font-size: var(--t-xs);
   letter-spacing: 0.09em; text-transform: uppercase;
   color: var(--muted);
   transition: color var(--d-micro) var(--ease);
 }
-.footer-nav a:hover { color: var(--signal); }
+@media (hover: hover) and (pointer: fine) { .footer-nav a:hover { color: var(--signal); } }
 .footer-legal {
   margin-top: clamp(1.75rem, 3.5vw, 2.5rem);
   padding-top: clamp(1.25rem, 2.5vw, 1.75rem);
@@ -1278,7 +1321,7 @@ h3 {
 @media (max-width: 980px) {
   .feat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .price-grid { grid-template-columns: 1fr; max-width: 34rem; margin-inline: auto; }
-  .price--hi { transform: none; order: -1; }
+  .price--hi { top: 0; order: -1; }
   .problem-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 900px) {
@@ -1296,7 +1339,10 @@ h3 {
   }
 
   .steps-list { grid-template-columns: 1fr; gap: 2rem; }
-  .steps-track { display: none; }
+  /* the rail turns vertical rather than disappearing */
+  .steps-track { left: 1.35rem; right: auto; top: 1.35rem; bottom: 1.35rem; width: 1px; height: auto; }
+  .steps-line { inset: 0; }
+  .steps-dot { display: none; }
   .step { flex-direction: row; align-items: flex-start; gap: 1.1rem; }
   .step-n { flex: none; width: 2.7rem; height: 2.7rem; }
   .step-body { display: flex; flex-direction: column; gap: 0.5rem; }
@@ -1378,7 +1424,7 @@ h3 {
   </div>
 </header>
 
-<div class="menu" id="menu" hidden>
+<div class="menu" id="menu" hidden role="dialog" aria-modal="true" aria-label="Meni">
   <nav class="menu-list" aria-label="Meni">
     <a class="menu-link" style="--i:0" href="#kako-radi">Kako radi</a>
     <a class="menu-link" style="--i:1" href="#mogucnosti">Mogućnosti</a>
@@ -1395,7 +1441,7 @@ h3 {
 <main id="sadrzaj">
 
 <!-- ══ 1 · HERO ═════════════════════════════════════════════════════════ -->
-<section class="hero" id="hero">
+<section class="hero" id="hero" data-freeze>
   <div class="glow glow--a" aria-hidden="true"></div>
   <div class="glow glow--b" aria-hidden="true"></div>
   <div class="cursor-glow" id="cursor-glow" aria-hidden="true"></div>
@@ -1404,7 +1450,7 @@ h3 {
 
   <div class="container hero-grid">
     <div class="hero-copy">
-      <p class="eyebrow" data-hero="1">AI GLASOVNI AGENT — SRBIJA · HRVATSKA · BIH</p>
+      <p class="eyebrow" data-hero="1">AI GLASOVNI AGENT — SRBIJA&nbsp;· HRVATSKA&nbsp;· BIH</p>
       <h1 data-hero="2" data-split>Nijedan poziv ne ostaje bez odgovora.</h1>
       <p class="lede" data-hero="3">AI agent koji se javlja za dve sekunde, vodi razgovor prirodnim srpskim jezikom i zakazuje termine direktno u vaš kalendar — 24 sata dnevno, sedam dana u nedelji.</p>
       <div class="hero-cta" data-hero="4">
@@ -1412,7 +1458,7 @@ h3 {
         <a class="btn btn--ghost btn--magnetic" href="#cta">Zakaži razgovor</a>
       </div>
       <ul class="microstats" data-hero="5">
-        <li class="microstat">manje od <b><span data-count="2" data-count-delay="0.9">2</span></b> s do javljanja</li>
+        <li class="microstat">manje od <b><span data-count="2" data-count-delay="0.9" aria-hidden="true">2</span><span class="vh">2</span></b> s do javljanja</li>
         <li class="microstat"><b>24/7</b> dostupan</li>
         <li class="microstat"><b><span data-count="0">0</span></b> propuštenih poziva</li>
       </ul>
@@ -1448,7 +1494,7 @@ h3 {
                     <div class="ph-view ph-incoming" id="ph-incoming">
                       <div class="ph-in-top">
                         <span class="ph-in-label">Dolazni poziv</span>
-                        <span class="ph-in-number">+381 6• ••• •••</span>
+                        <span class="ph-in-number">+381 6• ••• ••••</span>
                         <span class="ph-avatar" aria-hidden="true">
                           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg>
                         </span>
@@ -1461,7 +1507,7 @@ h3 {
                     <!-- in call -->
                     <div class="ph-view ph-call" id="ph-call">
                       <div class="ph-call-head">
-                        <span class="ph-timer num" id="ph-timer">00:22</span>
+                        <span class="ph-timer num" id="ph-timer">00:20</span>
                         <span class="ph-wave" id="ph-wave" aria-hidden="true">
                           <i></i><i></i><i></i><i></i><i></i><i></i><i></i>
                         </span>
@@ -1536,7 +1582,7 @@ h3 {
         <p class="eyebrow">PROBLEM</p>
         <h2>Svaki propušten poziv je izgubljen klijent.</h2>
       </div>
-      <p class="body-text" data-reveal>Dok ste sa pacijentom, na terenu ili van radnog vremena — telefon zvoni. U malim biznisima veliki deo poziva ostane bez odgovora, a većina ljudi ne zove drugi put. Pozovu sledećeg na Google-u.</p>
+      <p class="lede" data-reveal>Dok ste sa pacijentom, na terenu ili van radnog vremena — telefon zvoni. U malim biznisima veliki deo poziva ostane bez odgovora, a većina ljudi ne zove drugi put. Pozovu sledećeg na Google-u.</p>
     </div>
 
     <ul class="stat-row">
@@ -1549,7 +1595,7 @@ h3 {
         <span class="stat-cap">od njih nije ostavio poruku</span>
       </li>
       <li class="stat" data-reveal>
-        <span class="stat-fig"><span data-count="1">1</span> poziv</span>
+        <span class="stat-fig"><span data-count="1" aria-hidden="true">1</span><span class="vh">1</span> poziv</span>
         <span class="stat-cap">je često razlika između punog i praznog termina</span>
       </li>
     </ul>
@@ -1687,19 +1733,22 @@ h3 {
           <svg class="ico-pause" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6.5" y="4.5" width="3.8" height="15" rx="1.2"/><rect x="13.7" y="4.5" width="3.8" height="15" rx="1.2"/></svg>
           <span class="vh" id="play-vh">Snimak uskoro</span>
         </button>
-        <span class="play-label" id="play-label">Snimak uskoro</span>
+        <span class="play-label" id="play-label" aria-hidden="true">Snimak uskoro</span>
       </div>
     </div>
 
-    <p class="voice-cap" data-reveal>Isti opseg koji propušta svaka telefonska veza.</p>
+    <p class="voice-cap" data-reveal>Isti opseg koji propušta svaka telefonska&nbsp;veza.</p>
   </div>
 </section>
 
 <!-- ══ 6 · ZA KOGA ══════════════════════════════════════════════════════ -->
-<section class="marquee" id="za-koga" aria-label="Stomatološke ordinacije">
+<section class="marquee" id="za-koga" data-freeze>
+  <p class="marquee-label">Za koga</p>
+  <div class="marquee-vp">
   <div class="marquee-track" id="marquee-track">
     <p class="marquee-run">Stomatološke ordinacije <b>·</b> Frizerski i kozmetički saloni <b>·</b> Auto servisi <b>·</b> Privatne klinike <b>·</b> Fizioterapeuti <b>·</b> Agencije za nekretnine <b>·</b> Restorani <b>·</b> Advokatske kancelarije <b>·</b></p>
     <p class="marquee-run" aria-hidden="true">Stomatološke ordinacije <b>·</b> Frizerski i kozmetički saloni <b>·</b> Auto servisi <b>·</b> Privatne klinike <b>·</b> Fizioterapeuti <b>·</b> Agencije za nekretnine <b>·</b> Restorani <b>·</b> Advokatske kancelarije <b>·</b></p>
+  </div>
   </div>
 </section>
 
@@ -1805,14 +1854,14 @@ h3 {
 </section>
 
 <!-- ══ 9 · FINALNI CTA ══════════════════════════════════════════════════ -->
-<section class="section cta" id="cta">
+<section class="section cta" id="cta" data-freeze>
   <div class="glow glow--a" aria-hidden="true"></div>
   <div class="glow glow--b" aria-hidden="true"></div>
   <div class="container cta-inner">
     <h2 data-reveal>Čujte ga uživo.</h2>
     <p class="lede" data-reveal>Zakažite razgovor od petnaest minuta — pokazaćemo vam kako zvuči vaš budući agent i koliko poziva mesečno propuštate.</p>
     <div class="cta-row" data-reveal>
-      <a class="btn btn--primary btn--xl btn--magnetic btn--cta" id="cta-btn" href="#cene">
+      <a class="btn btn--primary btn--xl btn--magnetic btn--cta" id="cta-btn" href="#glas">
         <span class="band band--btn" aria-hidden="true"><canvas data-band="btn"></canvas></span>
         <span>Zakaži demo razgovor</span>
       </a>
@@ -1827,13 +1876,13 @@ h3 {
 <footer class="footer">
   <div class="container">
     <div class="footer-top">
-      <nav class="footer-nav" aria-label="GLAS AI">
-        <a href="#kako-radi">Kako radi</a>
-        <a href="#mogucnosti">Mogućnosti</a>
-        <a href="#glas">Glas</a>
-        <a href="#cene">Cene</a>
-        <a href="#cta">Kontakt</a>
-      </nav>
+      <ul class="footer-nav">
+        <li><a href="#kako-radi">Kako radi</a></li>
+        <li><a href="#mogucnosti">Mogućnosti</a></li>
+        <li><a href="#glas">Glas</a></li>
+        <li><a href="#cene">Cene</a></li>
+        <li><a href="#cta">Kontakt</a></li>
+      </ul>
       <a class="wordmark" href="#hero"><span class="wordmark-dot" aria-hidden="true"></span>GLAS AI</a>
     </div>
     <div class="footer-legal">
@@ -1852,7 +1901,8 @@ h3 {
    ═══════════════════════════════════════════════════════════════════════ */
 const CONFIG = {
   DEMO_TELEFON: "",   // npr. "+381 64 123 4567" — prazno = dugme je neaktivno
-  DEMO_AUDIO:   ""    // npr. "demo.mp3" — prazno = plejer je u stanju „uskoro”
+  DEMO_AUDIO:   "",   // npr. "demo.mp3" — prazno = plejer je u stanju „uskoro”
+  DEMO_LINK:    ""    // npr. "https://cal.com/glasai/15min" — gde vodi glavno dugme
 };
 /* ═══════════════════════════════════════════════════════════════════════════
    Ispod ovoga nema podešavanja.
@@ -1864,8 +1914,39 @@ var $  = function (s, r) { return (r || document).querySelector(s); };
 var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
 var mq = function (q) { return window.matchMedia ? window.matchMedia(q) : { matches: false, addEventListener: function(){} }; };
 var REDUCED = function () { return mq("(prefers-reduced-motion: reduce)").matches; };
-var EASE = "power3.out";                       /* == cubic-bezier(.16,1,.3,1) */
-var SPRING = "back.out(1.7)";                  /* == cubic-bezier(.34,1.56,.64,1) */
+/* The two curves §5 specifies, as real functions, so GSAP and CSS ease
+   identically instead of merely similarly. Newton, then bisection as a net. */
+function cubicBezier(x1, y1, x2, y2) {
+  var A = function (a, b) { return 1 - 3 * b + 3 * a; },
+      B = function (a, b) { return 3 * b - 6 * a; },
+      C = function (a) { return 3 * a; },
+      calc = function (t, a, b) { return ((A(a, b) * t + B(a, b)) * t + C(a)) * t; },
+      slope = function (t, a, b) { return 3 * A(a, b) * t * t + 2 * B(a, b) * t + C(a); };
+  return function (x) {
+    if (x <= 0) return 0;
+    if (x >= 1) return 1;
+    var t = x, i, d;
+    for (i = 0; i < 6; i++) {
+      d = slope(t, x1, x2);
+      if (d === 0) break;
+      t -= (calc(t, x1, x2) - x) / d;
+    }
+    var lo = 0, hi = 1;
+    t = Math.min(1, Math.max(0, t));
+    if (Math.abs(calc(t, x1, x2) - x) > 1e-5) {
+      t = x;
+      for (i = 0; i < 20; i++) {
+        var v = calc(t, x1, x2);
+        if (Math.abs(v - x) < 1e-5) break;
+        if (v > x) hi = t; else lo = t;
+        t = (lo + hi) / 2;
+      }
+    }
+    return calc(t, y1, y2);
+  };
+}
+var EASE   = cubicBezier(0.16, 1, 0.3, 1);      /* reveals and transitions */
+var SPRING = cubicBezier(0.34, 1.56, 0.64, 1);  /* small pops only */
 
 /* Teardown. `bag` is the collector currently in scope: page-level by default,
    and swapped for a local array while a gsap.matchMedia context is being built,
@@ -1879,6 +1960,9 @@ function on(t, type, fn, opts) {
   keep(function () { t.removeEventListener(type, fn, opts); });
   return fn;
 }
+/* Note: this captures registrations made *synchronously* while `fn` runs. No
+   module registers later than that — the one async continuation, initHero's
+   font race, guards itself with a `dead` flag instead. */
 function withBag(local, fn) {
   var prev = bag;
   bag = local;
@@ -1886,6 +1970,15 @@ function withBag(local, fn) {
 }
 function dispose(list) {
   while (list.length) { try { list.pop()(); } catch (e) {} }
+}
+/* One page-level visibility listener; every module registers its own policy. */
+var onHiddenChange = [];
+function whenVisibilityChanges(fn) {
+  onHiddenChange.push(fn);
+  keep(function () {
+    var i = onHiddenChange.indexOf(fn);
+    if (i > -1) onHiddenChange.splice(i, 1);
+  });
 }
 function debounce(fn, ms) {
   var id = 0;
@@ -1921,7 +2014,7 @@ var F_MIN = 60, F_MAX = 12000, F_LO = 300, F_HI = 3400;
 var LOG_SPAN = Math.log(F_MAX / F_MIN);
 function fx(f) { return Math.log(f / F_MIN) / LOG_SPAN; }
 var X_LO = fx(F_LO), X_HI = fx(F_HI);          /* 0.3038 … 0.7620 */
-var EDGE = 0.022;                              /* filter roll-off, in x units */
+var EDGE_PX = 14;                              /* filter roll-off, in device px */
 
 function smoothstep(a, b, x) {
   var t = Math.min(1, Math.max(0, (x - a) / (b - a)));
@@ -1980,6 +2073,7 @@ Band.prototype.draw = function () {
   var half = h / 2 - 1;
   var gain = this.amp * (0.30 + 0.70 * Math.min(1, Math.max(0, this.energy)));
   var edgeX = this.reveal * w;
+  var edge = Math.min(0.05, EDGE_PX / Math.max(1, w));   /* a fixed optical width */
   var LIT = this.ink ? "7,10,18"    : "255,180,84";
   var DIM = this.ink ? "7,10,18"    : "255,190,120";
   var CAP = this.ink ? "26,18,6"    : "255,217,160";
@@ -1993,7 +2087,7 @@ Band.prototype.draw = function () {
   for (var px = 0; px + this.bar <= w; px += step) {
     if (px > edgeX) break;
     var x = (px + this.bar / 2) / w;
-    var inBand = smoothstep(X_LO - EDGE, X_LO + EDGE, x) * (1 - smoothstep(X_HI - EDGE, X_HI + EDGE, x));
+    var inBand = smoothstep(X_LO - edge, X_LO + edge, x) * (1 - smoothstep(X_HI - edge, X_HI + edge, x));
     var a = spectrum(x, this.t);
     var mag = a * (0.42 + 0.58 * inBand);
     var bh = Math.max(1, mag * gain * half);
@@ -2043,10 +2137,19 @@ function bandRefreshTicker() {                                   /* F8 */
   if (tickerWanted && !document.hidden) bandStart(); else bandStop();
 }
 
+/* One canvas per placement on this page, so a single reference each is enough;
+   `bands` holds them all and `kind` is what the divider group filters on. */
 var heroBand = null, voiceBand = null, btnBand = null;
 
+function setBandsMotion(on) {
+  for (var i = 0; i < bands.length; i++) {
+    bands[i].animate = on;
+    if (!on) { bands[i].reveal = 1; bands[i].energy = bands[i].base; bands[i].draw(); }
+  }
+  bandRefreshTicker();
+}
+
 function initBands() {
-  var reduced = REDUCED();
   $$("canvas[data-band]").forEach(function (c) {
     var kind = c.getAttribute("data-band");
     var b;
@@ -2063,12 +2166,8 @@ function initBands() {
     b.draw();
   });
 
-  if (reduced) {
-    /* one static frame, no loop at all */
-    bands.forEach(function (b) { b.animate = false; b.reveal = 1; b.energy = b.base; b.draw(); });
-    return;
-  }
-
+  /* Motion is decided by gsap.matchMedia (see setBandsMotion); the observer is
+     always created so the decision can be reversed while the page is open. */
   if ("IntersectionObserver" in window) {
     var io = new IntersectionObserver(function (entries) {
       entries.forEach(function (e) {
@@ -2083,8 +2182,8 @@ function initBands() {
     keep(function () { io.disconnect(); });
   } else {
     bands.forEach(function (b) { b.visible = true; });
-    bandRefreshTicker();
   }
+  setBandsMotion(!REDUCED());
 }
 
 /* ═══ 2 · CONFIG-DRIVEN PLACEHOLDERS ═══════════════════════════════════════
@@ -2111,6 +2210,23 @@ function initDemoSlots() {
   });
 }
 
+/* The primary CTA points at the strongest destination the config offers, in
+   order: a booking link, the demo number, and — failing both — the voice
+   section, which is the one thing the page can deliver on day one. It is never
+   circular and never inert. */
+function initPrimaryCta() {
+  var btn = $("#cta-btn");
+  if (!btn) return;
+  var link = String(CONFIG.DEMO_LINK || "").trim();
+  var num  = String(CONFIG.DEMO_TELEFON || "").trim();
+  if (link) {
+    btn.href = link;
+    if (/^https?:/i.test(link)) { btn.target = "_blank"; btn.rel = "noopener"; }
+  } else if (num) {
+    btn.href = "tel:" + num.replace(/[^\d+]/g, "");
+  }
+}
+
 /* No src → no <audio> element at all. An <audio> with an empty src throws. */
 var audioEl = null;
 function initDemoAudio() {
@@ -2120,12 +2236,20 @@ function initDemoAudio() {
 
   if (!src) {
     /* „uskoro” — inert, but it answers a tap instead of ignoring it */
+    var settle = 0;
     on(btn, "click", function () {
       if (!voiceBand) return;
       voiceBand.energy = 0.85;
-      if (window.gsap) window.gsap.to(voiceBand, { energy: voiceBand.base, duration: 1.1, ease: EASE });
-      else setTimeout(function () { voiceBand.energy = voiceBand.base; }, 700);
+      clearTimeout(settle);
+      if (window.gsap && voiceBand.animate) {
+        window.gsap.to(voiceBand, { energy: voiceBand.base, duration: 1.1, ease: EASE });
+      } else {
+        /* reduced motion, or no GSAP: one frame in, one frame back */
+        voiceBand.draw();
+        settle = setTimeout(function () { voiceBand.energy = voiceBand.base; voiceBand.draw(); }, 1100);
+      }
     });
+    keep(function () { clearTimeout(settle); });
     return;
   }
 
@@ -2133,7 +2257,6 @@ function initDemoAudio() {
   audioEl.preload = "metadata";
   audioEl.src = src;
   btn.setAttribute("aria-disabled", "false");
-  btn.removeAttribute("aria-describedby");
   label.textContent = "Poslušaj demo";
   vh.textContent = "Poslušaj demo";
 
@@ -2191,12 +2314,18 @@ function initDemoAudio() {
     stopSampling();
   });
   on(audioEl, "error", function () { stopSampling(); });
-  keep(function () { stopSampling(); try { audioEl.pause(); } catch (e) {} });
+  keep(function () {
+    stopSampling();
+    try { audioEl.pause(); audioEl.removeAttribute("src"); } catch (e) {}
+    if (actx && actx.state !== "closed") { try { actx.close(); } catch (e) {} }
+    actx = null; analyser = null; data = null;
+  });
 }
 
 /* ═══ 3 · NAV ══════════════════════════════════════════════════════════════ */
 function initNav() {
   var nav = $("#nav");
+  if (!nav) return;                     /* nothing is bound before this point */
   var apply = function () { nav.classList.toggle("is-stuck", window.scrollY > 24); };
   on(window, "scroll", apply, { passive: true });                 /* F11 */
   apply();
@@ -2207,6 +2336,12 @@ function initMenu() {
   if (!burger || !menu) return;
   var open = false, lastFocus = null, closeTimer = 0;
   var FOCUSABLE = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  var behind = [$("main"), $("footer")].filter(Boolean);
+  /* the burger renders as the visible close control on top of the overlay, so
+     it is part of the trap even though it lives outside the dialog */
+  function trapItems() {
+    return $$(FOCUSABLE, menu).filter(function (el) { return el.offsetParent !== null; }).concat([burger]);
+  }
 
   function setOpen(next) {
     if (next === open) return;
@@ -2216,16 +2351,19 @@ function initMenu() {
     if (open) {
       lastFocus = document.activeElement;
       menu.hidden = false;
-      /* force layout so the transition actually plays */
-      void menu.offsetWidth;
+      void menu.offsetWidth;                 /* flush, so the transition plays */
       menu.classList.add("is-open");
+      void menu.offsetWidth;                 /* flush again: focus() needs the
+                                                element to be visible already */
       document.body.style.overflow = "hidden";
+      behind.forEach(function (el) { el.inert = true; el.setAttribute("aria-hidden", "true"); });
       if (window.__glasLenis) window.__glasLenis.stop();
       var first = menu.querySelector(FOCUSABLE);
       if (first) first.focus();
     } else {
       menu.classList.remove("is-open");
       document.body.style.overflow = "";
+      behind.forEach(function (el) { el.inert = false; el.removeAttribute("aria-hidden"); });
       if (window.__glasLenis) window.__glasLenis.start();
       closeTimer = setTimeout(function () { if (!open) menu.hidden = true; }, 360);
       if (lastFocus && lastFocus.focus) lastFocus.focus();
@@ -2238,7 +2376,7 @@ function initMenu() {
     if (!open) return;
     if (e.key === "Escape") { setOpen(false); return; }
     if (e.key !== "Tab") return;
-    var items = $$(FOCUSABLE, menu).filter(function (el) { return el.offsetParent !== null; });
+    var items = trapItems();
     if (!items.length) return;
     var first = items[0], last = items[items.length - 1];
     if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
@@ -2248,7 +2386,11 @@ function initMenu() {
   var desk = mq("(min-width: 901px)");
   var onChange = function (e) { if (e.matches) setOpen(false); };
   if (desk.addEventListener) { desk.addEventListener("change", onChange); keep(function () { desk.removeEventListener("change", onChange); }); }
-  keep(function () { clearTimeout(closeTimer); document.body.style.overflow = ""; });
+  keep(function () {
+    clearTimeout(closeTimer);
+    document.body.style.overflow = "";
+    behind.forEach(function (el) { el.inert = false; el.removeAttribute("aria-hidden"); });
+  });
 }
 
 /* ═══ 4 · ACCORDION ════════════════════════════════════════════════════════ */
@@ -2306,6 +2448,7 @@ function initPhoneLoop(gsap) {
     { typ: 15.85, bub: 16.55, speakTo: 19.20, agent: true  }
   ];
   var ANSWER = 2.0, CONFIRM_AT = 19.85, OUT_AT = 22.35, RESET_AT = 23.02, IN_AT = 23.10, TOTAL = 24.0;
+  var CALL_LEN = Math.floor(OUT_AT - ANSWER);   /* what the static markup shows */
 
   var checkLen = 0;
   try { checkLen = checkP.getTotalLength() || 0; } catch (e) { checkLen = 0; }
@@ -2402,7 +2545,7 @@ function initPhoneLoop(gsap) {
      exactly the state the tail left it in, so the wrap has no cut. */
   tl.to(content, { opacity: 0, duration: 0.62, ease: "power2.inOut" }, OUT_AT)
     .call(setIdle, null, RESET_AT)
-    .set(content, { opacity: 0 }, RESET_AT + 0.001)
+    .set(content, { opacity: 0 }, RESET_AT)   /* after setIdle: insertion order */
     .to(content, { opacity: 1, duration: 0.62, ease: "power2.out" }, IN_AT)
     .to({}, { duration: 0.01 }, TOTAL - 0.01);
 
@@ -2422,9 +2565,11 @@ function initPhoneLoop(gsap) {
     }, { rootMargin: "160px 0px" });
     io.observe(stage);
     keep(function () { io.disconnect(); });
+  } else {
+    sync();                       /* no observer — the loop still has to start */
   }
-  on(document, "visibilitychange", function () {
-    if (document.hidden) { sync(); return; }
+  whenVisibilityChanges(function (hidden) {
+    if (hidden) { sync(); return; }
     /* let the first oversized frame pass before resuming */
     requestAnimationFrame(function () { requestAnimationFrame(sync); });
   });
@@ -2477,7 +2622,7 @@ function initPhoneTilt(gsap, fine) {
     io = new IntersectionObserver(function (es) { if (es[0].isIntersecting) start(); else stop(); }, { rootMargin: "120px 0px" });
     io.observe(stage);
   } else { start(); }
-  on(document, "visibilitychange", function () { if (document.hidden) stop(); else start(); });
+  whenVisibilityChanges(function (hidden) { if (hidden) stop(); else start(); });
 
   keep(function () {
     alive = false; stop(); if (io) io.disconnect();
@@ -2493,11 +2638,14 @@ function initReveals(gsap, ScrollTrigger, motion) {
   var els = $$("[data-reveal]");
   if (!els.length) return null;
   if (!motion) return null;   /* nothing was hidden, so nothing needs revealing */
-  gsap.set(els, { opacity: 0, y: 30, willChange: "transform, opacity" });
+  gsap.set(els, { opacity: 0, y: 30 });
   ScrollTrigger.batch(els, {
     start: "top 88%",
     once: true,
     onEnter: function (batch) {
+      /* promote only the handful about to move, and only while they move —
+         hinting all 31 at once would hold 31 layers for the whole session */
+      batch.forEach(function (t) { t.style.willChange = "transform, opacity"; });
       gsap.to(batch, {
         opacity: 1, y: 0, duration: 0.8, stagger: 0.08, ease: EASE, overwrite: "auto",
         onComplete: function () { this.targets().forEach(function (t) { t.style.willChange = ""; }); }
@@ -2542,9 +2690,9 @@ function initHero(gsap, onDone) {
   gsap.set(words, { yPercent: 112, willChange: "transform" });
   if (stage) gsap.set(stage, { opacity: 0, scale: 0.9, transformOrigin: "50% 55%" });
 
-  var fired = false, tl = null;
+  var fired = false, dead = false, tl = null;
   function run() {
-    if (fired) return;
+    if (fired || dead) return;      /* the font race can resolve after teardown */
     fired = true;
     window.__glasHeroDone = true;
     tl = gsap.timeline({ defaults: { ease: EASE } });
@@ -2562,10 +2710,12 @@ function initHero(gsap, onDone) {
   var timeout = new Promise(function (res) { setTimeout(res, 1200); });
   Promise.race([fonts, timeout]).then(run, run);
   var net = setTimeout(function () {                        /* hard safety net */
-    if (!window.__glasHeroDone) gsap.set(fades.concat(words, stage ? [stage] : []), { clearProps: "all" });
+    if (dead || window.__glasHeroDone) return;
+    gsap.set(fades.concat(words, stage ? [stage] : []), { clearProps: "all" });
   }, 4000);
 
   return function () {
+    dead = true;
     clearTimeout(net);
     if (tl) tl.kill();
     gsap.set(fades.concat(words, stage ? [stage] : []), { clearProps: "all" });
@@ -2580,15 +2730,15 @@ function initJourney(gsap, ScrollTrigger, tilt) {
   if (!hero || !scroll) return null;
   var proxy = tilt || { flat: 0 };
   var tl = gsap.timeline({ defaults: { ease: "none" } });
-  tl.to(scroll,  { scale: 0.84, yPercent: 9, xPercent: -4, opacity: 0.32, duration: 1 }, 0)
+  tl.to(scroll,  { scale: 0.86, yPercent: 7, xPercent: -3, opacity: 0.7, duration: 1 }, 0)
     .to(proxy,   { flat: 0.85, duration: 1 }, 0)
-    .fromTo(copy, { opacity: 1, y: 0 }, { opacity: 0, y: -42, duration: 0.82 }, 0.12);
-  if (band) tl.to(band, { opacity: 0, duration: 0.7 }, 0.15);
+    .fromTo(copy, { opacity: 1, y: 0 }, { opacity: 0, y: -38, duration: 0.72 }, 0.24);
+  if (band) tl.to(band, { opacity: 0.15, duration: 0.7 }, 0.2);
 
   var st = ScrollTrigger.create({
     trigger: hero,
     start: "top top",
-    end: "+=62%",
+    end: "+=42%",
     pin: true,
     pinSpacing: true,
     anticipatePin: 1,
@@ -2608,28 +2758,44 @@ function initJourney(gsap, ScrollTrigger, tilt) {
 /* ═══ 10 · STEPS ═══════════════════════════════════════════════════════════ */
 function initSteps(gsap, ScrollTrigger) {
   var wrap = $("#steps"), draw = $("#steps-draw"), dot = $("#steps-dot");
-  if (!wrap || !draw || !dot) return null;
+  var track = $(".steps-track", wrap || document);
+  if (!wrap || !draw || !dot || !track) return null;
   var steps = $$(".step", wrap);
+  if (!steps.length) return null;
+
+  /* the line runs between the first and last number, whatever the step count */
+  function layoutTrack() {
+    var a = $(".step-n", steps[0]), z = $(".step-n", steps[steps.length - 1]);
+    if (!a || !z) return;
+    var w = wrap.getBoundingClientRect(), ra = a.getBoundingClientRect(), rz = z.getBoundingClientRect();
+    if (!w.width || rz.top - ra.top > 4) return;      /* stacked: CSS hides it */
+    track.style.left = Math.round(ra.left + ra.width / 2 - w.left) + "px";
+    track.style.right = Math.round(w.right - (rz.left + rz.width / 2)) + "px";
+  }
+  layoutTrack();
   gsap.set(draw, { scaleX: 0 });
   gsap.set(dot, { opacity: 0, x: 0 });
 
   var tl = gsap.timeline({ defaults: { ease: "none" } });
   tl.to(draw, { scaleX: 1, duration: 1 }, 0)
     .to(dot, { opacity: 1, duration: 0.05 }, 0)
-    .to(dot, { x: function () { var t = $(".steps-track", wrap); return t ? t.offsetWidth : wrap.offsetWidth; }, duration: 1 }, 0)
+    .to(dot, { x: function () { return track.offsetWidth; }, duration: 1 }, 0)
     .to(dot, { opacity: 0, duration: 0.06 }, 0.94);
 
+  var span = 1 / steps.length;                 /* one slot per step, not 0.31 */
   var st = ScrollTrigger.create({
     trigger: wrap, start: "top 76%", end: "bottom 72%",
     scrub: 0.5, invalidateOnRefresh: true, animation: tl,
+    onRefresh: layoutTrack,
     onUpdate: function (self) {
       var p = self.progress;
-      steps.forEach(function (s, i) { s.classList.toggle("is-live", p >= i * 0.31 + 0.04); });
+      steps.forEach(function (s, i) { s.classList.toggle("is-live", p >= i * span + span * 0.12); });
     }
   });
   return function () {
     st.kill(); tl.kill();
     steps.forEach(function (s) { s.classList.remove("is-live"); });
+    track.style.left = ""; track.style.right = "";
     gsap.set([draw, dot], { clearProps: "all" });
   };
 }
@@ -2720,15 +2886,21 @@ function initCursorGlow(gsap) {
   };
 }
 
-/* ═══ 14 · MARQUEE — stop the loop once it is off screen (F8) ═════════════ */
-function initMarquee() {
-  var el = $("#za-koga");
-  if (!el || !("IntersectionObserver" in window)) return;
+/* ═══ 14 · FREEZE OFF-SCREEN CSS LOOPS (F8) ═══════════════════════════════
+   The marquee, the drifting hero and CTA glows, the phone's bob and blink —
+   every CSS animation on the page belongs to a [data-freeze] region and stops
+   the moment that region leaves the viewport. */
+function initFreeze() {
+  var els = $$("[data-freeze]");
+  if (!els.length || !("IntersectionObserver" in window)) return;
   var io = new IntersectionObserver(function (es) {
-    el.classList.toggle("is-frozen", !es[0].isIntersecting);
-  }, { rootMargin: "80px 0px" });
-  io.observe(el);
-  keep(function () { io.disconnect(); el.classList.remove("is-frozen"); });
+    es.forEach(function (e) { e.target.classList.toggle("is-frozen", !e.isIntersecting); });
+  }, { rootMargin: "100px 0px" });
+  els.forEach(function (el) { io.observe(el); });
+  keep(function () {
+    io.disconnect();
+    els.forEach(function (el) { el.classList.remove("is-frozen"); });
+  });
 }
 
 /* ═══ 15 · SMOOTH SCROLL (F3 — the canonical wiring) ══════════════════════ */
@@ -2750,8 +2922,13 @@ function initLenis(gsap, ScrollTrigger) {
 }
 
 function navOffset() {
-  var v = parseFloat(getComputedStyle(root).getPropertyValue("--nav-h"));
-  return (isFinite(v) ? v : 74) + 18;
+  var nav = $("#nav");                       /* measured, so `is-stuck` counts */
+  var h = nav ? nav.getBoundingClientRect().height : 0;
+  if (!h) {
+    var v = parseFloat(getComputedStyle(root).getPropertyValue("--nav-h"));
+    h = isFinite(v) ? v : 74;
+  }
+  return h + 24;                             /* == the CSS scroll-padding-top */
 }
 function initAnchors() {
   on(document, "click", function (e) {
@@ -2764,6 +2941,10 @@ function initAnchors() {
     if (window.__glasLenis) {
       e.preventDefault();
       window.__glasLenis.scrollTo(target, { offset: -navOffset() });
+      /* Lenis swallows the native jump, so the history entry is ours to write */
+      if (window.history && history.pushState) {
+        try { history.pushState(null, "", id); } catch (err) {}
+      }
     }
     if (!target.hasAttribute("tabindex")) target.setAttribute("tabindex", "-1");
     target.focus({ preventScroll: true });
@@ -2772,14 +2953,20 @@ function initAnchors() {
 
 /* ═══ 16 · RESIZE (F6/F7) ══════════════════════════════════════════════════ */
 function initResize() {
-  var apply = debounce(function () {
+  var lastW = window.innerWidth;
+  var apply = debounce(function (force) {
     for (var i = 0; i < bands.length; i++) bands[i].resize();
-    if (window.ScrollTrigger) window.ScrollTrigger.refresh();
+    /* Only a width change can move a trigger. Height alone is the mobile URL
+       bar collapsing, and refreshing on that would jump the pinned hero —
+       which is exactly what ScrollTrigger.config({ignoreMobileResize}) avoids. */
+    var w = window.innerWidth;
+    if (window.ScrollTrigger && (force === true || w !== lastW)) window.ScrollTrigger.refresh();
+    lastW = w;
   }, 180);
-  on(window, "resize", apply, { passive: true });
-  on(window, "orientationchange", apply, { passive: true });
-  on(document, "visibilitychange", function () {
-    if (document.hidden) bandStop(); else if (tickerWanted) bandStart();
+  on(window, "resize", function () { apply(); }, { passive: true });
+  on(window, "orientationchange", function () { apply(true); }, { passive: true });
+  whenVisibilityChanges(function (hidden) {
+    if (hidden) bandStop(); else if (tickerWanted) bandStart();
   });
 }
 
@@ -2798,6 +2985,9 @@ function initMotionSystem(gsap, ScrollTrigger) {
     var push = function (fn) { if (typeof fn === "function") local.push(fn); };
     withBag(local, function () {
 
+      setBandsMotion(!!c.motion);
+      push(function () { setBandsMotion(!REDUCED()); });
+
       push(safe("reveals",  function () { return initReveals(gsap, ScrollTrigger, c.motion); }));
       push(safe("counters", function () { return initCounters(gsap, ScrollTrigger, c.motion); }));
 
@@ -2811,12 +3001,13 @@ function initMotionSystem(gsap, ScrollTrigger) {
           var tl = initPhoneLoop(gsap);
           return function () {
             root.classList.remove("js-loop");
+            var st = $(".phone-stage"); if (st) st.removeAttribute("aria-hidden");
             if (tl) tl.kill();
             phoneTl = null;
             gsap.set(["#ph-content", "#ph-incoming", "#ph-call", "#ph-thread", "#ph-confirm", "#ph-note",
                       ".ph-turn", ".ph-typing", "#ph-check-path"], { clearProps: "all" });
             var w = $("#ph-wave"); if (w) w.classList.remove("is-speaking");
-            var t = $("#ph-timer"); if (t) t.textContent = "00:22";
+            var t = $("#ph-timer"); if (t) t.textContent = "00:" + CALL_LEN;
           };
         }));
         push(safe("steps",    function () { return initSteps(gsap, ScrollTrigger); }));
@@ -2851,6 +3042,12 @@ function initMotionSystem(gsap, ScrollTrigger) {
 
 function boot() {
   window.__glasBooted = true;
+  document.addEventListener("visibilitychange", function () {
+    var hidden = document.hidden;
+    for (var i = onHiddenChange.length - 1; i >= 0; i--) {
+      try { onHiddenChange[i](hidden); } catch (e) {}
+    }
+  }, { passive: true });
   var gsap = window.gsap, ScrollTrigger = window.ScrollTrigger;
   var ok = !!(gsap && ScrollTrigger && gsap.timeline && ScrollTrigger.create && gsap.matchMedia);
 
@@ -2858,11 +3055,12 @@ function boot() {
 
   safe("bands",       initBands);
   safe("demo-slots",  initDemoSlots);
+  safe("primary-cta", initPrimaryCta);
   safe("demo-audio",  initDemoAudio);
   safe("nav",         initNav);
   safe("menu",        initMenu);
   safe("faq",         initFaq);
-  safe("marquee",     initMarquee);
+  safe("freeze",      initFreeze);
   safe("anchors",     initAnchors);
   safe("resize",      initResize);
 
@@ -2874,7 +3072,15 @@ if (document.readyState === "loading") document.addEventListener("DOMContentLoad
 else boot();
 
 /* If the boot never happened at all, give the accordion back its open state. */
-setTimeout(function () { if (!window.__glasBooted) root.classList.remove("js"); }, 3500);
+setTimeout(function () {
+  if (window.__glasBooted) return;
+  root.className = "no-js";                  /* restores the no-JS rules too */
+  $$(".faq-q").forEach(function (b) {
+    b.setAttribute("aria-expanded", "true");
+    var p = document.getElementById(b.getAttribute("aria-controls"));
+    if (p) p.setAttribute("data-open", "true");
+  });
+}, 3500);
 
 })();
 </script>

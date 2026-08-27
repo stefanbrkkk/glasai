@@ -387,7 +387,7 @@ const PHONE_STATE = `(() => {
     await page.waitForTimeout(900);
     const s = await page.evaluate(`(() => {
       const chips = Array.from(document.querySelectorAll('.chip-off')).map(e => e.textContent.trim());
-      const tels = Array.from(document.querySelectorAll('a[href^="tel:"]')).map(e => ({ href: e.getAttribute('href'), text: e.textContent.trim() }));
+      const tels = Array.from(document.querySelectorAll('a[href^="tel:"]')).map(e => ({ id: e.id, href: e.getAttribute('href'), text: e.textContent.trim() }));
       const play = document.querySelector('#play');
       return { chips, tels, audioEls: document.querySelectorAll('audio').length,
                playDisabled: play.getAttribute('aria-disabled'),
@@ -400,8 +400,20 @@ const PHONE_STATE = `(() => {
       rec(7, 'empty: no <audio> element created at all', s.audioEls === 0);
       rec(7, 'empty: play button is a designed „uskoro” state', s.playDisabled === 'true' && s.playLabel === 'Snimak uskoro' && s.playCursor === 'default' && s.playBorder === 'dashed', `${s.playLabel} / ${s.playCursor} / ${s.playBorder}`);
       rec(7, 'empty: clicking the inert player throws nothing', bag.length === 0, bag.slice(0, 3).join(' | '));
+      const cta = await page.evaluate(`(() => { const a = document.querySelector('#cta-btn'); return { href: a.getAttribute('href'), text: a.textContent.trim() }; })()`);
+      rec(7, 'empty: the primary CTA still points forward, never back at #cene',
+          cta.href === '#glas' && /Zaka(ž|z)i demo razgovor/.test(cta.text), JSON.stringify(cta));
     } else {
-      rec(7, 'filled: live tel: links in nav + CTA', s.tels.length >= 2 && s.tels.every(t => t.href === 'tel:+381641234567' && t.text === '+381 64 123 4567'), JSON.stringify(s.tels[0] || {}));
+      const chips = s.tels.filter(t => t.id !== 'cta-btn');
+      const primary = s.tels.filter(t => t.id === 'cta-btn')[0];
+      rec(7, 'filled: the demo number renders as live tel: chips',
+          chips.length >= 2 && chips.every(t => t.href === 'tel:+381641234567' && t.text === '+381 64 123 4567'),
+          JSON.stringify(chips[0] || {}));
+      /* with DEMO_LINK empty the primary CTA falls back to the demo number —
+         never back to the price list it came from */
+      rec(7, 'filled: the primary CTA resolves to the demo number, not a loop',
+          !!primary && primary.href === 'tel:+381641234567' && primary.text === 'Zakaži demo razgovor',
+          JSON.stringify(primary || {}));
       rec(7, 'filled: no inert chips remain', s.chips.length === 0);
       rec(7, 'filled: real player, enabled', s.playDisabled === 'false' && s.playBorder === 'solid', `${s.playLabel} / ${s.playBorder}`);
       rec(7, 'filled: zero console errors', bag.length === 0, bag.slice(0, 3).join(' | '));
