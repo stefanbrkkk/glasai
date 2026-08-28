@@ -949,10 +949,10 @@ h3 {
    there is nothing over it and the whole block reads as a grey slab where a
    section will be — a skeleton loader, on a page made of hairlines. So the
    wash arrives with the cells. Without the motion system it is simply there. */
-.js-motion .stat-row,
-.js-motion .feat-grid { background-color: transparent; transition: background-color 620ms var(--ease); }
-.js-motion .stat-row.is-lined,
-.js-motion .feat-grid.is-lined { background-color: var(--line-soft); }
+.js-lined .stat-row,
+.js-lined .feat-grid { background-color: transparent; transition: background-color 620ms var(--ease); }
+.js-lined .stat-row.is-lined,
+.js-lined .feat-grid.is-lined { background-color: var(--line-soft); }
 .stat {
   background: var(--ink);
   padding: clamp(1.25rem, 2.6vw, 2rem) clamp(1.25rem, 2.4vw, 2rem);
@@ -2137,7 +2137,7 @@ var PEAK_FALL = 0.20;
 /* How far above the bar the held peak may sit, in CSS px. Scaling the gap
    with the bar lets the caps detach into a dotted contour of their own at
    large sizes — a selection marquee, not a meter. */
-var PEAK_GAP  = 6;                          /* peak decay, level per second */
+var PEAK_GAP  = 6;
 var bandVel = 0;                               /* shared scroll-velocity boost */
 var SPEC_GAIN = 3.4;                           /* normalises spectrum() to ~0..1 */
 var KNEE = 0.68, CEIL = 0.96;                  /* soft limiter, so nothing flat-tops */
@@ -2370,7 +2370,6 @@ Band.prototype.sweep = function (dur, done) {
        the targets are recomputed. Without it the meter renders identically and
        the self-test does nothing at all. */
     this.pulse = 0.85; this.settle(); this.draw();
-    var self = this;
     clearTimeout(this._sweepTo);
     this._sweepTo = setTimeout(function () {
       self.pulse = 0; self.settle(); self.draw();
@@ -2472,10 +2471,6 @@ Band.prototype.draw = function () {
   var FULL_A = 0.90, PEAK_A = 0.54;
   var bar = this.bar;
 
-  function rrect(px, top, hgt) {
-    if (rad) ctx.roundRect(px, top, bar, hgt, rad);
-    else ctx.rect(px, top, bar, hgt);
-  }
 
   var odd = this._odd || (this._odd = []);      /* reused, never reallocated */
   var oddN = 0, peakOdd = this._podd || (this._podd = []), peakOddN = 0;
@@ -2504,7 +2499,9 @@ Band.prototype.draw = function () {
       a = (this.dim + (0.90 - this.dim) * inBand) * (1 + sc * 0.55);
       if (a > 1) a = 1;
       top = cy - bh;
-      if (a > FULL_A - 0.012 && a < FULL_A + 0.012) rrect(px, top, bh * 2);
+      if (a > FULL_A - 0.012 && a < FULL_A + 0.012) {
+        if (rad) ctx.roundRect(px, top, bar, bh * 2, rad); else ctx.rect(px, top, bar, bh * 2);
+      }
       else { odd[oddN++] = px; odd[oddN++] = top; odd[oddN++] = bh * 2; odd[oddN++] = a; }
       /* every bar gets a lit tip, however short — the highlight belongs to the
          bar, not to a position on the canvas */
@@ -2536,7 +2533,8 @@ Band.prototype.draw = function () {
   for (i = 0; i < oddN; i += 4) {
     ctx.globalAlpha = odd[i + 3];
     ctx.beginPath();
-    rrect(odd[i], odd[i + 1], odd[i + 2]);
+    if (rad) ctx.roundRect(odd[i], odd[i + 1], bar, odd[i + 2], rad);
+    else ctx.rect(odd[i], odd[i + 1], bar, odd[i + 2]);
     ctx.fill();
   }
 
@@ -2661,10 +2659,13 @@ function initBands() {
         var b = bands.filter(function (x) { return x.c === e.target; })[0];
         if (!b) return;
         b.visible = e.isIntersecting;
-        if (e.isIntersecting) b.measure();
-        /* an invisible canvas is not worth a frame: the CTA fill only shows on
-           hover or during its one arrival demo */
-        if (b.kind === "btn" && b.visible) b.visible = b.wanted === true;
+        if (e.isIntersecting && b.measure()) b.draw();   /* never leave the
+           backing store cleared and unpainted */
+        /* An invisible canvas is not worth a frame: the CTA fill only shows on
+           hover or during its one arrival demo. `wanted` is null until the
+           module that drives it claims ownership — with GSAP blocked that never
+           happens, and the observer alone must decide. */
+        if (b.kind === "btn" && b.visible && b.wanted != null) b.visible = b.wanted === true;
       });
       bandRefreshTicker();
     }, { rootMargin: "60px 0px" });
@@ -3160,6 +3161,14 @@ function initReveals(gsap, ScrollTrigger, motion) {
   var els = $$("[data-reveal]");
   if (!els.length) return null;
   if (!motion) return null;   /* nothing was hidden, so nothing needs revealing */
+  /* The hairline grids paint their 1px gaps with the parent's own wash, so
+     before their cells arrive the wash is the only thing on screen — a grey
+     slab where a section will be. This module is the only thing that ever
+     lights it, so this module owns the class that switches it off; `js-motion`
+     is set whether or not GSAP actually arrived, and gating on that would leave
+     both grids with no hairlines at all on the blocked-CDN path. */
+  var grids = $$(".stat-row, .feat-grid"), gsts = [];
+  root.classList.add("js-lined");
   /* Anything whose text arrives line by line fades only — the line masks
      carry the motion, and two vertical moves at once reads as mush. */
   var flat = els.filter(function (el) {
@@ -3198,10 +3207,7 @@ function initReveals(gsap, ScrollTrigger, motion) {
   if (lift.length) ScrollTrigger.batch(lift, { start: "top 88%", once: true, onEnter: enter({ y: 0 }) });
   if (flat.length) ScrollTrigger.batch(flat, { start: "top 90%", once: true, onEnter: enter({ duration: 0.7, stagger: 0.06 }) });
 
-  /* The hairline grids paint their gaps with the parent's own wash, so before
-     their cells arrive the wash is the only thing on screen — a grey slab
-     where a section will be. It comes in just ahead of them. */
-  var grids = $$(".stat-row, .feat-grid"), gsts = [];
+  /* the wash comes in just ahead of the cells it separates */
   grids.forEach(function (g) {
     gsts.push(ScrollTrigger.create({
       trigger: g, start: "top 94%", once: true,
@@ -3213,6 +3219,9 @@ function initReveals(gsap, ScrollTrigger, motion) {
     clearTimeout(wd);
     gsts.forEach(function (t) { t.kill(); });
     grids.forEach(function (g) { g.classList.remove("is-lined"); });
+    root.classList.remove("js-lined");
+    /* willChange is written outside GSAP, so clearProps cannot take it back */
+    els.forEach(function (el) { el.style.willChange = ""; });
     gsap.set(els, { clearProps: "all" });
   };
 }
@@ -3376,6 +3385,7 @@ function initCardReveals(gsap, ScrollTrigger) {
     });
     kills.push(function () {
       (stc || []).forEach(function (t) { t.kill(); });
+      cards.forEach(function (t) { t.style.willChange = ""; });
       gsap.set(cards, { clearProps: "all" });
     });
   }
@@ -3415,7 +3425,11 @@ function initDrawIns(gsap, ScrollTrigger) {
       start: "top 92%", once: true,
       onEnter: function (b) { gsap.to(b, { "--rule": 1, duration: 0.8, stagger: 0.06, ease: EASE }); }
     });
-    kills.push(function () { (stR || []).forEach(function (t) { t.kill(); }); gsap.set(rules, { clearProps: "--rule" }); });
+    kills.push(function () {
+      (stR || []).forEach(function (t) { t.kill(); });
+      gsap.killTweensOf(rules);
+      gsap.set(rules, { clearProps: "--rule" });
+    });
   }
 
   $$(".feat-ico svg").forEach(function (svg) {
@@ -3448,7 +3462,10 @@ function initDrawIns(gsap, ScrollTrigger) {
         });
       }
     });
-    kills.push(function () { st.kill(); gsap.set(shapes, { clearProps: "strokeDasharray,strokeDashoffset" }); });
+    kills.push(function () {
+      st.kill(); gsap.killTweensOf(shapes);
+      gsap.set(shapes, { clearProps: "strokeDasharray,strokeDashoffset" });
+    });
   });
 
   var cta = $("#cta"), fill = $(".btn--cta .band--btn"), over = false;
@@ -3486,7 +3503,16 @@ function initDrawIns(gsap, ScrollTrigger) {
       btn.addEventListener("pointerleave", onOut, { passive: true });
       kills.push(function () { btn.removeEventListener("pointerenter", onIn); btn.removeEventListener("pointerleave", onOut); });
     }
-    kills.push(function () { stC.kill(); gsap.set(fill, { clearProps: "opacity" }); wantBtnBand(false); if (btnBand) btnBand.pulse = 0; });
+    kills.push(function () {
+      stC.kill();
+      gsap.killTweensOf(fill);
+      gsap.set(fill, { clearProps: "opacity" });
+      /* clearProps hands the fill back to the :hover rule; stopping the ticker
+         in the same breath under a resting pointer freezes it there. */
+      if (!over) wantBtnBand(false);
+      if (btnBand) btnBand.wanted = null;      /* released, not switched off */
+      if (btnBand) btnBand.pulse = 0;
+    });
   }
 
   return function () { kills.forEach(function (f) { f(); }); };
@@ -3800,29 +3826,33 @@ function initVoiceProbe(gsap, ScrollTrigger) {
     onUpdate: function (self) {
       var p = self.progress;
       if (window.__glasDebug) window.__glasProbeP = p;
-      /* `reveal` has two other owners — the player and the self-test tone —
-         and either would be cut off mid-stride by a trailing scrub update. */
-      if (b.audioOwned || b.sweepT >= 0) return;
 
       /* The probe's x is the same 0..1 axis the canvas draws on, so comparing
          it against X_LO/X_HI — which are positions on that axis, not scroll
-         positions — is exact, not a coincidence. */
+         positions — is exact, not a coincidence. The cursor and its readout are
+         the probe's own and always track the scroll: a smooth-scroll glide that
+         is still settling while the self-test runs must not park them at a
+         frequency they are no longer pointing at. */
       cursor.style.transform = "translate3d(" + (p * frameW).toFixed(1) + "px,0,0)";
       var hz = hzAt(p);
       if (hz !== lastHz) { lastHz = hz; read.textContent = hz + " Hz"; }
       var inBand = p >= X_LO && p <= X_HI;
       if (inBand !== wasIn) { wasIn = inBand; cursor.classList.toggle("in-band", inBand); }
 
-      /* The band draws in behind the probe, then completes and waits. It has
-         to be whole by the time the section comes to rest under the nav —
-         otherwise the resting state is a meter cut off in mid-air. */
-      b.reveal = Math.min(1, 0.05 + p * 4.2);
-      b.scan = p;
-
-      /* and only answers while the probe is inside the telephone band */
-      var edge = 0.055;
-      b.drive = 0.86 * smoothstep(X_LO - edge, X_LO + edge, p) *
-                       (1 - smoothstep(X_HI - edge, X_HI + edge, p));
+      /* What the band itself shows has two other owners — the player and the
+         self-test tone — and either would be cut off mid-stride by a trailing
+         scrub update, so only they write these three while they hold it. */
+      if (!b.audioOwned && b.sweepT < 0) {
+        /* The band draws in behind the probe, then completes and waits. It has
+           to be whole by the time the section comes to rest under the nav —
+           otherwise the resting state is a meter cut off in mid-air. */
+        b.reveal = Math.min(1, 0.05 + p * 4.2);
+        b.scan = p;
+        /* and it only answers while the probe is inside the telephone band */
+        var edge = 0.055;
+        b.drive = 0.86 * smoothstep(X_LO - edge, X_LO + edge, p) *
+                         (1 - smoothstep(X_HI - edge, X_HI + edge, p));
+      }
 
       if (!seen && p > 0.30) {
         seen = true;

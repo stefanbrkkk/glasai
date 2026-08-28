@@ -13,60 +13,155 @@ node .audit/copy-check.mjs    # every visible string, diffed against §8
 
 ---
 
-## 1 · The two lines the client edits to go live
+## 1 · The three lines the client edits to go live
 
 At the very top of the `<script>` in `index.html`:
 
 ```js
 const CONFIG = {
   DEMO_TELEFON: "",   // npr. "+381 64 123 4567" — prazno = dugme je neaktivno
-  DEMO_AUDIO:   ""    // npr. "demo.mp3" — prazno = plejer je u stanju „uskoro"
+  DEMO_AUDIO:   "",   // npr. "demo.mp3" — prazno = plejer je u stanju „uskoro”
+  DEMO_LINK:    ""    // npr. "https://cal.com/glasai/15min" — gde vodi glavno dugme
 };
 ```
 
-Nothing else needs touching. Both empty states are designed, not broken, and
-both filled states are exercised by the harness:
+Nothing else needs touching. Every empty state is designed, not broken, and
+every filled state is exercised by the harness:
 
 | | empty (shipped) | filled |
 |---|---|---|
 | `DEMO_TELEFON` | inert chip `Demo broj — uskoro`, muted, dashed hairline, `cursor: default`, `aria-disabled="true"`. **No fake number and no dead `tel:` anywhere.** | live `tel:` link in the nav, the mobile menu and the final CTA, showing the number exactly as typed |
-| `DEMO_AUDIO` | **no `<audio>` element is constructed at all.** The player sits in a `uskoro` state — dashed ring, muted `Snimak uskoro`, `aria-disabled` — and a tap pulses the band instead of erroring | a real play/pause control; a Web Audio analyser drives the band's amplitude and it settles back on `ended` |
+| `DEMO_AUDIO` | **no `<audio>` element is constructed at all.** The player sits in a `uskoro` state — dashed ring, muted `Snimak uskoro`, `aria-disabled` — and pressing it runs the spectrum self-test instead of erroring | a real play/pause control; a Web Audio analyser drives the band's amplitude and it settles back on `ended` |
+| `DEMO_LINK` | the primary CTA falls back to the demo number, and failing that to the voice section — never circular, never dead | the CTA points at the booking page (`target="_blank"` for an absolute URL) |
+
+`DEMO_LINK` is a departure from §7's two values; §9 of this report explains why.
 
 ---
 
-## 2 · Round 1 — final automated audit (`node audit.js`)
+## 2 · The motion round — what the client asked for after the first build
 
-**92 / 92 passed, all green.** Full table below; it is reproduced verbatim from
-the last run. Everything was actually executed in headless Chromium against the
-real file.
+The brief for this pass, verbatim in substance: *the sound bars are the one
+thing I dislike; several more scroll animations like the phone one are missing;
+raise the visual of the whole site without changing the content or the rest,
+which is good; nothing may be tasteless; and fix what happens when you press
+play on the sound demo.*
 
-| # | round | checks | result |
-|---|---|---|---|
-| 1 | Console — network idle + 5 s of animation | 2 | zero `console.error`, zero `pageerror`, zero unhandled rejections; GSAP + ScrollTrigger + Lenis all live |
-| 2 | Horizontal overflow @ 360/390/414/768/1024/1280/1440/1920 | 8 | `scrollWidth ≤ clientWidth` at every width, checked at the top of the page **and** after a full scroll-through |
-| 3 | Screenshots | 1 | stepped viewport frames at all 8 widths + 6 phone-loop states + degraded states |
-| 4 | **CDN blocked (F1)** — cdnjs + jsDelivr aborted at the network layer | 9 | GSAP genuinely absent; all 30 `[data-reveal]` blocks visible; hero copy visible; the phone falls back to a readable booked state; page scrolls; 4 947 characters of body text; zero console errors |
-| 5 | `prefers-reduced-motion: reduce` | 5 | marquee static, Lenis never constructed, no `js-motion`/`js-loop`, phone at rest in the booked state |
-| 6 | Diacritics | 5 | `fonts.check` true, glyphs distinct from their bases, no `.notdef`, in all three families |
-| 7 | CONFIG placeholders, empty **and** filled | 10 | see the table in §1; also asserts the primary CTA never points backwards |
-| 8 | Phone loop — 3 cycles + a 30 s tab switch | 7 | never two states at once, typing never overlaps its own bubble, timer never runs backwards, 3 clean wraps, no flash across the seam, coherent after backgrounding |
-| 9 | Contrast | 16 | 15 token pairs computed + every text node measured in situ against its real composited background — 0 failures. `--muted` on `--ink` is 6.48:1 |
-| 10 | Accessibility & interaction | 16 | landmarks, one `h1`, heading order, skip link, real accordion semantics, 28 keyboard tab stops each with a visible ring, focus never inside a closed panel, menu lock/unlock across a breakpoint |
-| 11 | Motion QA | 5 | 1920 → 360 resize *while the hero is pinned*, portrait ↔ landscape mid-scroll, instant scroll to the bottom skips no reveal |
-| 12 | 4× CPU throttle | 2 | still boots, scrolls and reveals |
-| 13 | Touch (Pixel 7) | 8 | sway replaces cursor tilt, magnetism never engages, no pin, menu works by tap, the inert player answers a tap without erroring |
+### 2.1 · The meter
+
+The old bars were a barcode: a constant-pitch comb whose heights came from one
+noise field. It looked like every stock equaliser because it was one. What
+replaced it is a spectrum analyser that models a voice on a telephone line:
+
+- **A log-frequency axis.** 60 Hz to 12 kHz, so the 300–3400 Hz passband sits
+  at a fixed `x = 0.3038 … 0.7620` on every canvas at every width. The two
+  labelled rails, the probe's live Hz readout and the lit slice are all reading
+  the *same* axis — that is why the readout says `360 Hz` where it does, and not
+  because a number was picked to look right.
+- **Two moving formants** under a vocal envelope, plus a syllabic amplitude
+  clock, so the meter phrases instead of hissing. Five spatial noise terms at
+  different frequencies keep adjacent bars related rather than independent.
+- **Meter ballistics.** Fast attack (0.40), slow release (0.052) and a
+  peak-hold that falls at 0.20/s — the behaviour of a real VU meter, not a
+  per-frame random walk. The held peak is clamped to 6 px above its own bar, so
+  it reads as a cap and never detaches into a floating dotted contour.
+- **A soft limiter** (`knee 0.68`, `ceiling 0.96`) instead of a hard clamp.
+  Measured off the rendered canvas: mean bar height 0.390 of the half-canvas,
+  peak 0.925, **zero clipped samples** in 40 frames, and zero even under
+  repeated fast scroll flicks (the scroll-velocity term is inside the limiter).
+- **Bar pitch scales with the box.** A phone gets a third of the desktop width;
+  holding the desktop pitch there left about eighteen bars inside the passband
+  and the meter read as a bar chart. Below 470 px the pitch is 0.6×, below
+  720 px 0.8×, integers only.
+- **Drawn in batches.** Almost every in-band bar is lit at the same alpha, so
+  they go into one path and one fill; only the filter's shoulders and the few
+  bars under the scan need their own. That is about a dozen rasterisations a
+  frame instead of ~380. The bloom is prerendered once to a 128×128 offscreen
+  and blitted; the reflection is a CSS `mask-image`, not a second canvas pass;
+  the palette strings, the centre-line gradient and the corner radius are built
+  in `layout()`, not once a frame.
+
+### 2.2 · The scroll system
+
+Nine mechanisms, each a `gsap.matchMedia` scope with its own teardown:
+
+| | what it does |
+|---|---|
+| **hero journey** | the section pins for 42 vh while the phone shrinks, flattens out of its tilt and drifts, the hero band lifts, and the copy hands over |
+| **voice probe** | one scrub drives four things at once — a measurement cursor walking the spectrum, a live Hz readout, the band drawing itself in behind the cursor, and the level rising *only* while the cursor is inside 300–3400 Hz. Scroll past it and you have performed the section's argument without reading a word |
+| **line masks** | headings arrive one *rendered* line at a time, measured with a `Range` against the real layout after `document.fonts.ready` — not with injected spans, which would change how `text-wrap: balance` breaks the block |
+| **card reveals** | a 9° `rotateX` off a shared perspective, staggered |
+| **drawn detail** | every eyebrow rule scales out of its own left edge; every line-art icon draws its stroke, with dash lengths corrected for `vector-effect: non-scaling-stroke` |
+| **steps rail** | the connector draws between the first and last number, measured, with a travelling pulse — and turns vertical below 900 px, where the scrub switches axis |
+| **divider draw-in** | each divider band reveals left-to-right with a drawing head |
+| **scroll signal** | `ScrollTrigger.getVelocity()` feeds the bands' energy, so the meters lean into a fast flick and settle when you stop |
+| **marquee** | scroll velocity drives `timeScale`, and the direction returns to forward once the magnitude decays |
+
+### 2.3 · The play button
+
+`DEMO_AUDIO` ships empty, so there is no recording to play. Rather than a dead
+control, the button plays *the line*: a test tone walks the spectrum from
+60 Hz upward, nothing happens until it reaches 300, it blooms across the
+passband, and it dies again at 3400 — the section's entire claim, performed in
+1.9 s. While it runs, the rest of the meter collapses to a floor, the peak-hold
+decays 3.2× faster so the held trace of the broadband signal does not hang over
+the collapsed meter as a second detached graphic, and the tone stays visible as
+a bright tick while it crosses the dead parts of the axis, so the gate is
+demonstrated rather than asserted. Measured off the canvas: passband energy
+falls to 0.33 of resting, peaks at 0.63 as the tone crosses the middle, falls to
+0.28, and recovers at 1.95 s. The hero's `Poslušaj demo` scrolls to the section
+and fires the same sweep on arrival.
+
+The sweep ends **with itself**, not on a wall clock, because a hidden tab stops
+the ticker but never stops a `setTimeout`; a backstop timer at 2.2× the duration
+guarantees the control is released even if the band scrolls away mid-sweep.
+
+### 2.4 · One bug that predated the round
+
+The hero pin adds 42 vh of spacing to the document, but it was created last, in
+its own width-scoped context, so ScrollTrigger measured **every trigger below
+it against the unpinned layout** — a 378 px error on the whole page, confirmed
+against the previous commit. `refreshPriority: 10` puts the pin at the front of
+the refresh order. The harness now asserts it (`every scroll trigger is measured
+against the pinned layout`).
+
+---
+
+## 3 · Round 1 — final automated audit (`node audit.js`)
+
+**103 / 103 passed, all green.** Everything below was actually executed in
+headless Chromium against the real file.
+
+| # | round | result |
+|---|---|---|
+| 1 | Console — network idle + 5 s of animation | zero `console.error`, zero `pageerror`, zero unhandled rejections; GSAP + ScrollTrigger + Lenis all live |
+| 2 | Horizontal overflow @ 360/390/414/768/1024/1280/1440/1920 | `scrollWidth ≤ clientWidth` at every width, at the top **and** after a full scroll-through |
+| 3 | Screenshots | stepped viewport frames at all 8 widths + 6 phone-loop states + degraded states |
+| 4 | **CDN blocked (F1)** — cdnjs + jsDelivr aborted at the network layer | GSAP genuinely absent; every `[data-reveal]` block visible; hero copy visible; the phone falls back to a readable booked state; page scrolls; ~4 900 characters of body text; zero console errors |
+| 5 | `prefers-reduced-motion: reduce` | marquee static, Lenis never constructed, no `js-motion`/`js-loop`, phone at rest in the booked state, the meter renders one settled frame |
+| 6 | Diacritics | `fonts.check` true, glyphs pixel-distinct from their bases, no `.notdef`, in all three families |
+| 7 | CONFIG placeholders, empty **and** filled | see §1; also asserts the primary CTA never points backwards |
+| 8 | Phone loop — 3 cycles + a 30 s tab switch | never two states at once, typing never overlaps its own bubble, timer never runs backwards, 3 clean wraps, no flash across the seam |
+| 9 | Contrast | 15 token pairs computed + every text node measured in situ against its real composited background — 0 failures |
+| 10 | Accessibility & interaction | landmarks, one `h1`, heading order, skip link, real accordion semantics, 28 keyboard tab stops each with a visible ring, focus never inside a closed panel, menu lock/unlock across a breakpoint |
+| 11 | Motion QA | 1920 → 360 resize *while the hero is pinned*, portrait ↔ landscape mid-scroll, instant scroll to the bottom skips no reveal |
+| 12 | Throttle + motion system | boots and scrolls under 4× CPU throttle; every trigger measured against the pinned layout; all 12 `[data-lines]` hosts split with **zero** height change to any element and zero change to the document; line masks preserve the text exactly; the band fills its canvas without clipping and breathes rather than drones; the probe sweeps below, through and above the telephone band |
+| 13 | Touch (Pixel 7) | sway replaces cursor tilt, magnetism never engages, no pin, menu works by tap, the inert player answers a tap without erroring |
 
 **Round 4 — content (`node .audit/copy-check.mjs`): 75 / 75 passed.** Every
 visible string diffed against §8/§6/§7 character for character (only NBSP is
 normalised, since §8 requires it before `€`), plus: no Cyrillic anywhere, no
 `30 %`/`85 %` published, meta/OG built only from §8 sentences, no generated
 Serbian in `aria-label`/`title`/`alt`, a regex sweep for any claim implying the
-caller is deceived, and the presence of the AI disclosure in all three required
-places (transcript, FAQ, footer).
+caller is deceived, and the AI disclosure present in all three required places.
+
+**Performance**, measured with `Emulation.setCPUThrottlingRate`: the voice band
+idles at 59 fps unthrottled, 43 fps at 4×, 22 fps at 8×. The hero (phone loop +
+four blurred glow layers) sits at 40 fps and is compositing-bound, not
+CPU-bound — it measures the same at 1× and 4×.
 
 ---
 
-## 3 · Round 2 — adversarial code review (subagent)
+## 4 · Round 2 — adversarial code review of the first build (subagent)
 
 Instructed to find problems, not to approve. It returned 29 findings plus two
 it flagged as uncertain. **23 were real and are fixed.** The ones that mattered:
@@ -111,7 +206,7 @@ derived constants.
 
 ---
 
-## 4 · Round 3 — design director review (separate subagent, on the screenshots)
+## 5 · Round 3 — design director review of the first build (separate subagent)
 
 Its verdict: *"The engineering hours are visible. The design decisions are not."*
 It found one hard violation of the brief and a long list of real defects. **Its
@@ -180,7 +275,11 @@ so its column is not 600px of dead space.
 
 ---
 
-## 5 · What I could not run, and why
+PLACEHOLDER_ROUNDS_6_7
+
+---
+
+## 8 · What I could not run, and why
 
 Stated plainly, because a false green tick means the bug ships.
 
@@ -231,7 +330,7 @@ Stated plainly, because a false green tick means the bug ships.
 
 ---
 
-## 6 · Departures from the brief, and why
+## 9 · Departures from the brief, and why
 
 1. **A third `CONFIG` value, `DEMO_LINK`.** §7 says two. The design review
    established that without a booking destination every CTA on the page loops,
@@ -273,7 +372,7 @@ Stated plainly, because a false green tick means the bug ships.
 
 ---
 
-## 7 · The one thing I would change next
+## 10 · The one thing I would change next
 
 The page still has no conversion endpoint of its own — `DEMO_LINK` points at
 someone else's booking widget. If the client wants the form on-page, it needs
