@@ -3189,7 +3189,10 @@ function initReveals(gsap, ScrollTrigger, motion) {
         gsap.set(el, { clearProps: "opacity,transform,willChange" });
       }
     });
-    grids.forEach(function (g) { g.classList.add("is-lined"); });
+    grids.forEach(function (g) {
+      var r = g.getBoundingClientRect();
+      if (r.top < window.innerHeight && r.bottom > 0) g.classList.add("is-lined");
+    });
   }, 4500);
 
   if (lift.length) ScrollTrigger.batch(lift, { start: "top 88%", once: true, onEnter: enter({ y: 0 }) });
@@ -3601,7 +3604,11 @@ function initSteps(gsap, ScrollTrigger) {
   if (!steps.length) return null;
 
   /* the line runs between the first and last number, whatever the step count */
-  var vert = false;
+  var vert = false, st = null;
+  function applyDraw(p) {
+    if (vert) gsap.set(draw, { scaleY: p, scaleX: 1, transformOrigin: "left top" });
+    else      gsap.set(draw, { scaleX: p, scaleY: 1, transformOrigin: "left center" });
+  }
   function layoutTrack() {
     var a = $(".step-n", steps[0]), z = $(".step-n", steps[steps.length - 1]);
     if (!a || !z) return;
@@ -3611,16 +3618,15 @@ function initSteps(gsap, ScrollTrigger) {
          An inline left/right would beat the media query and strand it. */
       track.style.left = ""; track.style.right = "";
       vert = true;
-      gsap.set(draw, { scaleX: 1, transformOrigin: "left top" });
+      applyDraw(st ? st.progress : 0);
       return;
     }
     vert = false;
-    gsap.set(draw, { scaleY: 1, transformOrigin: "left center" });
     track.style.left = Math.round(ra.left + ra.width / 2 - w.left) + "px";
     track.style.right = Math.round(w.right - (rz.left + rz.width / 2)) + "px";
+    applyDraw(st ? st.progress : 0);
   }
   layoutTrack();
-  gsap.set(draw, vert ? { scaleY: 0 } : { scaleX: 0 });
   gsap.set(dot, { opacity: 0, x: 0 });
 
   var tl = gsap.timeline({ defaults: { ease: "none" } });
@@ -3629,7 +3635,7 @@ function initSteps(gsap, ScrollTrigger) {
     .to(dot, { opacity: 0, duration: 0.06 }, 0.94);
 
   var span = 1 / steps.length;                 /* one slot per step, not 0.31 */
-  var st = ScrollTrigger.create({
+  st = ScrollTrigger.create({
     trigger: wrap, start: "top 76%", end: "bottom 72%",
     scrub: 0.5, invalidateOnRefresh: true, animation: tl,
     onRefresh: layoutTrack,
@@ -3638,8 +3644,7 @@ function initSteps(gsap, ScrollTrigger) {
       /* The rail is a 1px line whose long axis flips at the breakpoint. A tween
          cannot change which property it writes, so the scrub does it here — the
          scrubbed progress is already smoothed by the time onUpdate sees it. */
-      if (vert) gsap.set(draw, { scaleY: p, scaleX: 1 });
-      else      gsap.set(draw, { scaleX: p, scaleY: 1 });
+      applyDraw(p);
       steps.forEach(function (s, i) {
         var live = p >= i * span + span * 0.12;
         if (live === !!s.__live) return;
