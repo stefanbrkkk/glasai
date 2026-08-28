@@ -340,8 +340,7 @@ h3 {
   display: none;
   /* cyan, because this is the machine measuring the line — and because the one
      live element on the axis must not look like the two fixed rules beside it */
-  background: linear-gradient(180deg, transparent, var(--machine) 12%, var(--machine) 88%, transparent);
-  opacity: 0.75;
+  background: linear-gradient(180deg, transparent, rgba(86,200,218,0.75) 12%, rgba(86,200,218,0.75) 88%, transparent);
   will-change: transform;
 }
 .js-probe .band-cursor { display: block; }
@@ -1113,19 +1112,24 @@ h3 {
   transition: color var(--d-micro) var(--ease), border-color var(--d-micro) var(--ease), background-color var(--d-micro) var(--ease);
 }
 .play svg { width: 34%; height: 34%; }
-/* The recording is what is unavailable, not the control — pressing it runs the
-   line self-test. So it wears the dashed „uskoro" hairline like every other
-   pending affordance, but its glyph is live amber, not dead grey. */
-.play[aria-disabled="true"] { color: var(--signal); opacity: 0.72; cursor: pointer; }
-.play[aria-disabled="true"]:hover { opacity: 1; }
-.play:not([aria-disabled="true"]) {
+/* Three states, and the markup ships the most pessimistic of them.
+   `aria-disabled` is in the HTML because without JS the control really does
+   nothing; `initDemoAudio` removes it in both live states. `.is-empty` is the
+   one it adds when there is no recording — the *recording* is unavailable, not
+   the control, which runs the line self-test. So it wears the dashed „uskoro"
+   hairline like every other pending affordance, and its glyph is live amber
+   rather than dead grey. */
+.play[aria-disabled="true"], .play.is-empty { color: var(--signal); opacity: 0.72; }
+.play.is-empty { cursor: pointer; }
+.play:is([aria-disabled="true"], .is-empty):is(:hover, :focus-visible) { opacity: 1; }
+.play:not([aria-disabled="true"]):not(.is-empty) {
   cursor: pointer;
   border-style: solid;
   border-color: var(--signal);
   box-shadow: 0 0 0 0.6rem rgba(255,180,84,0.05);
 }
 @media (hover: hover) and (pointer: fine) {
-  .play:not([aria-disabled="true"]):hover { background: var(--signal); color: var(--ink); border-color: var(--signal); }
+  .play:not([aria-disabled="true"]):not(.is-empty):hover { background: var(--signal); color: var(--ink); border-color: var(--signal); }
 }
 .play-label {
   font-family: var(--f-mono); font-size: var(--t-xs);
@@ -1138,7 +1142,7 @@ h3 {
   white-space: nowrap;
 }
 .play .ico-pause { display: none; }
-.play.is-scanning { color: var(--signal); border-color: var(--signal); border-style: solid; }
+.play.is-scanning { color: var(--signal); border-color: var(--signal); border-style: solid; opacity: 1; }
 .play.is-scanning::after {
   content: ""; position: absolute; inset: -0.35rem; border-radius: 50%;
   border: 1px solid var(--signal);
@@ -1782,7 +1786,7 @@ html:not(.js) .faq-panel > div,
       </li>
       <li class="feat" data-fx="card">
         <span class="feat-ico" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><circle cx="17.4" cy="7.4" r="3.1"/><path d="M12.2 20.4a5.2 5.2 0 0 1 10.4 0"/><line x1="2" y1="12" x2="9.4" y2="12"/><polyline class="anim anim--slide" points="6.9 9.4 9.6 12 6.9 14.6"/></svg>
+          <svg viewBox="0 0 24 24"><circle class="sil" cx="17.4" cy="7.4" r="3.1"/><path class="sil" d="M12.2 20.4a5.2 5.2 0 0 1 10.4 0"/><line x1="2" y1="12" x2="9.4" y2="12"/><polyline class="anim anim--slide" points="6.9 9.4 9.6 12 6.9 14.6"/></svg>
         </span>
         <h3>Prebacivanje na čoveka</h3>
         <p>Dovoljno je da pozivalac kaže „operater”. Hitne i složene pozive prosleđuje vama, sa kratkim rezimeom razgovora.</p>
@@ -2187,6 +2191,7 @@ function Band(canvas, opts) {
   this.drive = 0;
   this.pulse = 0;
   this.reveal = 1;
+  this.revealTo = null;                 /* set by the scroll probe; see step() */
   this.t = 0;                           /* spectrum clock, scaled by speed */
   this.pt = 0;                          /* phrase clock, real seconds */
   this.scan = -0.25;                    /* the walking highlight, in x units */
@@ -2391,6 +2396,9 @@ Band.prototype.sweep = function (dur, done) {
 };
 Band.prototype.endSweep = function () {
   this.sweepT = -1; this.pulse = 0;
+  /* The tone measured the whole line, so the whole line stays measured — the
+     scroll takes it back on the next move, not the moment the tone stops. */
+  if (this.revealTo != null) this.revealTo = 1;
   clearTimeout(this._sweepTo);
   clearTimeout(this._sweepGuard);
   if (this.onSweepEnd) { var f = this.onSweepEnd; this.onSweepEnd = null; f(); }
@@ -2414,6 +2422,15 @@ Band.prototype.step = function (dt) {
       this.pulse = 0.95;                    /* the tone is loud; shape() decides
                                                where it is actually audible */
     }
+  }
+
+  /* The probe names a target; the gap closes here, on a clock that keeps
+     running after the scroll has stopped. ~170 ms for the widest jump, which
+     during a scroll is invisible under the scrub's own 0.55 s lag. */
+  if (this.revealTo != null && this.sweepT < 0 && !this.audioOwned) {
+    var rg = this.revealTo - this.reveal;
+    if (rg > -0.004 && rg < 0.004) this.reveal = this.revealTo;
+    else this.reveal += rg * Math.min(1, dt * 14);
   }
 
   var tgt = this._t;
@@ -2759,6 +2776,11 @@ function initDemoAudio() {
        walks the spectrum from 60 Hz to 12 kHz; nothing happens until it
        reaches 300, it blooms across the passband, and it dies at 3400. The
        empty state performs the argument the section is making. */
+    /* The control is live from here on — announcing it as disabled would tell
+       a screen-reader user the section's only interactive element is
+       unavailable. Its accessible name still says what *is* unavailable. */
+    btn.removeAttribute("aria-disabled");
+    btn.classList.add("is-empty");
     var busy = false;
     function done() { busy = false; btn.classList.remove("is-scanning"); }
     on(btn, "click", function () {
@@ -2772,13 +2794,15 @@ function initDemoAudio() {
     /* the hero's „Poslušaj demo” lands here — let it fire the same sweep */
     demoSweep = function () { if (voiceBand && !busy) btn.click(); };
     keep(function () { if (voiceBand) voiceBand.endSweep(); done(); demoSweep = null; });
+    keep(function () { btn.classList.remove("is-empty"); btn.setAttribute("aria-disabled", "true"); });
     return;
   }
 
   audioEl = new Audio();
   audioEl.preload = "metadata";
   audioEl.src = src;
-  btn.setAttribute("aria-disabled", "false");
+  btn.removeAttribute("aria-disabled");
+  btn.classList.remove("is-empty");
   label.textContent = "Poslušaj demo";
   vh.textContent = "Poslušaj demo";
 
@@ -3482,11 +3506,14 @@ function initDrawIns(gsap, ScrollTrigger) {
     shapes.forEach(function (n, i) {
       gsap.set(n, { strokeDasharray: lens[i], strokeDashoffset: lens[i] });
     });
-    /* The first shape in each icon is its silhouette. Staggering it with the
-       marks inside it means every held frame shows a fragment of the outline —
-       a calendar as a corner, a speech bubble as an arc. So the outline closes
-       first and quickly, and the marks fill in behind it. */
-    var frame = shapes.slice(0, 1), marks = shapes.slice(1);
+    /* The silhouette closes first and quickly, and the marks inside it fill in
+       behind it — staggering the two together means every held frame shows a
+       fragment of the outline: a calendar as a corner, a bubble as an arc.
+       It is the first shape in five of the six icons; the one where it is two
+       shapes says so in the markup. */
+    var frame = $$(".sil", svg);
+    if (!frame.length) frame = shapes.slice(0, 1);
+    var marks = shapes.filter(function (n) { return frame.indexOf(n) < 0; });
     var st = ScrollTrigger.create({
       trigger: svg.closest(".feat") || svg, start: "top 84%", once: true,
       onEnter: function () {
@@ -3512,7 +3539,7 @@ function initDrawIns(gsap, ScrollTrigger) {
        the observer alone cannot decide that, because a canvas inside a button
        is always "intersecting" long before anyone can read it. */
     var stC = ScrollTrigger.create({
-      trigger: cta, start: "top 92%", end: "bottom 8%",
+      trigger: $("#cta-btn") || cta, start: "top 92%", end: "bottom 8%",
       onEnter:     function () { wantBtnBand(true); },
       onEnterBack: function () { wantBtnBand(true); },
       onLeave:     function () { if (!over) wantBtnBand(false); },
@@ -3894,8 +3921,11 @@ function initVoiceProbe(gsap, ScrollTrigger) {
            the probe leaves the passband at 3400 Hz (X_HI = 0.762). Faster than
            that and the spectrum is whole before the probe reaches 300, which
            breaks the only causal claim the section makes; slower and it is
-           never seen whole while it is the thing being looked at. */
-        b.reveal = Math.min(1, 0.03 + p * 1.35);
+           never seen whole while it is the thing being looked at.
+           A target, not an assignment: the self-test leaves the whole spectrum
+           lit, and dropping straight back to the scroll's own value on the next
+           tick is a visible snap. step() closes the gap on the band's clock. */
+        b.revealTo = Math.min(1, 0.03 + p * 1.35);
         b.scan = p;
         /* and it only answers while the probe is inside the telephone band */
         var edge = 0.055;
@@ -3913,7 +3943,7 @@ function initVoiceProbe(gsap, ScrollTrigger) {
   return function () {
     st.kill();
     b.endSweep();
-    b.reveal = 1; b.drive = 0; b.scan = -0.25;
+    b.reveal = 1; b.revealTo = null; b.drive = 0; b.scan = -0.25;
     b.scanOwned = false; b.audioOwned = false;
     root.classList.remove("js-probe");
     cursor.style.transform = "";

@@ -275,12 +275,13 @@ so its column is not 600px of dead space.
 
 ---
 
-## 6 · The motion round — adversarial code review (two passes)
+## 6 · The motion round — adversarial code review (three passes)
 
 A subagent was given the motion layer and the canvas engine and told to find
-defects, not to approve. It ran twice — once on the first motion build, once
-against the diff after the first round of fixes. **Twenty-nine findings across
-the two passes; twenty-four were real and are fixed.** The ones that mattered:
+defects, not to approve. It ran three times — on the first motion build, on the
+diff after the first round of fixes, and once more as a narrow regression pass
+over the design round's own diff. **Thirty-four findings across the three
+passes; twenty-nine were real and are fixed.** The ones that mattered:
 
 | finding | fix |
 |---|---|
@@ -297,6 +298,9 @@ the two passes; twenty-four were real and are fixed.** The ones that mattered:
 | the CTA arrival demo's `onComplete` switched the meter off under a pointer that was asking for it | an `over` flag gates the hand-back, teardown included |
 | per-frame allocation in the only hot loop: one `CanvasGradient`, eight string concatenations and one closure, per band, per frame — all of it dependent only on width and palette | built in `layout()`; the closure is gone |
 | teardowns promoted with `willChange` outside GSAP (so `clearProps` could not take it back) and left their own tweens running over the re-initialised hidden state | both released explicitly |
+| *(third pass)* the permanent CTA meter was gated on the `#cta` **section**, whose top crosses 92 % of the viewport while the button is still ~300 px below the fold — measured: a 253 px scroll window, a natural parking spot, running a 60 fps canvas repaint nobody could see. And `end: "bottom 8%"` on the section is unreachable at either layout, so two of its four callbacks were dead code | gated on the button, which is the canvas. The remaining window is the 60 px `rootMargin` every band shares |
+| *(third pass)* easing the meter's reveal inside the scroll handler froze it short of target — a scroll that stops delivers no more updates. Measured: edge parked at 0.561 against a target of 0.735, stable, leaving a bright drawing head in the middle of the spectrum as the *resting* state | the probe names a target; the gap closes on the band's own clock, which keeps running after the scroll stops. Verified converging exactly |
+| *(third pass)* the probe cursor's element-level `opacity: 0.75` also scaled its in-band state, whose amber was tuned against an unscaled base — so the cursor **dimmed** 2.4× on entering the passband where it used to brighten 2.2× | the value moved into the colour stops |
 
 It also confirmed clean, by argument rather than assertion: the blocked-CDN
 boot order; the `withBag`/`dispose` teardown discipline and the two
@@ -488,25 +492,32 @@ Stated plainly, because a false green tick means the bug ships.
    reduced-motion and no-JS states — which are the *same markup* — stay fully
    exposed, and the legal disclosure appears twice more, in the FAQ and the
    footer, where it is stable.
-7. **Two harness assertions were changed, not just the page.** Both encoded a
-   contract this round deliberately replaced, and both are recorded here so the
-   change is visible rather than buried in a green tick. (a) The play control
-   was asserted to rest at `cursor: default` — a designed *inert* state. It is
-   pressable now, because it genuinely acts: it runs the line self-test. The
-   check asserts the new contract — `aria-disabled="true"` (the *recording* is
-   unavailable), the `Snimak uskoro` label, the dashed hairline, and
-   `cursor: pointer`. (b) The band's fill/breathe check measured at the top of
-   the `#glas` section. The meter now draws in behind the scroll probe and only
-   answers while that probe is inside 300–3400 Hz, so at the top of the section
-   it is legitimately quiet; the check measures with the stage centred, where
-   the meter is actually being looked at. Thresholds unchanged: mean 0.383,
-   peak 0.936, zero clipped samples, breathing range 0.032.
-8. **`aria-disabled` on a control that acts.** §7 mandates the attribute for
-   the empty state and the visible label says exactly what is unavailable — the
-   recording — so it stays. But a screen-reader user is told "dimmed" about a
-   button that does something. The honest fix needs one Serbian string §8 does
-   not supply, and §8 forbids composing one. Flagged for the client: give me
-   the sentence and I will make the control fully honest.
+7. **Four harness assertions were changed, not just the page.** Each encoded a
+   contract this round deliberately replaced, and they are recorded here so the
+   change is visible rather than buried in a green tick. Three concern the play
+   control (see 8): it was asserted to rest at `cursor: default` with
+   `aria-disabled="true"` — a designed *inert* state — and it is now a live
+   control, so the checks assert the new contract instead. The fourth is the
+   band's fill/breathe check, which measured at the top of the `#glas` section.
+   The meter now draws in behind the scroll probe and only answers while that
+   probe is inside 300–3400 Hz, so at the top of the section it is legitimately
+   quiet; the check measures with the stage centred, where the meter is
+   actually being looked at. Thresholds unchanged: mean 0.384, peak 0.936, zero
+   clipped samples, breathing range 0.032.
+8. **`aria-disabled` on the play control, which §7 mandates.** It is gone from
+   the two live states, and here is the reasoning, because it is a departure.
+   The attribute still ships in the markup, so with JavaScript dead — when the
+   button really does nothing — a screen reader is told exactly that. Both
+   modules that make the control live remove it: with `DEMO_AUDIO` empty the
+   button runs the line self-test, and with it filled the button plays the
+   recording. Announcing "dimmed" about the section's only interactive element,
+   in a section whose whole argument is *press this and listen*, is worse than
+   the letter of §7. The accessible name is unchanged and still says what is
+   unavailable — `Snimak uskoro`, the recording — and the empty state's look is
+   unchanged too, driven by an `is-empty` class instead of the attribute. Two
+   independent reviewers flagged the original as a lie to assistive tech; this
+   is the smallest fix that does not require composing a Serbian string §8 does
+   not supply.
 9. **`--confirm: #6FD48A` is a fourth colour.** It survives on the phone's
    confirmation card, with a green hairline and a soft green glow. The design
    review is right that the direction allows amber, one cyan and ink — and the

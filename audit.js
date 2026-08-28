@@ -396,16 +396,19 @@ const PHONE_STATE = `(() => {
                playDisabled: play.getAttribute('aria-disabled'),
                playLabel: document.querySelector('#play-label').textContent.trim(),
                playCursor: getComputedStyle(play).cursor,
+               playScanning: play.classList.contains('is-scanning'),
                playBorder: getComputedStyle(play).borderStyle };
     })()`);
     if (!filled) {
       rec(7, 'empty: inert chips rendered, no tel: link, no fake number', s.chips.length >= 2 && s.tels.length === 0 && s.chips.every(c => c === 'Demo broj — uskoro'), JSON.stringify(s.chips));
       rec(7, 'empty: no <audio> element created at all', s.audioEls === 0);
-      /* The *recording* is what is unavailable — aria-disabled says so, and the
-         label says so. The control itself is live: pressing it runs the line
-         self-test, so it must read as pressable rather than as dead. */
-      rec(7, 'empty: play button wears the „uskoro” hairline but is pressable', rest.disabled === 'true' && rest.label === 'Snimak uskoro' && rest.cursor === 'pointer' && rest.border === 'dashed', JSON.stringify(rest));
-      rec(7, 'empty: a tap on it starts the self-test instead of doing nothing', s.playDisabled === 'true' && s.playBorder === 'solid', 'scanning border: ' + s.playBorder);
+      /* The *recording* is what is unavailable — the label says so. The control
+         itself is live: pressing it runs the line self-test. So it wears the
+         „uskoro” hairline, reads as pressable, and is NOT announced as disabled
+         (the markup ships aria-disabled for the no-JS case; the module that
+         makes the control live removes it). */
+      rec(7, 'empty: play button wears the „uskoro” hairline but is pressable', rest.disabled === null && rest.label === 'Snimak uskoro' && rest.cursor === 'pointer' && rest.border === 'dashed', JSON.stringify(rest));
+      rec(7, 'empty: a tap on it starts the self-test instead of doing nothing', s.playBorder === 'solid' && s.playScanning === true, 'scanning border: ' + s.playBorder);
       rec(7, 'empty: clicking the inert player throws nothing', bag.length === 0, bag.slice(0, 3).join(' | '));
       const cta = await page.evaluate(`(() => { const a = document.querySelector('#cta-btn'); return { href: a.getAttribute('href'), text: a.textContent.trim() }; })()`);
       rec(7, 'empty: the primary CTA still points forward, never back at #cene',
@@ -422,7 +425,7 @@ const PHONE_STATE = `(() => {
           !!primary && primary.href === 'tel:+381641234567' && primary.text === 'Zakaži demo razgovor',
           JSON.stringify(primary || {}));
       rec(7, 'filled: no inert chips remain', s.chips.length === 0);
-      rec(7, 'filled: real player, enabled', s.playDisabled === 'false' && s.playBorder === 'solid', `${s.playLabel} / ${s.playBorder}`);
+      rec(7, 'filled: real player, enabled', s.playDisabled === null && s.playBorder === 'solid', `${s.playLabel} / ${s.playBorder}`);
       rec(7, 'filled: zero console errors', bag.length === 0, bag.slice(0, 3).join(' | '));
       await page.screenshot({ path: path.join(SHOTS, 'config-filled.png'), fullPage: false });
     }
@@ -884,8 +887,8 @@ const PHONE_STATE = `(() => {
 
     await page.evaluate(`(() => { const el = document.querySelector('#glas'); window.__glasLenis ? window.__glasLenis.scrollTo(el, {immediate:true}) : el.scrollIntoView(); })()`);
     await page.waitForTimeout(1200);
-    /* aria-disabled (not [disabled]) keeps the control focusable and tappable —
-       Playwright's actionability check refuses it, a real finger does not. */
+    /* the empty-state control is live and focusable; force the tap anyway so
+       the check does not depend on Playwright's actionability heuristics */
     await page.locator('#play').tap({ force: true });
     await page.waitForTimeout(900);
     const stillFocusable = await page.evaluate(`(() => { const b = document.querySelector('#play'); b.focus(); return document.activeElement === b; })()`);
