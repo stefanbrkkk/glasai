@@ -301,7 +301,10 @@ h3 {
 .band--voice { height: clamp(12.5rem, 26vw, 17.5rem); }
 .band--btn {
   position: absolute; inset: 0; z-index: 0;
-  opacity: 0; pointer-events: none;
+  /* The motif's fourth placement lives here, so it is present at rest, not
+     only for the two seconds of its arrival demo. Quiet enough that the label
+     always wins. */
+  opacity: 0.24; pointer-events: none;
   transition: opacity var(--d-mid) var(--ease);
   /* The label is the point; the meter is behind it. This lets the bars pass
      under the word and re-emerge above and below it instead of striking
@@ -335,7 +338,10 @@ h3 {
   position: absolute; left: 0; top: -0.5rem; bottom: 1.9rem;
   width: 1px; z-index: 2;
   display: none;
-  background: linear-gradient(180deg, transparent, var(--line-hard) 12%, var(--line-hard) 88%, transparent);
+  /* cyan, because this is the machine measuring the line — and because the one
+     live element on the axis must not look like the two fixed rules beside it */
+  background: linear-gradient(180deg, transparent, var(--machine) 12%, var(--machine) 88%, transparent);
+  opacity: 0.75;
   will-change: transform;
 }
 .js-probe .band-cursor { display: block; }
@@ -343,7 +349,7 @@ h3 {
   content: ""; position: absolute; left: 50%; top: 50%;
   width: 0.4rem; height: 0.4rem; margin: -0.2rem 0 0 -0.2rem;
   border-radius: 50%;
-  background: var(--muted);
+  background: var(--machine);
   transition: background-color 260ms var(--ease), box-shadow 260ms var(--ease);
 }
 .band-cursor.in-band { background: linear-gradient(180deg, transparent, rgba(255,180,84,0.55) 12%, rgba(255,180,84,0.55) 88%, transparent); }
@@ -424,7 +430,7 @@ h3 {
 }
 @media (hover: hover) and (pointer: fine) {
   .btn--magnetic:hover::before, .btn--magnetic:focus-visible::before { opacity: 1; }
-  .btn--cta:hover .band--btn { opacity: 0.45; }
+  .btn--cta:hover .band--btn { opacity: 0.46; }
 }
 @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
   .js-motion .btn--magnetic:hover::before,
@@ -1101,18 +1107,17 @@ h3 {
   border-radius: 50%;
   display: grid; place-items: center;
   color: var(--signal);
-  background: rgba(7,10,18,0.82);
-  -webkit-backdrop-filter: blur(8px);
-          backdrop-filter: blur(8px);
+  background: #0A101B;
   border: 1px dashed var(--line-hard);
   cursor: default;
   transition: color var(--d-micro) var(--ease), border-color var(--d-micro) var(--ease), background-color var(--d-micro) var(--ease);
 }
-@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-  .play { background: #0A101B; }
-}
 .play svg { width: 34%; height: 34%; }
-.play[aria-disabled="true"] { color: var(--muted); }
+/* The recording is what is unavailable, not the control — pressing it runs the
+   line self-test. So it wears the dashed „uskoro" hairline like every other
+   pending affordance, but its glyph is live amber, not dead grey. */
+.play[aria-disabled="true"] { color: var(--signal); opacity: 0.72; cursor: pointer; }
+.play[aria-disabled="true"]:hover { opacity: 1; }
 .play:not([aria-disabled="true"]) {
   cursor: pointer;
   border-style: solid;
@@ -2177,6 +2182,7 @@ function Band(canvas, opts) {
   this.gap0   = this.gap;
   this.base   = opts.base   != null ? opts.base   : 0.14;
   this.bloom  = opts.bloom !== false;
+  this.chassis = !!opts.chassis;        /* dead track drawn even before reveal */
   this.ink    = !!opts.ink;             /* dark-on-light, for the amber button */
   this.drive = 0;
   this.pulse = 0;
@@ -2231,17 +2237,22 @@ Band.prototype.layout = function () {
   this.p4 = new Float32Array(n);
   this.p5 = new Float32Array(n);
   var edge = Math.min(0.05, EDGE_PX / Math.max(1, this.w));
+  /* The noise terms are spatial frequencies on the 0..1 axis, so the phase step
+     between neighbours is freq/n — halve the bar count and the envelope turns
+     to hash. Scaling the frequencies with n keeps that step, and therefore the
+     apparent smoothness, identical at every width. */
+  var qn = n / 128;
   for (var i = 0; i < n; i++) {
     var x = (i * this.stepPx + this.bar / 2) / this.w;
     this.xs[i] = x;
     this.env0[i] = Math.exp(-Math.pow((x - 0.42) / 0.34, 2)) * 0.66 + 0.16;
     var band = smoothstep(X_LO - edge, X_LO + edge, x) * (1 - smoothstep(X_HI - edge, X_HI + edge, x));
     this.inb[i] = 0.16 + 0.84 * band;         /* the line does not carry the rest */
-    this.p1[i] = x * 17.3;
-    this.p2[i] = x *  8.1;
-    this.p3[i] = x * 31.7;
-    this.p4[i] = x * 54.9;
-    this.p5[i] = x * 96.7;
+    this.p1[i] = x * 17.3 * qn;
+    this.p2[i] = x *  8.1 * qn;
+    this.p3[i] = x * 31.7 * qn;
+    this.p4[i] = x * 54.9 * qn;
+    this.p5[i] = x * 96.7 * qn;
   }
 
   /* The palette and the centre-line gradient depend on the width and nothing
@@ -2416,7 +2427,11 @@ Band.prototype.step = function (dt) {
      only thing on stage. */
   var fall = (this.sweepT >= 0 ? PEAK_FALL * 3.2 : PEAK_FALL) * dt;
   var ka = ATTACK * k; if (ka > 1) ka = 1;
-  var kr = RELEASE * k; if (kr > 1) kr = 1;
+  /* A meter's release is slow on purpose, but the self-test needs a silence to
+     bloom into: for the first tenth of the sweep the passband ducks fast, so
+     the first thing seen is an empty line and not a slow dissolve. */
+  var kr = (this.sweepT >= 0 && this.sweepT < 0.10 ? RELEASE * 7 : RELEASE) * k;
+  if (kr > 1) kr = 1;
   for (var i = 0; i < this.n; i++) {
     var target = tgt[i], cur = this.v[i];
     cur += (target - cur) * (target > cur ? ka : kr);
@@ -2460,7 +2475,7 @@ Band.prototype.draw = function () {
 
   /* ── the line itself: brightest where it actually carries signal ── */
   ctx.fillStyle = this.lineGrad;
-  ctx.fillRect(0, Math.round(cy), edgeX, 1);
+  ctx.fillRect(0, Math.round(cy), this.chassis ? w : edgeX, 1);
 
   /* ── the bars ───────────────────────────────────────────────────────────
      Batched. Almost every bar inside the passband is lit identically, so they
@@ -2469,6 +2484,11 @@ Band.prototype.draw = function () {
      a frame into about a dozen. ── */
   var litFill = this.litFill, capFill = this.capFill, dimFill = this.dimFill;
   var FULL_A = 0.90, PEAK_A = 0.54;
+  /* Fading amber's alpha toward zero over blue-black ink drains its chroma —
+     the roll-off shoulders come out khaki, and they sit on the one boundary the
+     section's claim depends on. The height ramp carries the roll-off; the
+     colour holds. */
+  var floorA = this.ink ? this.dim : 0.30;
   var bar = this.bar;
 
 
@@ -2484,9 +2504,17 @@ Band.prototype.draw = function () {
   var i, x, inBand, bh, sc, a, ph, px, top, d;
   for (i = 0; i < this.n; i++) {
     px = i * this.stepPx;
-    if (px > edgeX) break;
     x = (px + bar / 2) / w;
     inBand = smoothstep(X_LO - edge, X_LO + edge, x) * (1 - smoothstep(X_HI - edge, X_HI + edge, x));
+    /* The reveal is the *signal* arriving. On the big meter the dead track and
+       the line it sits on are furniture and are drawn from the first frame —
+       without them a half-revealed meter is a stump of bars alone on black. A
+       divider has almost nothing but dead track, so there the whole strip
+       still draws itself in. */
+    if (px > edgeX) {
+      if (!this.chassis) break;            /* the whole strip draws in */
+      if (inBand > 0.03) continue;         /* only the signal waits */
+    }
 
     /* the walking highlight, and the sweep tone riding on top of it */
     d = Math.abs(x - this.scan);
@@ -2496,7 +2524,7 @@ Band.prototype.draw = function () {
     if (bh < 0.6) bh = 0.6;
 
     if (inBand > 0.03) {
-      a = (this.dim + (0.90 - this.dim) * inBand) * (1 + sc * 0.55);
+      a = (floorA + (0.90 - floorA) * inBand) * (1 + sc * 0.55);
       if (a > 1) a = 1;
       top = cy - bh;
       if (a > FULL_A - 0.012 && a < FULL_A + 0.012) {
@@ -2511,7 +2539,7 @@ Band.prototype.draw = function () {
          off. Clamped to a fixed gap so it stays the bar's own cap. */
       ph = this.pk[i] * half;
       if (ph > bh + PEAK_GAP) ph = bh + PEAK_GAP;
-      if (ph > bh + 1.2 && ph > 2.5) {
+      if (bh > 3.2 && ph > bh + 1.2) {
         a = 0.20 + 0.34 * inBand;
         peakOdd[peakOddN++] = px; peakOdd[peakOddN++] = ph;
         peakOdd[peakOddN++] = (a > PEAK_A - 0.012 && a < PEAK_A + 0.012) ? -1 : a;
@@ -2523,9 +2551,10 @@ Band.prototype.draw = function () {
          has no before and after. So the tone reads here as a bright tick and
          not as signal. */
       bh = Math.min(bh, half * 0.11) + 0.4;
-      if (sc > 0.01) bh += sc * half * 0.055;
+      var st1 = d < 0.014 ? (1 - d / 0.014) * (this.sweepT >= 0 ? 1 : 0.42) : 0;
+      if (st1 > 0.01) bh += st1 * half * 0.05;
       stubs[stubN++] = px; stubs[stubN++] = cy - bh; stubs[stubN++] = bh * 2;
-      stubs[stubN++] = sc > 0.01 ? Math.min(0.88, this.dim + sc * 0.66) : -1;
+      stubs[stubN++] = st1 > 0.01 ? Math.min(0.92, this.dim + st1 * 0.78) : -1;
     }
   }
   ctx.fill();
@@ -2640,8 +2669,8 @@ function initBands() {
     var b;
     if (kind === "hero")         b = new Band(c, { amp: 0.60, speed: 0.075, dim: 0.11, bar: 4, gap: 4, base: 0.16 });
     else if (kind === "divider") b = new Band(c, { amp: 0.60, speed: 0.055, dim: 0.13, bar: 4, gap: 5, base: 0.42, bloom: false });
-    else if (kind === "voice")   b = new Band(c, { amp: 0.72, speed: 0.165, dim: 0.10, bar: 5, gap: 4, base: 0.34 });
-    else                         b = new Band(c, { amp: 0.42, speed: 0.240, dim: 0.13, bar: 2, gap: 2, base: 0.5, ink: true, bloom: false });
+    else if (kind === "voice")   b = new Band(c, { amp: 0.72, speed: 0.165, dim: 0.10, bar: 5, gap: 4, base: 0.34, chassis: true });
+    else                         b = new Band(c, { amp: 0.42, speed: 0.240, dim: 0.34, bar: 2, gap: 2, base: 0.5, ink: true, bloom: false });
     if (!b.ctx) return;                  /* no 2d context — leave the slot empty */
     b.kind = kind;
     if (kind === "hero")  heroBand = b;
@@ -3453,13 +3482,21 @@ function initDrawIns(gsap, ScrollTrigger) {
     shapes.forEach(function (n, i) {
       gsap.set(n, { strokeDasharray: lens[i], strokeDashoffset: lens[i] });
     });
+    /* The first shape in each icon is its silhouette. Staggering it with the
+       marks inside it means every held frame shows a fragment of the outline —
+       a calendar as a corner, a speech bubble as an arc. So the outline closes
+       first and quickly, and the marks fill in behind it. */
+    var frame = shapes.slice(0, 1), marks = shapes.slice(1);
     var st = ScrollTrigger.create({
       trigger: svg.closest(".feat") || svg, start: "top 84%", once: true,
       onEnter: function () {
-        gsap.to(shapes, {
-          strokeDashoffset: 0, duration: 0.85, stagger: 0.06, ease: "power2.inOut",
+        var tl = gsap.timeline({
           onComplete: function () { gsap.set(shapes, { clearProps: "strokeDasharray,strokeDashoffset" }); }
         });
+        tl.to(frame, { strokeDashoffset: 0, duration: 0.45, ease: "power2.out" }, 0);
+        if (marks.length) {
+          tl.to(marks, { strokeDashoffset: 0, duration: 0.62, stagger: 0.07, ease: "power2.inOut" }, 0.26);
+        }
       }
     });
     kills.push(function () {
@@ -3470,16 +3507,27 @@ function initDrawIns(gsap, ScrollTrigger) {
 
   var cta = $("#cta"), fill = $(".btn--cta .band--btn"), over = false;
   if (cta && fill) {
+    var REST = 0.24, LOUD = 0.46;
+    /* The meter runs while the button is on screen and stops when it is not —
+       the observer alone cannot decide that, because a canvas inside a button
+       is always "intersecting" long before anyone can read it. */
     var stC = ScrollTrigger.create({
+      trigger: cta, start: "top 92%", end: "bottom 8%",
+      onEnter:     function () { wantBtnBand(true); },
+      onEnterBack: function () { wantBtnBand(true); },
+      onLeave:     function () { if (!over) wantBtnBand(false); },
+      onLeaveBack: function () { if (!over) wantBtnBand(false); }
+    });
+    /* and once, on arrival, it swells — out of the resting level and back to
+       it, never to nothing */
+    var stD = ScrollTrigger.create({
       trigger: cta, start: "top 62%", once: true,
       onEnter: function () {
         wantBtnBand(true);
         if (btnBand) btnBand.pulse = 0.9;
-        /* `over` gates the hand-back: a pointer arriving mid-demo owns the
-           meter, and switching it off under the cursor freezes it solid. */
-        gsap.timeline({ onComplete: function () { if (!over) wantBtnBand(false); } })
-          .to(fill, { opacity: 0.45, duration: 0.7, ease: EASE })
-          .to(fill, { opacity: 0, duration: 0.9, ease: EASE }, 1.1)
+        gsap.timeline()
+          .to(fill, { opacity: LOUD, duration: 0.7, ease: EASE })
+          .to(fill, { opacity: REST, duration: 0.9, ease: EASE }, 1.1)
           .to(btnBand || {}, { pulse: 0, duration: 0.9 }, 1.1);
       }
     });
@@ -3492,19 +3540,18 @@ function initDrawIns(gsap, ScrollTrigger) {
       var onIn = function () {
         over = true;
         wantBtnBand(true);
-        gsap.to(fill, { opacity: 0.45, duration: 0.32, ease: EASE, overwrite: true });
+        gsap.to(fill, { opacity: LOUD, duration: 0.32, ease: EASE, overwrite: true });
       };
       var onOut = function () {
         over = false;
-        gsap.to(fill, { opacity: 0, duration: 0.5, ease: EASE, overwrite: true,
-                        onComplete: function () { if (!over) wantBtnBand(false); } });
+        gsap.to(fill, { opacity: REST, duration: 0.5, ease: EASE, overwrite: true });
       };
       btn.addEventListener("pointerenter", onIn, { passive: true });
       btn.addEventListener("pointerleave", onOut, { passive: true });
       kills.push(function () { btn.removeEventListener("pointerenter", onIn); btn.removeEventListener("pointerleave", onOut); });
     }
     kills.push(function () {
-      stC.kill();
+      stC.kill(); stD.kill();
       gsap.killTweensOf(fill);
       gsap.set(fill, { clearProps: "opacity" });
       /* clearProps hands the fill back to the :hover rule; stopping the ticker
@@ -3592,7 +3639,7 @@ function initJourney(gsap, ScrollTrigger, tilt) {
        through an unreadable brown as it fades, and a scrub lets the reader
        park there. Hold the copy legible, then let it go quickly. */
     .fromTo(copy, { opacity: 1, y: 0 },
-            { opacity: 0, y: -38, duration: 0.5, ease: "power2.in" }, 0.18);
+            { opacity: 0, y: -38, duration: 0.6, ease: "power2.in" }, 0.22);
   if (band) tl.to(band, { opacity: 0.15, duration: 0.7 }, 0.2);
 
   var st = ScrollTrigger.create({
@@ -3843,10 +3890,12 @@ function initVoiceProbe(gsap, ScrollTrigger) {
          self-test tone — and either would be cut off mid-stride by a trailing
          scrub update, so only they write these three while they hold it. */
       if (!b.audioOwned && b.sweepT < 0) {
-        /* The band draws in behind the probe, then completes and waits. It has
-           to be whole by the time the section comes to rest under the nav —
-           otherwise the resting state is a meter cut off in mid-air. */
-        b.reveal = Math.min(1, 0.05 + p * 4.2);
+        /* The band fills in just ahead of the probe and is complete exactly as
+           the probe leaves the passband at 3400 Hz (X_HI = 0.762). Faster than
+           that and the spectrum is whole before the probe reaches 300, which
+           breaks the only causal claim the section makes; slower and it is
+           never seen whole while it is the thing being looked at. */
+        b.reveal = Math.min(1, 0.03 + p * 1.35);
         b.scan = p;
         /* and it only answers while the probe is inside the telephone band */
         var edge = 0.055;
@@ -3854,7 +3903,7 @@ function initVoiceProbe(gsap, ScrollTrigger) {
                          (1 - smoothstep(X_HI - edge, X_HI + edge, p));
       }
 
-      if (!seen && p > 0.30) {
+      if (!seen && p > 0.06) {          /* the rails are chassis, not content */
         seen = true;
         gsap.to(marks, { opacity: 1, y: 0, duration: 0.6, stagger: 0.12, ease: EASE });
       }

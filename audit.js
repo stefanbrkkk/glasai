@@ -401,7 +401,10 @@ const PHONE_STATE = `(() => {
     if (!filled) {
       rec(7, 'empty: inert chips rendered, no tel: link, no fake number', s.chips.length >= 2 && s.tels.length === 0 && s.chips.every(c => c === 'Demo broj — uskoro'), JSON.stringify(s.chips));
       rec(7, 'empty: no <audio> element created at all', s.audioEls === 0);
-      rec(7, 'empty: play button rests in a designed „uskoro” state', rest.disabled === 'true' && rest.label === 'Snimak uskoro' && rest.cursor === 'default' && rest.border === 'dashed', JSON.stringify(rest));
+      /* The *recording* is what is unavailable — aria-disabled says so, and the
+         label says so. The control itself is live: pressing it runs the line
+         self-test, so it must read as pressable rather than as dead. */
+      rec(7, 'empty: play button wears the „uskoro” hairline but is pressable', rest.disabled === 'true' && rest.label === 'Snimak uskoro' && rest.cursor === 'pointer' && rest.border === 'dashed', JSON.stringify(rest));
       rec(7, 'empty: a tap on it starts the self-test instead of doing nothing', s.playDisabled === 'true' && s.playBorder === 'solid', 'scanning border: ' + s.playBorder);
       rec(7, 'empty: clicking the inert player throws nothing', bag.length === 0, bag.slice(0, 3).join(' | '));
       const cta = await page.evaluate(`(() => { const a = document.querySelector('#cta-btn'); return { href: a.getAttribute('href'), text: a.textContent.trim() }; })()`);
@@ -768,8 +771,15 @@ const PHONE_STATE = `(() => {
     /* Bar heights are measured off the rendered canvas, not off internals. */
     const stat = await page.evaluate(`(async () => {
       const c = document.querySelector('canvas[data-band="voice"]');
-      document.querySelector('#glas').scrollIntoView();
-      await new Promise(r => setTimeout(r, 1400));
+      /* The meter answers only while the scroll probe is inside 300-3400 Hz,
+         and it draws itself in behind that probe — so it is measured where it
+         is actually being looked at, with the stage centred, not at the top of
+         the section where it is still filling. */
+      const st = document.querySelector('.voice-stage').getBoundingClientRect();
+      const y = st.top + window.scrollY + st.height / 2 - window.innerHeight / 2;
+      if (window.__glasLenis) window.__glasLenis.scrollTo(y, { immediate: true });
+      else window.scrollTo(0, y);
+      await new Promise(r => setTimeout(r, 1600));
       const cx = c.getContext('2d'), out = [];
       for (let k = 0; k < 14; k++) {
         const img = cx.getImageData(0, 0, c.width, c.height), W = c.width, H = c.height, cy = H / 2;
