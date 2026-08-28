@@ -383,6 +383,9 @@ const PHONE_STATE = `(() => {
     watch(page, bag);
     await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
     await page.waitForTimeout(2200);
+    const rest = await page.evaluate(`(() => { const p = document.querySelector('#play');
+      return { disabled: p.getAttribute('aria-disabled'), cursor: getComputedStyle(p).cursor, border: getComputedStyle(p).borderStyle,
+               label: document.querySelector('#play-label').textContent.trim() }; })()`);
     await page.locator('#play').click({ force: true });
     await page.waitForTimeout(900);
     const s = await page.evaluate(`(() => {
@@ -398,7 +401,8 @@ const PHONE_STATE = `(() => {
     if (!filled) {
       rec(7, 'empty: inert chips rendered, no tel: link, no fake number', s.chips.length >= 2 && s.tels.length === 0 && s.chips.every(c => c === 'Demo broj — uskoro'), JSON.stringify(s.chips));
       rec(7, 'empty: no <audio> element created at all', s.audioEls === 0);
-      rec(7, 'empty: play button is a designed „uskoro” state', s.playDisabled === 'true' && s.playLabel === 'Snimak uskoro' && s.playCursor === 'default' && s.playBorder === 'dashed', `${s.playLabel} / ${s.playCursor} / ${s.playBorder}`);
+      rec(7, 'empty: play button rests in a designed „uskoro” state', rest.disabled === 'true' && rest.label === 'Snimak uskoro' && rest.cursor === 'default' && rest.border === 'dashed', JSON.stringify(rest));
+      rec(7, 'empty: a tap on it starts the self-test instead of doing nothing', s.playDisabled === 'true' && s.playBorder === 'solid', 'scanning border: ' + s.playBorder);
       rec(7, 'empty: clicking the inert player throws nothing', bag.length === 0, bag.slice(0, 3).join(' | '));
       const cta = await page.evaluate(`(() => { const a = document.querySelector('#cta-btn'); return { href: a.getAttribute('href'), text: a.textContent.trim() }; })()`);
       rec(7, 'empty: the primary CTA still points forward, never back at #cene',
@@ -699,6 +703,137 @@ const PHONE_STATE = `(() => {
     rec(12, 'page still boots and scrolls under 4× throttle', usable.booted && usable.y > 100 && usable.reveals > 5, JSON.stringify(usable) + ` (${Date.now() - t0} ms)`);
     rec(12, 'zero console errors under throttle', bag.length === 0, bag.slice(0, 3).join(' | '));
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+    await ctx.close();
+  }
+
+  /* ── 12b · the motion system ─────────────────────────────────────────── */
+  head('12b · Motion — trigger geometry, line masks, band, probe');
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    await wire(ctx);
+    const page = await ctx.newPage(); const bag = [];
+    watch(page, bag);
+    await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(2600);
+
+    /* A pinned section adds its spacing to the document. If it refreshes after
+       the triggers below it, every one of them fires a pin-length too early. */
+    const geo = await page.evaluate(`(() => {
+      const bad = [];
+      ScrollTrigger.getAll().forEach(t => {
+        if (!t.trigger || !t.trigger.getBoundingClientRect || t.pin) return;
+        const s = String(t.vars.start || '');
+        const m = s.match(/^top (\\d+)%$/);
+        if (!m) return;
+        const want = t.trigger.getBoundingClientRect().top + window.scrollY - innerHeight * (+m[1] / 100);
+        const d = Math.round(t.start - want);
+        if (Math.abs(d) > 60) bad.push({ sel: (t.trigger.className || t.trigger.tagName).toString().split(' ')[0], d });
+      });
+      return bad.slice(0, 6);
+    })()`);
+    rec(12, 'every scroll trigger is measured against the pinned layout', geo.length === 0, JSON.stringify(geo));
+
+    /* Splitting a heading into line masks must be geometrically invisible. */
+    const lines = await page.evaluate(`(() => {
+      const hosts = Array.from(document.querySelectorAll('[data-lines]')).filter(e => !e.closest('#hero'));
+      const split = hosts.map(e => ({ h: Math.round(e.getBoundingClientRect().height), n: e.querySelectorAll('.ln').length, t: e.textContent }));
+      const docSplit = Math.round(document.body.scrollHeight);
+      hosts.forEach(e => { e.classList.remove('is-split'); e.textContent = e.__lineText; });
+      const plain = hosts.map(e => Math.round(e.getBoundingClientRect().height));
+      const docPlain = Math.round(document.body.scrollHeight);
+      hosts.forEach((e, i) => { /* leave it plain; the page is done with */ });
+      return {
+        hosts: hosts.length,
+        mismatched: split.filter((s, i) => s.h !== plain[i]).length,
+        unsplit: split.filter(s => s.n === 0).length,
+        docDelta: docSplit - docPlain,
+        textOk: split.every((s, i) => s.t.replace(/\\s+/g, ' ').trim() === hosts[i].textContent.replace(/\\s+/g, ' ').trim())
+      };
+    })()`);
+    rec(12, 'every [data-lines] host is split into line masks', lines.unsplit === 0 && lines.hosts >= 10, JSON.stringify({ hosts: lines.hosts, unsplit: lines.unsplit }));
+    rec(12, 'line masks change no element height and no page height', lines.mismatched === 0 && lines.docDelta === 0, JSON.stringify({ mismatched: lines.mismatched, docDelta: lines.docDelta }));
+    rec(12, 'line masks preserve the text exactly', lines.textOk === true);
+    await ctx.close();
+  }
+
+  head('12c · The band and the scroll probe');
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    await wire(ctx);
+    const page = await ctx.newPage(); const bag = [];
+    watch(page, bag);
+    await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(2200);
+
+    /* Bar heights are measured off the rendered canvas, not off internals. */
+    const stat = await page.evaluate(`(async () => {
+      const c = document.querySelector('canvas[data-band="voice"]');
+      document.querySelector('#glas').scrollIntoView();
+      await new Promise(r => setTimeout(r, 1400));
+      const cx = c.getContext('2d'), out = [];
+      for (let k = 0; k < 14; k++) {
+        const img = cx.getImageData(0, 0, c.width, c.height), W = c.width, H = c.height, cy = H / 2;
+        let mx = 0, sum = 0, n = 0;
+        for (let x = Math.floor(W * 0.32); x < W * 0.74; x += 4) {
+          let top = cy;
+          for (let y = 0; y < cy; y++) { if (img.data[((y * W) + x) * 4 + 3] > 60) { top = y; break; } }
+          const hh = (cy - top) / cy;
+          if (hh > mx) mx = hh;
+          sum += hh; n++;
+        }
+        out.push([sum / n, mx]);
+        await new Promise(r => setTimeout(r, 110));
+      }
+      const means = out.map(o => o[0]), maxs = out.map(o => o[1]);
+      const avg = a => a.reduce((x, y) => x + y, 0) / a.length;
+      return { mean: +avg(means).toFixed(3), peak: +avg(maxs).toFixed(3),
+               clipped: maxs.filter(v => v > 0.985).length, breathes: +(Math.max(...means) - Math.min(...means)).toFixed(3) };
+    })()`);
+    rec(12, 'band fills its canvas without clipping', stat.mean > 0.18 && stat.mean < 0.45 && stat.peak > 0.7 && stat.peak < 0.97 && stat.clipped === 0, JSON.stringify(stat));
+    rec(12, 'band breathes rather than droning', stat.breathes > 0.02, 'range ' + stat.breathes);
+
+    /* The probe has to sweep the whole spectrum, and light only 300–3400. */
+    await page.evaluate(`window.scrollTo(0, 0)`);
+    await page.waitForTimeout(700);
+    const seen = [];
+    for (let i = 0; i < 70; i++) {
+      await page.mouse.wheel(0, 130);
+      await page.waitForTimeout(45);
+      const s = await page.evaluate(`(() => {
+        const c = document.querySelector('#band-cursor');
+        if (!c || getComputedStyle(c).display === 'none') return null;
+        const st = document.querySelector('.voice-stage').getBoundingClientRect();
+        if (st.top > innerHeight || st.bottom < 0) return null;
+        return { hz: parseInt(document.querySelector('#band-read').textContent, 10), inb: c.classList.contains('in-band') };
+      })()`);
+      if (s && isFinite(s.hz)) seen.push(s);
+    }
+    const lows = seen.filter(s => s.hz < 300), mids = seen.filter(s => s.hz >= 320 && s.hz <= 3200), highs = seen.filter(s => s.hz > 3600);
+    rec(12, 'the probe sweeps below, through and above the telephone band',
+        lows.length > 0 && mids.length > 2 && highs.length > 0,
+        JSON.stringify({ samples: seen.length, below: lows.length, inside: mids.length, above: highs.length }));
+    rec(12, 'the probe lights up only inside 300–3400 Hz',
+        mids.every(s => s.inb) && lows.every(s => !s.inb) && highs.every(s => !s.inb),
+        JSON.stringify({ badLow: lows.filter(s => s.inb).length, badMid: mids.filter(s => !s.inb).length, badHigh: highs.filter(s => s.inb).length }));
+
+    /* The player's self-test: clicking it must visibly move the band. */
+    await page.evaluate(`(() => { const e = document.querySelector('#glas'); window.__glasLenis ? window.__glasLenis.scrollTo(e, { immediate: true }) : e.scrollIntoView(); })()`);
+    await page.waitForTimeout(1200);
+    const sweep = await page.evaluate(`(async () => {
+      const c = document.querySelector('canvas[data-band="voice"]'), cx = c.getContext('2d');
+      const ink = () => { const d = cx.getImageData(0, 0, c.width, c.height).data; let s = 0; for (let i = 3; i < d.length; i += 40) s += d[i]; return s; };
+      const before = ink();
+      document.querySelector('#play').click();
+      const scanning = document.querySelector('#play').classList.contains('is-scanning');
+      let lo = Infinity, hi = 0;
+      for (let k = 0; k < 20; k++) {
+        await new Promise(r => setTimeout(r, 105));
+        const v = ink(); if (v < lo) lo = v; if (v > hi) hi = v;
+      }
+      return { scanning, swing: +(hi / lo).toFixed(3), vsRest: +(lo / before).toFixed(3) };
+    })()`);
+    rec(12, 'the „uskoro” player runs a visible sweep across the band', sweep.scanning === true && sweep.swing > 1.35 && sweep.vsRest < 0.85, JSON.stringify(sweep));
+    rec(12, 'zero console errors across the motion system', bag.length === 0, bag.slice(0, 3).join(' | '));
     await ctx.close();
   }
 

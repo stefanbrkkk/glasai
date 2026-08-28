@@ -176,7 +176,10 @@ html { scroll-padding-top: calc(var(--nav-h) + 1.5rem); }
 .eyebrow::before {
   content: ""; width: 1.75rem; height: 1px; flex: none;
   background: linear-gradient(90deg, transparent, var(--signal));
+  transform: scaleX(var(--rule, 1));
+  transform-origin: left center;
 }
+@property --rule { syntax: "<number>"; inherits: false; initial-value: 1; }
 
 h1 {
   font-family: var(--f-display);
@@ -202,6 +205,19 @@ h3 {
   letter-spacing: -0.018em;
   text-wrap: balance;
 }
+/* line masks — a heading arrives line by line, from behind its own baseline.
+   The host becomes a flex column so the masks' negative margins cannot
+   collapse into each other; a collapsed margin would make every split element
+   taller than the text it replaced, and the whole page would shift under
+   ScrollTrigger's measurements. */
+.is-split { display: flex; flex-direction: column; }
+.ln {
+  overflow: hidden;
+  padding-top: 0.16em;  margin-top: -0.16em;
+  padding-bottom: 0.2em; margin-bottom: -0.2em;
+}
+.li { display: block; }
+
 .w {
   display: inline-block; overflow: hidden; vertical-align: bottom;
   padding-top: 0.14em; margin-top: -0.14em;
@@ -297,6 +313,39 @@ h3 {
 .band-frame { position: relative; }
 .band-marks .band-mark { bottom: 2.4rem; }
 .band-marks { position: absolute; inset: 0; pointer-events: none; }
+
+/* the probe: a measurement cursor the scroll drags across the spectrum */
+.band-cursor {
+  position: absolute; left: 0; top: -0.5rem; bottom: 1.9rem;
+  width: 1px; z-index: 2;
+  display: none;
+  background: linear-gradient(180deg, transparent, var(--line-hard) 12%, var(--line-hard) 88%, transparent);
+  will-change: transform;
+}
+.js-motion .band-cursor { display: block; }
+.band-cursor::before {
+  content: ""; position: absolute; left: 50%; top: 50%;
+  width: 0.4rem; height: 0.4rem; margin: -0.2rem 0 0 -0.2rem;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: background-color 260ms var(--ease), box-shadow 260ms var(--ease);
+}
+.band-cursor.in-band { background: linear-gradient(180deg, transparent, rgba(255,180,84,0.55) 12%, rgba(255,180,84,0.55) 88%, transparent); }
+.band-cursor.in-band::before { background: var(--signal-hi); box-shadow: 0 0 0 3px var(--signal-dim); }
+.band-cursor-read {
+  position: absolute; left: 50%; top: -1.55rem;
+  transform: translateX(-50%);
+  font-family: var(--f-mono); font-size: var(--t-xs);
+  letter-spacing: var(--track-mono);
+  color: var(--muted);
+  background: var(--ink-2);
+  padding: 0.25em 0.5em;
+  border-radius: var(--r-xs);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  transition: color 260ms var(--ease);
+}
+.band-cursor.in-band .band-cursor-read { color: var(--signal); }
 .band-mark {
   position: absolute; top: 0; bottom: 0;
   border-left: 1px dashed var(--line-hard);
@@ -949,6 +998,8 @@ h3 {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1px;
+  perspective: 1600px;
+  perspective-origin: 50% 30%;
   margin-top: var(--stack-lg);
   background: var(--line-soft);
   outline: 1px solid var(--line-soft);   /* same token in, same token out */
@@ -1116,6 +1167,7 @@ h3 {
   padding-right: 2ch;
 }
 .marquee-run b { font-weight: 400; color: var(--signal); padding-inline: 0.85ch; }
+.js-marquee .marquee-track { animation: none !important; }
 @media (prefers-reduced-motion: no-preference) {
   .marquee-track { animation: slide 46s linear infinite; }
   .marquee:focus-within .marquee-track { animation-play-state: paused; }
@@ -1593,9 +1645,9 @@ html:not(.js) .faq-panel > div,
     <div class="problem-grid">
       <div class="sec-head" data-reveal>
         <p class="eyebrow">PROBLEM</p>
-        <h2>Svaki propušten poziv je izgubljen klijent.</h2>
+        <h2 data-lines>Svaki propušten poziv je izgubljen klijent.</h2>
       </div>
-      <p class="lede" data-reveal>Dok ste sa pacijentom, na terenu ili van radnog vremena — telefon zvoni. U malim biznisima veliki deo poziva ostane bez odgovora, a većina ljudi ne zove drugi put. Pozovu sledećeg na Google-u.</p>
+      <p class="lede" data-reveal data-lines>Dok ste sa pacijentom, na terenu ili van radnog vremena — telefon zvoni. U malim biznisima veliki deo poziva ostane bez odgovora, a većina ljudi ne zove drugi put. Pozovu sledećeg na Google-u.</p>
     </div>
 
     <ul class="stat-row">
@@ -1624,7 +1676,7 @@ html:not(.js) .faq-panel > div,
   <div class="container">
     <div class="sec-head sec-head--wide" data-reveal>
       <p class="eyebrow">KAKO RADI</p>
-      <h2>Od zvona do zakazanog termina — bez vas.</h2>
+      <h2 data-lines>Od zvona do zakazanog termina — bez vas.</h2>
     </div>
 
     <div class="steps" id="steps">
@@ -1666,46 +1718,46 @@ html:not(.js) .faq-panel > div,
   <div class="container">
     <div class="sec-head sec-head--wide" data-reveal>
       <p class="eyebrow">MOGUĆNOSTI</p>
-      <h2>Sve što recepcija radi. Bez pauze.</h2>
+      <h2 data-lines>Sve što recepcija radi. Bez pauze.</h2>
     </div>
 
     <ul class="feat-grid">
-      <li class="feat" data-reveal>
+      <li class="feat" data-fx="card">
         <span class="feat-ico" aria-hidden="true">
           <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2.2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="3" x2="8" y2="7"/><line x1="16" y1="3" x2="16" y2="7"/><polyline class="anim anim--pop" points="8.8 14.9 11 17.1 15.4 12.7"/></svg>
         </span>
         <h3>Zakazivanje termina</h3>
         <p>Direktna sinhronizacija sa Google kalendarom i sistemima za zakazivanje.</p>
       </li>
-      <li class="feat" data-reveal>
+      <li class="feat" data-fx="card">
         <span class="feat-ico" aria-hidden="true">
           <svg viewBox="0 0 24 24"><path d="M4.8 4h14.4A1.8 1.8 0 0 1 21 5.8v8.4a1.8 1.8 0 0 1-1.8 1.8H9.6L4.5 20V5.8A1.8 1.8 0 0 1 6.3 4z"/><path class="anim anim--pop" d="M10.1 8.7a2.05 2.05 0 1 1 2.75 1.93c-.62.24-.95.75-.95 1.42"/><line class="anim anim--pop" x1="11.9" y1="14.15" x2="11.91" y2="14.15"/></svg>
         </span>
         <h3>Odgovori na česta pitanja</h3>
         <p>Radno vreme, cene, lokacija, priprema za pregled — agent zna vaš biznis.</p>
       </li>
-      <li class="feat" data-reveal>
+      <li class="feat" data-fx="card">
         <span class="feat-ico" aria-hidden="true">
           <svg viewBox="0 0 24 24"><path d="M3 5.8A1.8 1.8 0 0 1 4.8 4h11.4A1.8 1.8 0 0 1 18 5.8v5.4a1.8 1.8 0 0 1-1.8 1.8H8.4L3 17.4z"/><g class="anim anim--pop"><circle cx="17.2" cy="16.6" r="4.4"/><polyline points="17.2 14.4 17.2 16.8 19.1 17.8"/></g></svg>
         </span>
         <h3>SMS potvrde i podsetnici</h3>
         <p>Potvrda odmah, podsetnik dan ranije. Manje nedolazaka.</p>
       </li>
-      <li class="feat" data-reveal>
+      <li class="feat" data-fx="card">
         <span class="feat-ico" aria-hidden="true">
           <svg viewBox="0 0 24 24"><circle cx="17.4" cy="7.4" r="3.1"/><path d="M12.2 20.4a5.2 5.2 0 0 1 10.4 0"/><line x1="2" y1="12" x2="9.4" y2="12"/><polyline class="anim anim--slide" points="6.9 9.4 9.6 12 6.9 14.6"/></svg>
         </span>
         <h3>Prebacivanje na čoveka</h3>
         <p>Dovoljno je da pozivalac kaže „operater”. Hitne i složene pozive prosleđuje vama, sa kratkim rezimeom razgovora.</p>
       </li>
-      <li class="feat" data-reveal>
+      <li class="feat" data-fx="card">
         <span class="feat-ico" aria-hidden="true">
           <svg viewBox="0 0 24 24"><path d="M20.6 14.8A8.6 8.6 0 0 1 9.2 3.4 8.6 8.6 0 1 0 20.6 14.8z"/><circle class="anim anim--pop" cx="18.1" cy="5.6" r="1.15"/><circle class="anim anim--fade" cx="14.2" cy="3" r="0.72"/></svg>
         </span>
         <h3>Radi non-stop</h3>
         <p>Noć, vikend, praznik, gužva — svaki poziv dobije odgovor.</p>
       </li>
-      <li class="feat" data-reveal>
+      <li class="feat" data-fx="card">
         <span class="feat-ico" aria-hidden="true">
           <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.2"/><line class="anim anim--rise" x1="8" y1="15.8" x2="8" y2="11.4"/><line class="anim anim--rise" x1="12" y1="15.8" x2="12" y2="8.6"/><line class="anim anim--rise" x1="16" y1="15.8" x2="16" y2="12.8"/></svg>
         </span>
@@ -1726,14 +1778,17 @@ html:not(.js) .faq-panel > div,
     <div class="voice-head">
       <div class="sec-head" data-reveal>
         <p class="eyebrow">GLAS</p>
-        <h2>Glas pravljen za telefonsku liniju.</h2>
+        <h2 data-lines>Glas pravljen za telefonsku liniju.</h2>
       </div>
-      <p class="lede" data-reveal>Telefonska veza propušta samo uzak pojas — od 300 do 3400 herca. Ono što lepo zvuči na slušalicama tu se često raspadne. Naš glas je biran merenjem kroz tu istu liniju, jer to je jedino što vaš pacijent zaista čuje.</p>
+      <p class="lede" data-reveal data-lines>Telefonska veza propušta samo uzak pojas — od 300 do 3400 herca. Ono što lepo zvuči na slušalicama tu se često raspadne. Naš glas je biran merenjem kroz tu istu liniju, jer to je jedino što vaš pacijent zaista čuje.</p>
     </div>
 
     <div class="voice-stage" data-reveal>
       <div class="band-frame">
         <div class="band band--voice"><canvas data-band="voice" aria-hidden="true"></canvas></div>
+        <div class="band-cursor" id="band-cursor" aria-hidden="true">
+          <span class="band-cursor-read" id="band-read"></span>
+        </div>
         <div class="band-marks" aria-hidden="true">
           <span class="band-mark" data-mark="lo" style="left:30.4%"><span>300 Hz</span></span>
           <span class="band-mark" data-mark="hi" style="left:76.2%"><span>3400 Hz</span></span>
@@ -1750,7 +1805,7 @@ html:not(.js) .faq-panel > div,
       </div>
     </div>
 
-    <p class="voice-cap" data-reveal>Isti opseg koji propušta svaka telefonska&nbsp;veza.</p>
+    <p class="voice-cap" data-reveal data-lines>Isti opseg koji propušta svaka telefonska&nbsp;veza.</p>
   </div>
 </section>
 
@@ -1774,11 +1829,11 @@ html:not(.js) .faq-panel > div,
   <div class="container">
     <div class="sec-head sec-head--wide" data-reveal>
       <p class="eyebrow">CENE</p>
-      <h2>Jednostavno kao i sam agent.</h2>
+      <h2 data-lines>Jednostavno kao i sam agent.</h2>
     </div>
 
     <div class="price-grid">
-      <article class="price" data-reveal>
+      <article class="price" data-fx="plan">
         <p class="price-name">Starter</p>
         <p class="price-fig"><span>99&nbsp;€</span> <span class="price-per">/ mesečno</span></p>
         <ul class="price-list">
@@ -1790,7 +1845,7 @@ html:not(.js) .faq-panel > div,
         <a class="btn btn--ghost btn--magnetic" href="#cta">Započni</a>
       </article>
 
-      <article class="price price--hi" data-reveal>
+      <article class="price price--hi" data-fx="plan">
         <p class="price-badge">Najpopularniji</p>
         <p class="price-name">Professional</p>
         <p class="price-fig"><span>199&nbsp;€</span> <span class="price-per">/ mesečno</span></p>
@@ -1804,7 +1859,7 @@ html:not(.js) .faq-panel > div,
         <a class="btn btn--primary btn--magnetic" href="#cta">Zakaži demo</a>
       </article>
 
-      <article class="price" data-reveal>
+      <article class="price" data-fx="plan">
         <p class="price-name">Enterprise</p>
         <p class="price-fig"><span>Po dogovoru</span></p>
         <ul class="price-list">
@@ -1817,7 +1872,7 @@ html:not(.js) .faq-panel > div,
       </article>
     </div>
 
-    <p class="price-note" data-reveal>Podešavanje za sedam dana. Bez ugovorne obaveze — otkažite bilo kad.</p>
+    <p class="price-note" data-reveal data-lines>Podešavanje za sedam dana. Bez ugovorne obaveze — otkažite bilo kad.</p>
   </div>
 </section>
 
@@ -1826,7 +1881,7 @@ html:not(.js) .faq-panel > div,
   <div class="container faq">
     <div class="sec-head" data-reveal>
       <p class="eyebrow">PITANJA</p>
-      <h2>Česta pitanja</h2>
+      <h2 data-lines>Česta pitanja</h2>
     </div>
 
     <div class="faq-list" id="faq" data-reveal>
@@ -1871,8 +1926,8 @@ html:not(.js) .faq-panel > div,
   <div class="glow glow--a" aria-hidden="true"></div>
   <div class="glow glow--b" aria-hidden="true"></div>
   <div class="container cta-inner">
-    <h2 data-reveal>Čujte ga uživo.</h2>
-    <p class="lede" data-reveal>Zakažite razgovor od petnaest minuta — pokazaćemo vam kako zvuči vaš budući agent i koliko poziva mesečno propuštate.</p>
+    <h2 data-reveal data-lines>Čujte ga uživo.</h2>
+    <p class="lede" data-reveal data-lines>Zakažite razgovor od petnaest minuta — pokazaćemo vam kako zvuči vaš budući agent i koliko poziva mesečno propuštate.</p>
     <div class="cta-row" data-reveal>
       <a class="btn btn--primary btn--xl btn--magnetic btn--cta" id="cta-btn" href="#glas">
         <span class="band band--btn" aria-hidden="true"><canvas data-band="btn"></canvas></span>
@@ -2042,6 +2097,11 @@ var ATTACK = 0.40, RELEASE = 0.052;            /* a meter's ballistics */
 var PEAK_FALL = 0.20;                          /* peak decay, level per second */
 var bandVel = 0;                               /* shared scroll-velocity boost */
 var SPEC_GAIN = 3.4;                           /* normalises spectrum() to ~0..1 */
+var KNEE = 0.68, CEIL = 0.96;                  /* soft limiter, so nothing flat-tops */
+function limit(v) {
+  if (v <= KNEE) return v;
+  return KNEE + (CEIL - KNEE) * (1 - Math.exp(-(v - KNEE) / (CEIL - KNEE)));
+}
 
 function smoothstep(a, b, x) {
   var t = (x - a) / (b - a);
@@ -2126,8 +2186,7 @@ Band.prototype.layout = function () {
    frame and for every static (reduced-motion) render */
 Band.prototype.settle = function () {
   for (var i = 0; i < this.n; i++) {
-    var v = this.shape(i) * this.gain();
-    if (v > 1) v = 1;
+    var v = limit(this.shape(i) * this.gain());
     this.v[i] = v;
     this.pk[i] = v;
   }
@@ -2144,7 +2203,17 @@ Band.prototype.shape = function (i) {
   var inBand = smoothstep(X_LO - edge, X_LO + edge, x) * (1 - smoothstep(X_HI - edge, X_HI + edge, x));
   var a = spectrum(x, this.t, this.pt);
   /* outside the passband the line simply does not carry it */
-  return a * (0.16 + 0.84 * inBand);
+  a *= (0.16 + 0.84 * inBand);
+
+  /* While the self-test runs, the band is not speech — it is one tone walking
+     the spectrum. Everything else drops to a floor so the tone is the only
+     thing on the line, and the passband is the only place it is heard. */
+  if (this.sweepT >= 0) {
+    var d = Math.abs(x - this.scan), win = 0.05;
+    var g = d < win ? Math.pow(1 - d / win, 1.5) : 0;
+    return a * (0.09 + 1.75 * g);
+  }
+  return a;
 };
 
 Band.prototype.measure = function () {
@@ -2187,11 +2256,9 @@ Band.prototype.step = function (dt) {
     this.sweepT += dt / this.sweepDur;
     if (this.sweepT >= 1) { this.sweepT = -1; this.pulse = 0; }
     else {
-      var sx = -0.06 + this.sweepT * 1.12;
-      var edge = Math.min(0.05, EDGE_PX / Math.max(1, this.w));
-      this.pulse = 0.92 * smoothstep(X_LO - edge * 3, X_LO + edge * 3, sx) *
-                          (1 - smoothstep(X_HI - edge * 3, X_HI + edge * 3, sx));
-      this.scan = sx;
+      this.scan = -0.06 + this.sweepT * 1.12;
+      this.pulse = 0.95;                    /* the tone is loud; shape() decides
+                                               where it is actually audible */
     }
   }
 
@@ -2199,12 +2266,11 @@ Band.prototype.step = function (dt) {
   var k = dt * 60; if (k > 2) k = 2;
   var fall = PEAK_FALL * dt;
   for (var i = 0; i < this.n; i++) {
-    var target = this.shape(i) * g;
+    var target = limit(this.shape(i) * g);
     var cur = this.v[i];
     var rate = (target > cur ? ATTACK : RELEASE) * k;
     if (rate > 1) rate = 1;
     cur += (target - cur) * rate;
-    if (cur > 1) cur = 1;
     this.v[i] = cur;
     var p = this.pk[i] - fall;
     this.pk[i] = cur > p ? cur : p;
@@ -2507,7 +2573,7 @@ function initDemoAudio() {
   }
   function stopSampling() {
     if (sampling) { cancelAnimationFrame(sampling); sampling = 0; }
-    if (voiceBand) { voiceBand.drive = 0; voiceBand.reveal = 1; }
+    if (voiceBand) { voiceBand.drive = 0; voiceBand.reveal = 1; voiceBand.audioOwned = false; }
   }
 
   demoSweep = function () { if (audioEl.paused) btn.click(); };
@@ -2520,6 +2586,7 @@ function initDemoAudio() {
     } else { audioEl.pause(); }
   });
   on(audioEl, "play", function () {
+    if (voiceBand) voiceBand.audioOwned = true;
     btn.classList.add("is-playing");
     label.textContent = "Pauziraj"; vh.textContent = "Pauziraj";
     if (!sampling) sample();
@@ -2859,20 +2926,28 @@ function initReveals(gsap, ScrollTrigger, motion) {
   var els = $$("[data-reveal]");
   if (!els.length) return null;
   if (!motion) return null;   /* nothing was hidden, so nothing needs revealing */
-  gsap.set(els, { opacity: 0, y: 30 });
-  ScrollTrigger.batch(els, {
-    start: "top 88%",
-    once: true,
-    onEnter: function (batch) {
-      /* promote only the handful about to move, and only while they move —
-         hinting all 31 at once would hold 31 layers for the whole session */
-      batch.forEach(function (t) { t.style.willChange = "transform, opacity"; });
-      gsap.to(batch, {
-        opacity: 1, y: 0, duration: 0.8, stagger: 0.08, ease: EASE, overwrite: "auto",
-        onComplete: function () { this.targets().forEach(function (t) { t.style.willChange = ""; }); }
-      });
-    }
+  /* Anything whose text arrives line by line fades only — the line masks
+     carry the motion, and two vertical moves at once reads as mush. */
+  var flat = els.filter(function (el) {
+    return el.hasAttribute("data-lines") || !!el.querySelector("[data-lines]");
   });
+  var lift = els.filter(function (el) { return flat.indexOf(el) < 0; });
+
+  gsap.set(lift, { opacity: 0, y: 30 });
+  gsap.set(flat, { opacity: 0 });
+
+  function enter(vars) {
+    return function (batch) {
+      /* promote only the handful about to move, and only while they move */
+      batch.forEach(function (t) { t.style.willChange = "transform, opacity"; });
+      gsap.to(batch, Object.assign({
+        opacity: 1, duration: 0.8, stagger: 0.08, ease: EASE, overwrite: "auto",
+        onComplete: function () { this.targets().forEach(function (t) { t.style.willChange = ""; }); }
+      }, vars));
+    };
+  }
+  if (lift.length) ScrollTrigger.batch(lift, { start: "top 88%", once: true, onEnter: enter({ y: 0 }) });
+  if (flat.length) ScrollTrigger.batch(flat, { start: "top 90%", once: true, onEnter: enter({ duration: 0.7, stagger: 0.06 }) });
   /* last-resort net: anything on screen and still invisible gets released */
   var wd = setTimeout(function () {
     els.forEach(function (el) {
@@ -2883,6 +2958,223 @@ function initReveals(gsap, ScrollTrigger, motion) {
     });
   }, 4500);
   return function () { clearTimeout(wd); gsap.set(els, { clearProps: "all" }); };
+}
+
+/* ═══ 7b · LINE MASKS ══════════════════════════════════════════════════════
+   A heading arrives one rendered line at a time, from behind its own baseline.
+   Lines are visual, not semantic, so they have to be re-measured on resize —
+   the original text is kept on the node and the split is rebuilt from it.
+   Only ever applied to plain-text elements; NBSP is preserved, so `SRBIJA·`
+   stays one token and a separator can still never start a line.             */
+var lineHosts = [];
+function splitLines(el) {
+  var txt = el.__lineText || (el.__lineText = el.textContent);
+  el.textContent = txt;                       /* measure the real thing */
+  var node = el.firstChild;
+  if (!node || node.nodeType !== 3) return [];
+
+  /* Where the browser actually broke the text, read back with a Range. Probing
+     with injected spans changes how text-wrap: balance/pretty lays the block
+     out, so the split would not match what was on screen a moment earlier. */
+  var spans = [], re = /[^ \t\n\r]+/g, m;
+  while ((m = re.exec(txt))) spans.push([m.index, m.index + m[0].length]);
+  if (!spans.length) return [];
+
+  var range = document.createRange();
+  var groups = [], cur = null, lastTop = null;
+  for (var i = 0; i < spans.length; i++) {
+    range.setStart(node, spans[i][0]);
+    range.setEnd(node, spans[i][1]);
+    var top = Math.round(range.getBoundingClientRect().top);
+    if (lastTop === null || Math.abs(top - lastTop) > 2) { cur = []; groups.push(cur); lastTop = top; }
+    cur.push(txt.slice(spans[i][0], spans[i][1]));
+  }
+  range.detach && range.detach();
+
+  el.textContent = "";
+  var inners = [];
+  groups.forEach(function (g, gi) {
+    /* the wrappers are blocks, so this space collapses visually — but without
+       it textContent would run the last word of one line into the first of the
+       next, for anyone copying the text or reading it with a screen reader */
+    if (gi) el.appendChild(document.createTextNode(" "));
+    var outer = document.createElement("span"); outer.className = "ln";
+    var inner = document.createElement("span"); inner.className = "li";
+    inner.textContent = g.join(" ");
+    outer.appendChild(inner);
+    el.appendChild(outer);
+    inners.push(inner);
+  });
+  el.classList.add("is-split");
+  el.__lines = inners;
+  return inners;
+}
+function unsplitLines(el) {
+  if (el.__lineText == null) return;
+  el.classList.remove("is-split");
+  el.textContent = el.__lineText;
+  el.__lines = null;
+}
+
+function initLineReveals(gsap, ScrollTrigger) {
+  var hosts = $$("[data-lines]").filter(function (el) { return !el.closest("#hero"); });
+  if (!hosts.length) return null;
+  lineHosts = hosts;
+  var kills = [], dead = false;
+
+  function build() {
+    if (dead) return;
+    hosts.forEach(function (el) {
+      var lines = splitLines(el);
+      if (!lines.length) return;
+      gsap.set(lines, { yPercent: el.__shown ? 0 : 112 });
+      if (el.__lineST) return;
+      el.__lineST = ScrollTrigger.create({
+        trigger: el, start: "top 88%", once: true,
+        onEnter: function () {
+          el.__shown = true;
+          gsap.to(el.__lines, {
+            yPercent: 0, duration: 0.95, stagger: 0.085, ease: EASE, overwrite: "auto"
+          });
+        }
+      });
+      kills.push(function () { if (el.__lineST) { el.__lineST.kill(); el.__lineST = null; } });
+    });
+    ScrollTrigger.refresh();
+  }
+
+  /* F2 again: a line is a measurement, so it cannot be taken against fallback
+     metrics — split only once the real faces have settled. */
+  var fonts = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
+  Promise.race([fonts, new Promise(function (r) { setTimeout(r, 1200); })]).then(build, build);
+
+  /* a width change invalidates every one of those measurements */
+  var relayout = debounce(build, 220);
+  var lastW = window.innerWidth;
+  var onResize = function () { if (window.innerWidth !== lastW) { lastW = window.innerWidth; relayout(); } };
+  on(window, "resize", onResize, { passive: true });
+
+  return function () {
+    dead = true;
+    kills.forEach(function (f) { f(); });
+    hosts.forEach(function (el) {
+      gsap.killTweensOf(el.__lines || []);
+      unsplitLines(el);
+      el.__shown = false; el.__lineST = null;
+    });
+    lineHosts = [];
+  };
+}
+
+/* ═══ 7c · CARDS AND PLANS ═════════════════════════════════════════════════
+   The feature grid is a 3D stage: cards hinge up from their own lower edge,
+   staggered along the reading order. The plans rise at three different rates
+   so the featured one arrives last and highest.                            */
+function initCardReveals(gsap, ScrollTrigger) {
+  var kills = [];
+
+  var cards = $$('[data-fx="card"]');
+  if (cards.length) {
+    gsap.set(cards, { opacity: 0, y: 34, rotateX: 9, transformOrigin: "50% 100%" });
+    var stc = ScrollTrigger.batch(cards, {
+      start: "top 86%", once: true,
+      onEnter: function (batch) {
+        batch.forEach(function (t) { t.style.willChange = "transform, opacity"; });
+        gsap.to(batch, {
+          opacity: 1, y: 0, rotateX: 0, duration: 0.9, stagger: 0.075, ease: EASE, overwrite: "auto",
+          onComplete: function () {
+            this.targets().forEach(function (t) { t.style.willChange = ""; });
+            gsap.set(this.targets(), { clearProps: "transform" });   /* give hover its property back */
+          }
+        });
+      }
+    });
+    kills.push(function () {
+      (stc || []).forEach(function (t) { t.kill(); });
+      gsap.set(cards, { clearProps: "all" });
+    });
+  }
+
+  var plans = $$('[data-fx="plan"]');
+  if (plans.length) {
+    gsap.set(plans, { opacity: 0, y: 46 });
+    var stp = ScrollTrigger.create({
+      trigger: plans[0].parentNode, start: "top 82%", once: true,
+      onEnter: function () {
+        plans.forEach(function (el, i) {
+          var mid = el.classList.contains("price--hi");
+          gsap.to(el, {
+            opacity: 1, y: 0, duration: mid ? 1.05 : 0.85,
+            delay: mid ? 0.12 : i * 0.07, ease: EASE, overwrite: "auto",
+            onComplete: function () { gsap.set(el, { clearProps: "transform,opacity" }); }
+          });
+        });
+      }
+    });
+    kills.push(function () { stp.kill(); gsap.set(plans, { clearProps: "all" }); });
+  }
+
+  return function () { kills.forEach(function (f) { f(); }); };
+}
+
+/* ═══ 7d · DRAWN DETAIL ════════════════════════════════════════════════════
+   Every eyebrow rule draws itself out, and every line-art icon draws itself
+   in — the same gesture as the checkmark inside the phone.                 */
+function initDrawIns(gsap, ScrollTrigger) {
+  var kills = [];
+
+  var rules = $$(".eyebrow, .marquee-label");
+  if (rules.length) {
+    gsap.set(rules, { "--rule": 0 });
+    var stR = ScrollTrigger.batch(rules, {
+      start: "top 92%", once: true,
+      onEnter: function (b) { gsap.to(b, { "--rule": 1, duration: 0.8, stagger: 0.06, ease: EASE }); }
+    });
+    kills.push(function () { (stR || []).forEach(function (t) { t.kill(); }); gsap.set(rules, { clearProps: "--rule" }); });
+  }
+
+  $$(".feat-ico svg").forEach(function (svg) {
+    var shapes = $$("path, circle, rect, line, polyline", svg);
+    var lens = [];
+    var ok = true;
+    shapes.forEach(function (n) {
+      var L = 0;
+      try { L = n.getTotalLength ? n.getTotalLength() : 0; } catch (e) { L = 0; }
+      if (!L || !isFinite(L)) ok = false;
+      lens.push(L);
+    });
+    if (!ok) return;
+    shapes.forEach(function (n, i) {
+      gsap.set(n, { strokeDasharray: lens[i], strokeDashoffset: lens[i] });
+    });
+    var st = ScrollTrigger.create({
+      trigger: svg.closest(".feat") || svg, start: "top 84%", once: true,
+      onEnter: function () {
+        gsap.to(shapes, {
+          strokeDashoffset: 0, duration: 0.85, stagger: 0.06, ease: "power2.inOut",
+          onComplete: function () { gsap.set(shapes, { clearProps: "strokeDasharray,strokeDashoffset" }); }
+        });
+      }
+    });
+    kills.push(function () { st.kill(); gsap.set(shapes, { clearProps: "strokeDasharray,strokeDashoffset" }); });
+  });
+
+  var cta = $("#cta"), fill = $(".btn--cta .band--btn");
+  if (cta && fill) {
+    var stC = ScrollTrigger.create({
+      trigger: cta, start: "top 62%", once: true,
+      onEnter: function () {
+        if (btnBand) btnBand.pulse = 0.9;
+        gsap.timeline()
+          .to(fill, { opacity: 0.45, duration: 0.7, ease: EASE })
+          .to(fill, { opacity: 0, duration: 0.9, ease: EASE }, 1.1)
+          .to(btnBand || {}, { pulse: 0, duration: 0.9 }, 1.1);
+      }
+    });
+    kills.push(function () { stC.kill(); gsap.set(fill, { clearProps: "opacity" }); if (btnBand) btnBand.pulse = 0; });
+  }
+
+  return function () { kills.forEach(function (f) { f(); }); };
 }
 
 /* ═══ 8 · HERO LOAD ════════════════════════════════════════════════════════ */
@@ -2952,7 +3244,9 @@ function initJourney(gsap, ScrollTrigger, tilt) {
   var proxy = tilt || { flat: 0 };
   var tl = gsap.timeline({ defaults: { ease: "none" } });
   tl.to(scroll,  { scale: 0.86, yPercent: 7, xPercent: -3, opacity: 0.7, duration: 1 }, 0)
-    .to(proxy,   { flat: 0.85, duration: 1 }, 0)
+    .to(proxy,   { flat: 0.85, duration: 1 }, 0);
+  if (heroBand) tl.fromTo(heroBand, { pulse: 0 }, { pulse: 0.58, duration: 0.8 }, 0);
+  tl
     .fromTo(copy, { opacity: 1, y: 0 }, { opacity: 0, y: -38, duration: 0.72 }, 0.24);
   if (band) tl.to(band, { opacity: 0.15, duration: 0.7 }, 0.2);
 
@@ -2965,6 +3259,11 @@ function initJourney(gsap, ScrollTrigger, tilt) {
     anticipatePin: 1,
     scrub: 0.55,
     invalidateOnRefresh: true,
+    /* The pin adds 42vh of spacing to the document. Every trigger below it has
+       to be measured *after* that spacing exists, or they all fire 378px early
+       — and this one is created last, in its own width-scoped context. A higher
+       refreshPriority puts it at the front of the refresh order. */
+    refreshPriority: 10,
     animation: tl
   });
 
@@ -2972,6 +3271,7 @@ function initJourney(gsap, ScrollTrigger, tilt) {
     st.kill(true);
     tl.kill();
     proxy.flat = 0;
+    if (heroBand) heroBand.pulse = 0;
     gsap.set([scroll, copy, band].filter(Boolean), { clearProps: "all" });
   };
 }
@@ -3010,12 +3310,22 @@ function initSteps(gsap, ScrollTrigger) {
     onRefresh: layoutTrack,
     onUpdate: function (self) {
       var p = self.progress;
-      steps.forEach(function (s, i) { s.classList.toggle("is-live", p >= i * span + span * 0.12); });
+      steps.forEach(function (s, i) {
+        var live = p >= i * span + span * 0.12;
+        if (live === !!s.__live) return;
+        s.__live = live;
+        s.classList.toggle("is-live", live);
+        var n = $(".step-n", s);
+        if (n && live) gsap.fromTo(n, { scale: 0.86 }, { scale: 1, duration: 0.62, ease: SPRING, overwrite: true });
+      });
     }
   });
   return function () {
     st.kill(); tl.kill();
-    steps.forEach(function (s) { s.classList.remove("is-live"); });
+    steps.forEach(function (s) {
+      s.classList.remove("is-live"); s.__live = false;
+      var n = $(".step-n", s); if (n) gsap.set(n, { clearProps: "all" });
+    });
     track.style.left = ""; track.style.right = "";
     gsap.set([draw, dot], { clearProps: "all" });
   };
@@ -3033,6 +3343,133 @@ function initDividerDraw(gsap, ScrollTrigger) {
     kills.push(function () { st.kill(); gsap.killTweensOf(b); b.reveal = 1; b.draw(); });
   });
   return function () { kills.forEach(function (f) { f(); }); };
+}
+
+/* ═══ 11b · THE LINE ANSWERS THE SCROLL ════════════════════════════════════
+   How fast you move the page is signal on the line. One ScrollTrigger reads
+   the velocity; every band picks it up through the shared `bandVel`, and the
+   marquee's timeScale follows it too — including its sign, so the strip runs
+   backwards when you scroll up.                                            */
+function initScrollSignal(gsap, ScrollTrigger) {
+  var st = ScrollTrigger.create({
+    start: 0, end: "max",
+    onUpdate: function (self) {
+      var v = Math.abs(self.getVelocity());
+      var boost = v / 3400;
+      if (boost > 1) boost = 1;
+      if (boost > bandVel) bandVel = boost;      /* decays in the band ticker */
+    }
+  });
+  return function () { st.kill(); bandVel = 0; };
+}
+
+function initMarqueeMotion(gsap, ScrollTrigger) {
+  var track = $("#marquee-track"), wrap = $("#za-koga");
+  if (!track || !wrap) return null;
+  root.classList.add("js-marquee");              /* hands over from the CSS loop */
+
+  var tl = gsap.to(track, { xPercent: -50, duration: 46, ease: "none", repeat: -1 });
+  var dir = 1;
+  var st = ScrollTrigger.create({
+    start: 0, end: "max",
+    onUpdate: function (self) {
+      var v = self.getVelocity();
+      var d = v < 0 ? -1 : 1;
+      if (d !== dir) { dir = d; gsap.to(tl, { timeScale: d, duration: 0.35, overwrite: true }); }
+      var boost = Math.min(3.4, 1 + Math.abs(v) / 900);
+      gsap.to(tl, { timeScale: d * boost, duration: 0.25, overwrite: true });
+      gsap.to(tl, { timeScale: d, duration: 1.1, delay: 0.25, overwrite: false, ease: "power2.out" });
+    }
+  });
+
+  var hovering = false;
+  var onEnter = function () { hovering = true; gsap.to(tl, { timeScale: 0, duration: 0.4, overwrite: true }); };
+  var onLeave = function () { hovering = false; gsap.to(tl, { timeScale: dir, duration: 0.5, overwrite: true }); };
+  if (matchMedia("(hover: hover) and (pointer: fine)").matches) {
+    wrap.addEventListener("pointerenter", onEnter, { passive: true });
+    wrap.addEventListener("pointerleave", onLeave, { passive: true });
+  }
+  var io = null;
+  if ("IntersectionObserver" in window) {
+    io = new IntersectionObserver(function (es) {
+      if (es[0].isIntersecting) { if (!hovering) tl.play(); } else tl.pause();
+    }, { rootMargin: "80px 0px" });
+    io.observe(wrap);
+  }
+
+  return function () {
+    st.kill(); tl.kill();
+    if (io) io.disconnect();
+    wrap.removeEventListener("pointerenter", onEnter);
+    wrap.removeEventListener("pointerleave", onLeave);
+    gsap.set(track, { clearProps: "all" });
+    root.classList.remove("js-marquee");
+  };
+}
+
+/* ═══ 11c · SCROLLING IS MEASURING ════════════════════════════════════════
+   The scroll becomes an instrument. One progress value drives everything in
+   the voice section at once: a probe walks the spectrum, the frequency under
+   it is read out live, the band draws itself in behind the probe, and the
+   level rises only while the probe is inside 300–3400 Hz. Scroll past it and
+   you have performed the section's entire argument without reading a word.  */
+function initVoiceProbe(gsap, ScrollTrigger) {
+  if (!voiceBand) return null;
+  var frame = $(".band-frame"), cursor = $("#band-cursor"), read = $("#band-read");
+  var marks = $$(".band-mark");
+  if (!frame || !cursor || !read) return null;
+  var b = voiceBand;
+  b.reveal = 0.04;
+  gsap.set(marks, { opacity: 0, y: 6 });
+  var seen = false, lastHz = -1, wasIn = null;
+
+  function hzAt(x) {
+    var f = F_MIN * Math.pow(F_MAX / F_MIN, x);
+    return f < 1000 ? Math.round(f / 10) * 10 : Math.round(f / 50) * 50;
+  }
+
+  var st = ScrollTrigger.create({
+    trigger: $(".voice-stage"),
+    start: "top 85%",
+    end: "bottom 20%",
+    scrub: 0.55,
+    invalidateOnRefresh: true,
+    onUpdate: function (self) {
+      var p = self.progress;
+      if (window.__glasDebug) window.__glasProbeP = p;
+      if (b.audioOwned) return;               /* the player has the band */
+      var w = frame.clientWidth || 1;
+
+      /* the probe */
+      cursor.style.transform = "translate3d(" + (p * w).toFixed(1) + "px,0,0)";
+      var hz = hzAt(p);
+      if (hz !== lastHz) { lastHz = hz; read.textContent = hz + " Hz"; }
+      var inBand = p >= X_LO && p <= X_HI;
+      if (inBand !== wasIn) { wasIn = inBand; cursor.classList.toggle("in-band", inBand); }
+
+      /* the band draws in behind the probe, then completes and waits */
+      b.reveal = Math.min(1, 0.04 + p * 2.1);
+      b.scan = p;
+
+      /* and only answers while the probe is inside the telephone band */
+      var edge = 0.055;
+      b.drive = 0.86 * smoothstep(X_LO - edge, X_LO + edge, p) *
+                       (1 - smoothstep(X_HI - edge, X_HI + edge, p));
+
+      if (!seen && p > 0.30) {
+        seen = true;
+        gsap.to(marks, { opacity: 1, y: 0, duration: 0.6, stagger: 0.12, ease: EASE });
+      }
+    }
+  });
+
+  return function () {
+    st.kill();
+    b.reveal = 1; b.drive = 0; b.scan = -0.25;
+    cursor.style.transform = "";
+    cursor.classList.remove("in-band");
+    gsap.set(marks, { clearProps: "all" });
+  };
 }
 
 /* ═══ 12 · COUNT-UP ════════════════════════════════════════════════════════ */
@@ -3238,8 +3675,14 @@ function initMotionSystem(gsap, ScrollTrigger) {
             var t = $("#ph-timer"); if (t) t.textContent = "00:" + CALL_LEN;
           };
         }));
+        push(safe("lines",    function () { return initLineReveals(gsap, ScrollTrigger); }));
+        push(safe("cards",    function () { return initCardReveals(gsap, ScrollTrigger); }));
+        push(safe("draw-ins", function () { return initDrawIns(gsap, ScrollTrigger); }));
         push(safe("steps",    function () { return initSteps(gsap, ScrollTrigger); }));
         push(safe("dividers", function () { return initDividerDraw(gsap, ScrollTrigger); }));
+        push(safe("voice",    function () { return initVoiceProbe(gsap, ScrollTrigger); }));
+        push(safe("signal",   function () { return initScrollSignal(gsap, ScrollTrigger); }));
+        push(safe("marquee",  function () { return initMarqueeMotion(gsap, ScrollTrigger); }));
         push(safe("lenis",    function () { return initLenis(gsap, ScrollTrigger); }));
         if (c.fine) {
           push(safe("magnetic", function () { return initMagnetic(gsap); }));
