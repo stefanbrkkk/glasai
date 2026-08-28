@@ -273,7 +273,13 @@ h3 {
 /* One component, four placements: hero line, section divider, voice section,
    CTA button fill. Nothing else in the page draws a spectrum. */
 .band { position: relative; display: block; }
-.band canvas { width: 100%; height: 100%; display: block; }
+.band canvas {
+  width: 100%; height: 100%; display: block;
+  /* the half below the line fades out, so the band reads as sitting on a
+     surface. In CSS, not in canvas: the compositor does this for free. */
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 50%, rgba(0,0,0,0.70) 72%, rgba(0,0,0,0.34) 100%);
+          mask-image: linear-gradient(180deg, #000 0%, #000 50%, rgba(0,0,0,0.70) 72%, rgba(0,0,0,0.34) 100%);
+}
 
 .band--hero {
   position: absolute; left: 38%; right: 0; z-index: 0;
@@ -294,6 +300,13 @@ h3 {
   position: absolute; inset: 0; z-index: 0;
   opacity: 0; pointer-events: none;
   transition: opacity var(--d-mid) var(--ease);
+  /* The label is the point; the meter is behind it. This lets the bars pass
+     under the word and re-emerge above and below it instead of striking
+     through the letterforms. */
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 24%, rgba(0,0,0,0.10) 41%, rgba(0,0,0,0.10) 59%, #000 76%, #000 100%);
+          mask-image: linear-gradient(180deg, #000 0%, #000 24%, rgba(0,0,0,0.10) 41%, rgba(0,0,0,0.10) 59%, #000 76%, #000 100%);
+  -webkit-mask-repeat: no-repeat;
+          mask-repeat: no-repeat;
 }
 
 /* Pulled back into the gap it sits in, so a boundary with a divider and a
@@ -322,7 +335,7 @@ h3 {
   background: linear-gradient(180deg, transparent, var(--line-hard) 12%, var(--line-hard) 88%, transparent);
   will-change: transform;
 }
-.js-motion .band-cursor { display: block; }
+.js-probe .band-cursor { display: block; }
 .band-cursor::before {
   content: ""; position: absolute; left: 50%; top: 50%;
   width: 0.4rem; height: 0.4rem; margin: -0.2rem 0 0 -0.2rem;
@@ -1149,6 +1162,8 @@ h3 {
 .marquee-label::before {
   content: ""; width: 1.75rem; height: 1px; flex: none;
   background: linear-gradient(90deg, transparent, var(--signal));
+  transform: scaleX(var(--rule, 1));
+  transform-origin: left center;
 }
 .marquee-vp {
   overflow: hidden;                          /* the mask box, so it cannot tile */
@@ -1455,6 +1470,11 @@ html:not(.js) .faq-panel > div,
 /* ─── 24 · PRINT ────────────────────────────────────────────────────────── */
 @media print {
   .nav, .menu, .grain, .glow, .band, .cursor-glow, .phone-stage { display: none !important; }
+  /* draw-ins hold their hidden state until scrolled to; paper never scrolls */
+  .feat-ico :is(path, circle, rect, line, polyline) { stroke-dasharray: none !important; stroke-dashoffset: 0 !important; }
+  .eyebrow, .marquee-label { --rule: 1 !important; }
+  .ln { overflow: visible !important; }
+  .li { transform: none !important; }
   body { background: #fff; color: #000; }
   .faq-panel { grid-template-rows: 1fr !important; }
 }
@@ -2056,10 +2076,17 @@ function debounce(fn, ms) {
     id = setTimeout(function () { fn.apply(self, a); }, ms);
   };
 }
-/* F12 — a module that throws takes only itself down. */
-function safe(name, fn) {
+/* F12 — a module that throws takes only itself down, *and* undoes whatever it
+   had already hidden or mutated. Without the rollback, a throw halfway through
+   a module that sets opacity:0 first and creates its triggers second leaves
+   that content invisible with nothing left to reveal it. */
+function safe(name, fn, rollback) {
   try { return fn(); }
-  catch (err) { console.warn("[glas] module skipped: " + name, err); return null; }
+  catch (err) {
+    console.warn("[glas] module skipped: " + name, err);
+    if (rollback) { try { rollback(); } catch (e2) {} }
+    return null;
+  }
 }
 
 /* ═══ 1 · THE BAND ═════════════════════════════════════════════════════════
@@ -2108,27 +2135,12 @@ function smoothstep(a, b, x) {
   t = t < 0 ? 0 : t > 1 ? 1 : t;
   return t * t * (3 - 2 * t);
 }
-/* A pseudo-spectrum that reads as a *voice*, not as noise: a broad vocal
-   envelope, two formants that drift the way a mouth changes shape, a syllabic
-   amplitude so it breathes instead of droning, and a little grain on top.
-   Deterministic in (x, t) — no state, no seed, identical on every device. */
-function spectrum(x, t, pt) {
-  var env = Math.exp(-Math.pow((x - 0.42) / 0.34, 2)) * 0.66 + 0.16;
-  var f1 = 0.395 + 0.040 * Math.sin(t * 0.93);
-  var f2 = 0.585 + 0.052 * Math.sin(t * 0.61 + 2.1);
-  env += 0.34 * Math.exp(-Math.pow((x - f1) / 0.052, 2))
-       + 0.26 * Math.exp(-Math.pow((x - f2) / 0.064, 2));
-  var syl = 0.60 + 0.40 * Math.pow(Math.abs(Math.sin(pt * 3.4 + 0.4)), 0.5);
-  var n = Math.sin(x * 17.3 + t * 2.30) * 0.38
-        + Math.sin(x *  8.1 - t * 1.70 + 1.3) * 0.24
-        + Math.sin(x * 31.7 + t * 3.05 + 2.1) * 0.20
-        + Math.sin(x * 54.9 - t * 4.40 + 0.7) * 0.13
-        + Math.sin(x * 96.7 + t * 6.10 + 1.9) * 0.08;
-  n = n * 0.5 + 0.5;
-  /* SPEC_GAIN normalises the whole thing so a band's `amp` stays in 0..1 and
-     the loudest bar lands near the top of its canvas. Measured, not guessed. */
-  return SPEC_GAIN * env * syl * (0.20 + 0.80 * Math.pow(n, 1.45));
-}
+/* The spectrum reads as a *voice*, not as noise: a broad vocal envelope, two
+   formants that drift the way a mouth changes shape, a syllabic amplitude so
+   it breathes instead of droning, and a little grain on top. It is evaluated
+   inside Band.targets(), where the per-frame terms are hoisted out of the
+   per-bar loop and the per-bar terms come from tables built once in layout().
+   Deterministic in (position, time) — no state, no seed, identical everywhere. */
 
 var bands = [];
 var rafId = 0, lastNow = 0, tickerWanted = false;
@@ -2145,6 +2157,8 @@ function Band(canvas, opts) {
   this.dim    = opts.dim    != null ? opts.dim    : 0.10;
   this.bar    = opts.bar    != null ? opts.bar    : 4;
   this.gap    = opts.gap    != null ? opts.gap    : 3;
+  this.bar0   = this.bar;               /* the desktop pitch; layout() scales it */
+  this.gap0   = this.gap;
   this.base   = opts.base   != null ? opts.base   : 0.14;
   this.bloom  = opts.bloom !== false;
   this.ink    = !!opts.ink;             /* dark-on-light, for the amber button */
@@ -2172,48 +2186,102 @@ Band.prototype.level = function () {
 };
 
 Band.prototype.layout = function () {
+  /* A phone gets a third of the desktop width. Holding the desktop bar pitch
+     there would leave about eighteen bars inside the passband and the meter
+     would read as a bar chart, not a spectrum — so the pitch shrinks with the
+     box. Integers only: half-pixel bars fringe. */
+  var k = this.w < 470 ? 0.6 : this.w < 720 ? 0.8 : 1;
+  this.bar = Math.max(2, Math.round(this.bar0 * k));
+  this.gap = Math.max(2, Math.round(this.gap0 * k));
   this.stepPx = this.bar + this.gap;
   var n = Math.max(1, Math.floor((this.w + this.gap) / this.stepPx));
-  if (n !== this.n || !this.v) {
-    this.n = n;
-    this.v = new Float32Array(n);
-    this.pk = new Float32Array(n);
-    this.settle();
+  if (n === this.n && this.v && this.tableW === this.w) return;
+  this.tableW = this.w;      /* the tables map bar index → frequency, so they
+                                depend on the width even when n is unchanged */
+  this.n = n;
+  this.v = new Float32Array(n);
+  this.pk = new Float32Array(n);
+
+  /* Everything that depends only on where a bar sits — never on time — is
+     computed once here instead of 60 times a second: the position on the
+     log-frequency axis, the vocal envelope, the filter response, and the
+     spatial phase of each noise term. */
+  this.xs = new Float32Array(n);
+  this.env0 = new Float32Array(n);
+  this.inb = new Float32Array(n);
+  this.p1 = new Float32Array(n);
+  this.p2 = new Float32Array(n);
+  this.p3 = new Float32Array(n);
+  this.p4 = new Float32Array(n);
+  this.p5 = new Float32Array(n);
+  var edge = Math.min(0.05, EDGE_PX / Math.max(1, this.w));
+  for (var i = 0; i < n; i++) {
+    var x = (i * this.stepPx + this.bar / 2) / this.w;
+    this.xs[i] = x;
+    this.env0[i] = Math.exp(-Math.pow((x - 0.42) / 0.34, 2)) * 0.66 + 0.16;
+    var band = smoothstep(X_LO - edge, X_LO + edge, x) * (1 - smoothstep(X_HI - edge, X_HI + edge, x));
+    this.inb[i] = 0.16 + 0.84 * band;         /* the line does not carry the rest */
+    this.p1[i] = x * 17.3;
+    this.p2[i] = x *  8.1;
+    this.p3[i] = x * 31.7;
+    this.p4[i] = x * 54.9;
+    this.p5[i] = x * 96.7;
+  }
+  this.settle();
+};
+
+/* Fill `out` with the value every bar is heading for. One pass, with the
+   per-frame scalars hoisted out of the loop and the two formant Gaussians
+   skipped entirely for bars they cannot reach. */
+Band.prototype.targets = function (out) {
+  var t = this.t, pt = this.pt, g = this.gain(), n = this.n;
+  var f1 = 0.395 + 0.040 * Math.sin(t * 0.93);
+  var f2 = 0.585 + 0.052 * Math.sin(t * 0.61 + 2.1);
+  var syl = 0.60 + 0.40 * Math.sqrt(Math.abs(Math.sin(pt * 3.4 + 0.4)));
+  var t1 = t * 2.30, t2 = -t * 1.70 + 1.3, t3 = t * 3.05 + 2.1,
+      t4 = -t * 4.40 + 0.7, t5 = t * 6.10 + 1.9;
+  var k = SPEC_GAIN * syl * g;
+  var sweeping = this.sweepT >= 0, scan = this.scan;
+
+  for (var i = 0; i < n; i++) {
+    var x = this.xs[i];
+    var env = this.env0[i];
+    var d = x - f1;
+    if (d > -0.17 && d < 0.17) { d /= 0.052; env += 0.34 * Math.exp(-d * d); }
+    d = x - f2;
+    if (d > -0.20 && d < 0.20) { d /= 0.064; env += 0.26 * Math.exp(-d * d); }
+
+    var q = Math.sin(this.p1[i] + t1) * 0.38
+          + Math.sin(this.p2[i] + t2) * 0.24
+          + Math.sin(this.p3[i] + t3) * 0.20
+          + Math.sin(this.p4[i] + t4) * 0.13
+          + Math.sin(this.p5[i] + t5) * 0.08;
+    q = q * 0.5 + 0.5;
+    if (q < 0) q = 0;
+
+    var a = k * env * (0.20 + 0.80 * q * Math.sqrt(q)) * this.inb[i];
+
+    /* While the self-test runs the band is not speech — it is one tone walking
+       the spectrum, and the passband is the only place it is heard. */
+    if (sweeping) {
+      var dd = scan > x ? scan - x : x - scan;
+      if (dd < 0.05) { var u = 1 - dd / 0.05; a *= 0.09 + 1.75 * u * Math.sqrt(u); }
+      else a *= 0.09;
+    }
+    out[i] = limit(a);
   }
 };
 
 /* fill the meter with the value it would converge on — used for the first
    frame and for every static (reduced-motion) render */
 Band.prototype.settle = function () {
-  for (var i = 0; i < this.n; i++) {
-    var v = limit(this.shape(i) * this.gain());
-    this.v[i] = v;
-    this.pk[i] = v;
-  }
+  if (!this.v) return;
+  this.targets(this.v);
+  this.pk.set(this.v);
 };
 
 Band.prototype.gain = function () {
   return this.amp * (0.28 + 0.72 * this.level());
-};
-
-/* the raw spectrum at bar i, already shaped by the telephone filter */
-Band.prototype.shape = function (i) {
-  var x = (i * this.stepPx + this.bar / 2) / this.w;
-  var edge = Math.min(0.05, EDGE_PX / Math.max(1, this.w));
-  var inBand = smoothstep(X_LO - edge, X_LO + edge, x) * (1 - smoothstep(X_HI - edge, X_HI + edge, x));
-  var a = spectrum(x, this.t, this.pt);
-  /* outside the passband the line simply does not carry it */
-  a *= (0.16 + 0.84 * inBand);
-
-  /* While the self-test runs, the band is not speech — it is one tone walking
-     the spectrum. Everything else drops to a floor so the tone is the only
-     thing on the line, and the passband is the only place it is heard. */
-  if (this.sweepT >= 0) {
-    var d = Math.abs(x - this.scan), win = 0.05;
-    var g = d < win ? Math.pow(1 - d / win, 1.5) : 0;
-    return a * (0.09 + 1.75 * g);
-  }
-  return a;
 };
 
 Band.prototype.measure = function () {
@@ -2229,32 +2297,69 @@ Band.prototype.measure = function () {
   this.layout();
   return true;
 };
+/* the bloom, rendered once at a small size and stretched into place */
+Band.prototype.makeGlow = function () {
+  var S = 128, c = document.createElement("canvas");
+  c.width = S; c.height = S;
+  var g = c.getContext("2d");
+  if (!g) return (this.glow = c);
+  var rg = g.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+  rg.addColorStop(0, "rgba(255,180,84,0.20)");
+  rg.addColorStop(0.55, "rgba(255,168,70,0.09)");
+  rg.addColorStop(1, "rgba(255,168,70,0)");
+  g.fillStyle = rg;
+  g.fillRect(0, 0, S, S);
+  return (this.glow = c);
+};
+
 Band.prototype.resize = function () { if (this.measure()) this.draw(); };
 
 /* a test tone that walks the whole spectrum. Nothing happens until it reaches
    300 Hz, it blooms across the passband, and it dies again at 3400 Hz — which
    is the entire argument of the section, performed in under two seconds. */
-Band.prototype.sweep = function (dur) {
+Band.prototype.sweep = function (dur, done) {
   this.sweepDur = dur || 1.8;
+  this.onSweepEnd = done || null;
   this.sweepT = 0;
+  /* The ticker drives the sweep, but the ticker stops when the band scrolls
+     away or the tab hides. A backstop at twice the duration guarantees the
+     latch is always released — scroll away mid-sweep and the control still
+     comes back. */
+  clearTimeout(this._sweepGuard);
+  var self = this;
+  this._sweepGuard = setTimeout(function () { if (self.sweepT >= 0) self.endSweep(); },
+                                (dur || 1.8) * 2200);
   if (!this.animate) {                       /* reduced motion: two states */
     this.pulse = 0.85; this.draw();
     var self = this;
     clearTimeout(this._sweepTo);
-    this._sweepTo = setTimeout(function () { self.pulse = 0; self.draw(); }, 900);
+    this._sweepTo = setTimeout(function () {
+      self.pulse = 0; self.draw();
+      if (self.onSweepEnd) { var f = self.onSweepEnd; self.onSweepEnd = null; f(); }
+    }, 900);
     this.sweepT = -1;
   }
+};
+Band.prototype.endSweep = function () {
+  this.sweepT = -1; this.pulse = 0;
+  clearTimeout(this._sweepTo);
+  clearTimeout(this._sweepGuard);
+  if (this.onSweepEnd) { var f = this.onSweepEnd; this.onSweepEnd = null; f(); }
 };
 
 Band.prototype.step = function (dt) {
   this.t += dt * this.speed;
   this.pt += dt;
-  this.scan += dt * 0.085;
-  if (this.scan > 1.3) this.scan = -0.25;
+  /* the walking highlight is the band's own — unless a scrub or the self-test
+     is driving it, in which case it belongs to whoever is measuring */
+  if (!this.scanOwned && this.sweepT < 0) {
+    this.scan += dt * 0.085;
+    if (this.scan > 1.3) this.scan = -0.25;
+  }
 
   if (this.sweepT >= 0) {
     this.sweepT += dt / this.sweepDur;
-    if (this.sweepT >= 1) { this.sweepT = -1; this.pulse = 0; }
+    if (this.sweepT >= 1) { this.endSweep(); }
     else {
       this.scan = -0.06 + this.sweepT * 1.12;
       this.pulse = 0.95;                    /* the tone is loud; shape() decides
@@ -2262,18 +2367,24 @@ Band.prototype.step = function (dt) {
     }
   }
 
-  var g = this.gain();
+  var tgt = this._t;
+  if (!tgt || tgt.length !== this.n) tgt = this._t = new Float32Array(this.n);
+  this.targets(tgt);
+
   var k = dt * 60; if (k > 2) k = 2;
-  var fall = PEAK_FALL * dt;
+  /* Peak-hold is slow on purpose — but during the self-test the held trace of
+     the broadband signal would hang over a collapsed meter for the whole sweep
+     and read as a second, detached graphic. Let it recede so the tone is the
+     only thing on stage. */
+  var fall = (this.sweepT >= 0 ? PEAK_FALL * 3.2 : PEAK_FALL) * dt;
+  var ka = ATTACK * k; if (ka > 1) ka = 1;
+  var kr = RELEASE * k; if (kr > 1) kr = 1;
   for (var i = 0; i < this.n; i++) {
-    var target = limit(this.shape(i) * g);
-    var cur = this.v[i];
-    var rate = (target > cur ? ATTACK : RELEASE) * k;
-    if (rate > 1) rate = 1;
-    cur += (target - cur) * rate;
+    var target = tgt[i], cur = this.v[i];
+    cur += (target - cur) * (target > cur ? ka : kr);
     this.v[i] = cur;
-    var p = this.pk[i] - fall;
-    this.pk[i] = cur > p ? cur : p;
+    var pv = this.pk[i] - fall;
+    this.pk[i] = cur > pv ? cur : pv;
   }
   this.draw();
 };
@@ -2285,28 +2396,28 @@ Band.prototype.draw = function () {
   var edgeX = this.reveal * w;
   var edge = Math.min(0.05, EDGE_PX / Math.max(1, this.w));
   var lvl = this.level();
-  var LIT  = this.ink ? "7,10,18"  : "255,180,84";
-  var DIM  = this.ink ? "7,10,18"  : "255,190,120";
-  var CAP  = this.ink ? "26,18,6"  : "255,217,160";
+  /* On the amber button the meter is drawn in the button's own colour, burnt
+     down — near-black bars over amber read as a printing misregistration. */
+  var LIT  = this.ink ? "124,66,8"  : "255,180,84";
+  var DIM  = this.ink ? "124,66,8"  : "255,190,120";
+  var CAP  = this.ink ? "86,44,4"   : "255,217,160";
   var rad  = this.bar >= 3 && HAS_ROUND ? this.bar / 2 : 0;
 
   ctx.clearRect(0, 0, w, h);
 
-  /* ── the bloom under the passband: one elliptical gradient, not a filter ── */
+  /* ── the bloom under the passband: a fixed shape at a varying intensity, so
+        it is prerendered once and blitted, not rebuilt every frame ── */
   if (this.bloom && !this.ink) {
     var gx0 = X_LO * w, gx1 = X_HI * w;
     var vis = Math.min(gx1, edgeX);
     if (vis > gx0) {
+      var glow = this.glow || this.makeGlow();
+      var rx = (gx1 - gx0) / 2 + 34, ry = half * 0.86;
       ctx.save();
       if (this.reveal < 0.999) { ctx.beginPath(); ctx.rect(0, 0, edgeX, h); ctx.clip(); }
-      ctx.translate((gx0 + gx1) / 2, cy);
-      ctx.scale((gx1 - gx0) / 2 + 34, half * 0.86);
-      var bg = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
-      bg.addColorStop(0, "rgba(255,180,84," + (0.05 + 0.15 * lvl).toFixed(3) + ")");
-      bg.addColorStop(0.55, "rgba(255,168,70," + (0.02 + 0.07 * lvl).toFixed(3) + ")");
-      bg.addColorStop(1, "rgba(255,168,70,0)");
-      ctx.fillStyle = bg;
-      ctx.fillRect(-1, -1, 2, 2);
+      ctx.globalAlpha = 0.34 + 0.66 * lvl;
+      ctx.drawImage(glow, (gx0 + gx1) / 2 - rx, cy - ry, rx * 2, ry * 2);
+      ctx.globalAlpha = 1;
       ctx.restore();
     }
   }
@@ -2321,16 +2432,40 @@ Band.prototype.draw = function () {
   ctx.fillStyle = lg;
   ctx.fillRect(0, Math.round(cy), edgeX, 1);
 
-  /* ── the bars ── */
-  var i, x, inBand, bh, sc, a;
+  /* ── the bars ───────────────────────────────────────────────────────────
+     Batched. Almost every bar inside the passband is lit identically, so they
+     go into one path and one fill; only the filter's shoulders and the few
+     bars under the scan need their own alpha. That turns ~380 rasterisations
+     a frame into about a dozen. ── */
+  var litFill = "rgb(" + LIT + ")";
+  var capFill = "rgb(" + CAP + ")";
+  var dimFill = "rgb(" + DIM + ")";
+  var FULL_A = 0.90, PEAK_A = 0.84;
+  var bar = this.bar;
+
+  function rrect(px, top, hgt) {
+    if (rad) ctx.roundRect(px, top, bar, hgt, rad);
+    else ctx.rect(px, top, bar, hgt);
+  }
+
+  var odd = this._odd || (this._odd = []);      /* reused, never reallocated */
+  var oddN = 0, peakOdd = this._podd || (this._podd = []), peakOddN = 0;
+  var stubN = 0, stubs = this._stubs || (this._stubs = []);
+  var tips = this._tips || (this._tips = []), tipN = 0;
+
+  ctx.fillStyle = litFill;
+  ctx.globalAlpha = FULL_A;
+  ctx.beginPath();
+
+  var i, x, inBand, bh, sc, a, ph, px, top, d;
   for (i = 0; i < this.n; i++) {
-    var px = i * this.stepPx;
+    px = i * this.stepPx;
     if (px > edgeX) break;
-    x = (px + this.bar / 2) / w;
+    x = (px + bar / 2) / w;
     inBand = smoothstep(X_LO - edge, X_LO + edge, x) * (1 - smoothstep(X_HI - edge, X_HI + edge, x));
 
     /* the walking highlight, and the sweep tone riding on top of it */
-    var d = Math.abs(x - this.scan);
+    d = Math.abs(x - this.scan);
     sc = d < 0.075 ? (1 - d / 0.075) * (this.sweepT >= 0 ? 1 : 0.42) : 0;
 
     bh = this.v[i] * half;
@@ -2339,50 +2474,83 @@ Band.prototype.draw = function () {
     if (inBand > 0.03) {
       a = (this.dim + (0.90 - this.dim) * inBand) * (1 + sc * 0.55);
       if (a > 1) a = 1;
-      var top = cy - bh;
-      var grd = ctx.createLinearGradient(0, top, 0, cy + bh);
-      grd.addColorStop(0,   "rgba(" + CAP + "," + (a * 0.92).toFixed(3) + ")");
-      grd.addColorStop(0.5, "rgba(" + LIT + "," + a.toFixed(3) + ")");
-      grd.addColorStop(1,   "rgba(" + CAP + "," + (a * 0.92).toFixed(3) + ")");
-      ctx.fillStyle = grd;
-      ctx.beginPath();
-      if (rad) ctx.roundRect(px, top, this.bar, bh * 2, rad);
-      else ctx.rect(px, top, this.bar, bh * 2);
-      ctx.fill();
+      top = cy - bh;
+      if (a > FULL_A - 0.012 && a < FULL_A + 0.012) rrect(px, top, bh * 2);
+      else { odd[oddN++] = px; odd[oddN++] = top; odd[oddN++] = bh * 2; odd[oddN++] = a; }
+      /* every bar gets a lit tip, however short — the highlight belongs to the
+         bar, not to a position on the canvas */
+      if (bh > 2.2) { tips[tipN++] = px; tips[tipN++] = top; tips[tipN++] = bh; }
 
       /* the peak: what the line reached, floating down */
-      var ph = this.pk[i] * half;
+      ph = this.pk[i] * half;
       if (ph > bh + 1.2 && ph > 2.5) {
-        ctx.fillStyle = "rgba(" + CAP + "," + (0.34 + 0.5 * inBand).toFixed(3) + ")";
-        ctx.beginPath();
-        if (rad) {
-          ctx.roundRect(px, cy - ph - 1.6, this.bar, 1.6, 0.8);
-          ctx.roundRect(px, cy + ph, this.bar, 1.6, 0.8);
-        } else {
-          ctx.rect(px, cy - ph - 1.6, this.bar, 1.6);
-          ctx.rect(px, cy + ph, this.bar, 1.6);
-        }
-        ctx.fill();
+        a = 0.34 + 0.5 * inBand;
+        peakOdd[peakOddN++] = px; peakOdd[peakOddN++] = ph;
+        peakOdd[peakOddN++] = (a > PEAK_A - 0.012 && a < PEAK_A + 0.012) ? -1 : a;
       }
     } else {
       /* outside the telephone band: a flat stub. The line throws this away. */
-      var sh = Math.min(bh, half * 0.11) + 0.4;
-      ctx.fillStyle = "rgba(" + DIM + "," + (this.dim * (1 + sc)).toFixed(3) + ")";
-      ctx.fillRect(px, cy - sh, this.bar, sh * 2);
+      bh = Math.min(bh, half * 0.11) + 0.4;
+      stubs[stubN++] = px; stubs[stubN++] = cy - bh; stubs[stubN++] = bh * 2;
+      stubs[stubN++] = sc > 0.01 ? Math.min(1, this.dim * (1 + sc)) : -1;
     }
   }
+  ctx.fill();
 
-  /* ── the reflection: the half below the line fades out, so the band reads as
-        sitting on a surface. Erased, not painted over — painting a dark rect on
-        a transparent canvas would show as a box against the section behind. ── */
-  ctx.globalCompositeOperation = "destination-out";
-  var ref = ctx.createLinearGradient(0, cy, 0, h);
-  ref.addColorStop(0, "rgba(0,0,0,0)");
-  ref.addColorStop(0.45, "rgba(0,0,0,0.30)");
-  ref.addColorStop(1, "rgba(0,0,0,0.66)");
-  ctx.fillStyle = ref;
-  ctx.fillRect(0, cy, w, h - cy);
-  ctx.globalCompositeOperation = "source-over";
+  for (i = 0; i < oddN; i += 4) {
+    ctx.globalAlpha = odd[i + 3];
+    ctx.beginPath();
+    rrect(odd[i], odd[i + 1], odd[i + 2]);
+    ctx.fill();
+  }
+
+  /* the lit tips, one batched pass */
+  ctx.fillStyle = capFill;
+  ctx.globalAlpha = 0.55;
+  ctx.beginPath();
+  for (i = 0; i < tipN; i += 3) {
+    px = tips[i]; top = tips[i + 1]; bh = tips[i + 2];
+    if (rad) { ctx.roundRect(px, top, bar, 1.7, rad * 0.8); ctx.roundRect(px, cy + bh - 1.7, bar, 1.7, rad * 0.8); }
+    else { ctx.rect(px, top, bar, 1.7); ctx.rect(px, cy + bh - 1.7, bar, 1.7); }
+  }
+  ctx.fill();
+
+  /* peaks: one batched pass at the common alpha, the rest individually */
+  ctx.fillStyle = capFill;
+  ctx.globalAlpha = PEAK_A;
+  ctx.beginPath();
+  for (i = 0; i < peakOddN; i += 3) {
+    if (peakOdd[i + 2] !== -1) continue;
+    ph = peakOdd[i + 1]; px = peakOdd[i];
+    if (rad) { ctx.roundRect(px, cy - ph - 1.6, bar, 1.6, 0.8); ctx.roundRect(px, cy + ph, bar, 1.6, 0.8); }
+    else { ctx.rect(px, cy - ph - 1.6, bar, 1.6); ctx.rect(px, cy + ph, bar, 1.6); }
+  }
+  ctx.fill();
+  for (i = 0; i < peakOddN; i += 3) {
+    if (peakOdd[i + 2] === -1) continue;
+    ctx.globalAlpha = peakOdd[i + 2];
+    ph = peakOdd[i + 1]; px = peakOdd[i];
+    ctx.beginPath();
+    if (rad) { ctx.roundRect(px, cy - ph - 1.6, bar, 1.6, 0.8); ctx.roundRect(px, cy + ph, bar, 1.6, 0.8); }
+    else { ctx.rect(px, cy - ph - 1.6, bar, 1.6); ctx.rect(px, cy + ph, bar, 1.6); }
+    ctx.fill();
+  }
+
+  /* the stubs outside the band, same treatment */
+  ctx.fillStyle = dimFill;
+  ctx.globalAlpha = this.dim;
+  ctx.beginPath();
+  for (i = 0; i < stubN; i += 4) {
+    if (stubs[i + 3] !== -1) continue;
+    ctx.rect(stubs[i], stubs[i + 1], bar, stubs[i + 2]);
+  }
+  ctx.fill();
+  for (i = 0; i < stubN; i += 4) {
+    if (stubs[i + 3] === -1) continue;
+    ctx.globalAlpha = stubs[i + 3];
+    ctx.fillRect(stubs[i], stubs[i + 1], bar, stubs[i + 2]);
+  }
+  ctx.globalAlpha = 1;
 
   /* ── the drawing head, while a divider is still being drawn ── */
   if (this.reveal < 0.999 && this.reveal > 0.001) {
@@ -2426,7 +2594,7 @@ function setBandsMotion(on) {
   for (var i = 0; i < bands.length; i++) {
     var b = bands[i];
     b.animate = on;
-    if (!on) { b.reveal = 1; b.drive = 0; b.pulse = 0; b.sweepT = -1; b.settle(); b.draw(); }
+    if (!on) { b.endSweep(); b.reveal = 1; b.drive = 0; b.settle(); b.draw(); }
   }
   if (!on) bandVel = 0;
   bandRefreshTicker();
@@ -2437,7 +2605,7 @@ function initBands() {
     var kind = c.getAttribute("data-band");
     var b;
     if (kind === "hero")         b = new Band(c, { amp: 0.60, speed: 0.075, dim: 0.11, bar: 4, gap: 4, base: 0.16 });
-    else if (kind === "divider") b = new Band(c, { amp: 0.60, speed: 0.055, dim: 0.13, bar: 3, gap: 3, base: 0.42 });
+    else if (kind === "divider") b = new Band(c, { amp: 0.60, speed: 0.055, dim: 0.13, bar: 4, gap: 5, base: 0.42, bloom: false });
     else if (kind === "voice")   b = new Band(c, { amp: 0.72, speed: 0.165, dim: 0.10, bar: 5, gap: 4, base: 0.34 });
     else                         b = new Band(c, { amp: 0.42, speed: 0.240, dim: 0.13, bar: 2, gap: 2, base: 0.5, ink: true, bloom: false });
     if (!b.ctx) return;                  /* no 2d context — leave the slot empty */
@@ -2458,9 +2626,12 @@ function initBands() {
         if (!b) return;
         b.visible = e.isIntersecting;
         if (e.isIntersecting) b.measure();
+        /* an invisible canvas is not worth a frame: the CTA fill only shows on
+           hover or during its one arrival demo */
+        if (b.kind === "btn" && b.visible) b.visible = b.wanted === true;
       });
       bandRefreshTicker();
-    }, { rootMargin: "120px 0px" });
+    }, { rootMargin: "60px 0px" });
     bands.forEach(function (b) { io.observe(b.c); });
     keep(function () { io.disconnect(); });
   } else {
@@ -2522,17 +2693,19 @@ function initDemoAudio() {
        walks the spectrum from 60 Hz to 12 kHz; nothing happens until it
        reaches 300, it blooms across the passband, and it dies at 3400. The
        empty state performs the argument the section is making. */
-    var busy = 0;
+    var busy = false;
+    function done() { busy = false; btn.classList.remove("is-scanning"); }
     on(btn, "click", function () {
       if (!voiceBand || busy) return;
-      busy = 1;
+      busy = true;
       btn.classList.add("is-scanning");
-      voiceBand.sweep(1.9);
-      busy = setTimeout(function () { btn.classList.remove("is-scanning"); busy = 0; }, 2000);
+      /* ends with the sweep itself, not on a wall clock — a hidden tab stops
+         the ticker but never stops a timer */
+      voiceBand.sweep(1.9, done);
     });
     /* the hero's „Poslušaj demo” lands here — let it fire the same sweep */
     demoSweep = function () { if (voiceBand && !busy) btn.click(); };
-    keep(function () { clearTimeout(busy); btn.classList.remove("is-scanning"); demoSweep = null; });
+    keep(function () { if (voiceBand) voiceBand.endSweep(); done(); demoSweep = null; });
     return;
   }
 
@@ -2709,6 +2882,7 @@ function initFaq() {
    state on screen is a function of a single clock, so the loop cannot drift
    or show two states at once, and a tab switch cannot desync it. (F5)      */
 var phoneTl = null;
+var STATIC_TIMER = "00:20";     /* == floor(OUT_AT - ANSWER); the markup ships it */
 
 function initPhoneLoop(gsap) {
   var stage    = $(".phone-stage");
@@ -2736,7 +2910,6 @@ function initPhoneLoop(gsap) {
     { typ: 15.85, bub: 16.55, speakTo: 19.20, agent: true  }
   ];
   var ANSWER = 2.0, CONFIRM_AT = 19.85, OUT_AT = 22.35, RESET_AT = 23.02, IN_AT = 23.10, TOTAL = 24.0;
-  var CALL_LEN = Math.floor(OUT_AT - ANSWER);   /* what the static markup shows */
 
   var checkLen = 0;
   try { checkLen = checkP.getTotalLength() || 0; } catch (e) { checkLen = 0; }
@@ -2768,6 +2941,10 @@ function initPhoneLoop(gsap) {
   }
 
   root.classList.add("js-loop");
+  /* A transcript that rewrites itself every few seconds is hostile to a screen
+     reader. The static state this replaces — which is also the reduced-motion
+     and no-JS state — stays fully exposed. */
+  stage.setAttribute("aria-hidden", "true");
   setIdle();
 
   var tl = gsap.timeline({
@@ -2892,17 +3069,26 @@ function initPhoneTilt(gsap, fine) {
     el.style.transform = "rotateY(" + ry.toFixed(2) + "deg) rotateX(" + rx.toFixed(2) + "deg)";
     if (glare) glare.style.setProperty("--glare-x", (-18 + (ry / MAX) * 16).toFixed(2) + "%");
   }
-  function start() { if (!raf && alive) { t0 = performance.now(); raf = requestAnimationFrame(loop); } }
-  function stop()  { if (raf) { cancelAnimationFrame(raf); raf = 0; } }
+  function start() { if (!raf && alive) { live = true; remeasure(); t0 = performance.now(); raf = requestAnimationFrame(loop); } }
+  function stop()  { live = false; if (raf) { cancelAnimationFrame(raf); raf = 0; } }
 
+  var live = false, cx0 = 0, cy0 = 0;
+  function remeasure() {
+    var r = stage.getBoundingClientRect();
+    cx0 = r.left + r.width / 2;
+    cy0 = r.top + r.height / 2;
+  }
   if (fine) {
     on(window, "pointermove", function (e) {
-      var r = stage.getBoundingClientRect();
-      var dx = (e.clientX - (r.left + r.width / 2)) / (window.innerWidth / 2);
-      var dy = (e.clientY - (r.top + r.height / 2)) / (window.innerHeight / 2);
+      if (!live) return;                 /* the phone is nowhere near the view */
+      var dx = (e.clientX - cx0) / (window.innerWidth / 2);
+      var dy = (e.clientY - cy0) / (window.innerHeight / 2);
       ty = Math.max(-MAX, Math.min(MAX, dx * MAX));
       tx = Math.max(-MAX, Math.min(MAX, -dy * MAX * 0.6));
     }, { passive: true });
+    /* the centre only moves when the page does, so read it there, not per event */
+    on(window, "scroll", function () { if (live) remeasure(); }, { passive: true });
+    on(window, "resize", function () { if (live) remeasure(); }, { passive: true });
   }
 
   var io = null;
@@ -3020,11 +3206,12 @@ function initLineReveals(gsap, ScrollTrigger) {
   var hosts = $$("[data-lines]").filter(function (el) { return !el.closest("#hero"); });
   if (!hosts.length) return null;
   lineHosts = hosts;
-  var kills = [], dead = false;
+  var kills = [], dead = false, net = 0;
 
   function build() {
     if (dead) return;
     hosts.forEach(function (el) {
+      gsap.killTweensOf(el.__lines || []);   /* a re-split detaches these nodes */
       var lines = splitLines(el);
       if (!lines.length) return;
       gsap.set(lines, { yPercent: el.__shown ? 0 : 112 });
@@ -3041,21 +3228,48 @@ function initLineReveals(gsap, ScrollTrigger) {
       kills.push(function () { if (el.__lineST) { el.__lineST.kill(); el.__lineST = null; } });
     });
     ScrollTrigger.refresh();
+
+    /* the same last-resort net the fading reveals get: a heading behind
+       overflow:hidden must never be one missed trigger away from invisible */
+    clearTimeout(net);
+    net = setTimeout(function () {
+      if (dead) return;
+      hosts.forEach(function (el) {
+        if (el.__shown || !el.__lines) return;
+        var r = el.getBoundingClientRect();
+        if (r.top < window.innerHeight && r.bottom > 0) {
+          el.__shown = true;
+          gsap.to(el.__lines, { yPercent: 0, duration: 0.6, stagger: 0.06, ease: EASE, overwrite: "auto" });
+        }
+      });
+    }, 4500);
+  }
+  function safeBuild() {
+    /* build() runs from a promise, long after safe() returned — it has to
+       carry its own guard, or a throw here is an unhandled rejection that
+       leaves half the headings empty */
+    try { build(); }
+    catch (err) {
+      console.warn("[glas] module skipped: lines/build", err);
+      dead = true;
+      hosts.forEach(function (el) { gsap.killTweensOf(el.__lines || []); unsplitLines(el); });
+    }
   }
 
   /* F2 again: a line is a measurement, so it cannot be taken against fallback
      metrics — split only once the real faces have settled. */
   var fonts = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
-  Promise.race([fonts, new Promise(function (r) { setTimeout(r, 1200); })]).then(build, build);
+  Promise.race([fonts, new Promise(function (r) { setTimeout(r, 1200); })]).then(safeBuild, safeBuild);
 
   /* a width change invalidates every one of those measurements */
-  var relayout = debounce(build, 220);
+  var relayout = debounce(safeBuild, 220);
   var lastW = window.innerWidth;
   var onResize = function () { if (window.innerWidth !== lastW) { lastW = window.innerWidth; relayout(); } };
   on(window, "resize", onResize, { passive: true });
 
   return function () {
     dead = true;
+    clearTimeout(net);
     kills.forEach(function (f) { f(); });
     hosts.forEach(function (el) {
       gsap.killTweensOf(el.__lines || []);
@@ -3135,11 +3349,18 @@ function initDrawIns(gsap, ScrollTrigger) {
 
   $$(".feat-ico svg").forEach(function (svg) {
     var shapes = $$("path, circle, rect, line, polyline", svg);
+    /* getTotalLength() answers in viewBox units. These shapes carry
+       vector-effect: non-scaling-stroke, so the browser builds their dash
+       pattern in rendered space — the two disagree by exactly the render
+       scale, and without this the icons start part-drawn. */
+    var box = svg.viewBox && svg.viewBox.baseVal ? svg.viewBox.baseVal.width : 0;
+    var drawn = svg.getBoundingClientRect().width;
+    var k = (box > 0 && drawn > 0) ? drawn / box : 1;
     var lens = [];
     var ok = true;
     shapes.forEach(function (n) {
       var L = 0;
-      try { L = n.getTotalLength ? n.getTotalLength() : 0; } catch (e) { L = 0; }
+      try { L = n.getTotalLength ? n.getTotalLength() * k : 0; } catch (e) { L = 0; }
       if (!L || !isFinite(L)) ok = false;
       lens.push(L);
     });
@@ -3164,14 +3385,33 @@ function initDrawIns(gsap, ScrollTrigger) {
     var stC = ScrollTrigger.create({
       trigger: cta, start: "top 62%", once: true,
       onEnter: function () {
+        wantBtnBand(true);
         if (btnBand) btnBand.pulse = 0.9;
-        gsap.timeline()
+        gsap.timeline({ onComplete: function () { wantBtnBand(false); } })
           .to(fill, { opacity: 0.45, duration: 0.7, ease: EASE })
           .to(fill, { opacity: 0, duration: 0.9, ease: EASE }, 1.1)
           .to(btnBand || {}, { pulse: 0, duration: 0.9 }, 1.1);
       }
     });
-    kills.push(function () { stC.kill(); gsap.set(fill, { clearProps: "opacity" }); if (btnBand) btnBand.pulse = 0; });
+    /* and again whenever a pointer actually brings the fill on screen */
+    var btn = $("#cta-btn");
+    if (btn && matchMedia("(hover: hover) and (pointer: fine)").matches) {
+      /* The arrival timeline leaves an inline opacity on the fill, and an
+         inline style outranks the :hover rule — so the hover has to be driven
+         here too, or the meter never comes back after the first pass. */
+      var onIn = function () {
+        wantBtnBand(true);
+        gsap.to(fill, { opacity: 0.45, duration: 0.32, ease: EASE, overwrite: true });
+      };
+      var onOut = function () {
+        gsap.to(fill, { opacity: 0, duration: 0.5, ease: EASE, overwrite: true,
+                        onComplete: function () { wantBtnBand(false); } });
+      };
+      btn.addEventListener("pointerenter", onIn, { passive: true });
+      btn.addEventListener("pointerleave", onOut, { passive: true });
+      kills.push(function () { btn.removeEventListener("pointerenter", onIn); btn.removeEventListener("pointerleave", onOut); });
+    }
+    kills.push(function () { stC.kill(); gsap.set(fill, { clearProps: "opacity" }); wantBtnBand(false); if (btnBand) btnBand.pulse = 0; });
   }
 
   return function () { kills.forEach(function (f) { f(); }); };
@@ -3289,7 +3529,12 @@ function initSteps(gsap, ScrollTrigger) {
     var a = $(".step-n", steps[0]), z = $(".step-n", steps[steps.length - 1]);
     if (!a || !z) return;
     var w = wrap.getBoundingClientRect(), ra = a.getBoundingClientRect(), rz = z.getBoundingClientRect();
-    if (!w.width || rz.top - ra.top > 4) return;      /* stacked: CSS hides it */
+    if (!w.width || rz.top - ra.top > 4) {
+      /* stacked layout: hand the rail back to CSS, which turns it vertical.
+         An inline left/right would beat the media query and strand it. */
+      track.style.left = ""; track.style.right = "";
+      return;
+    }
     track.style.left = Math.round(ra.left + ra.width / 2 - w.left) + "px";
     track.style.right = Math.round(w.right - (rz.left + rz.width / 2)) + "px";
   }
@@ -3363,28 +3608,51 @@ function initScrollSignal(gsap, ScrollTrigger) {
   return function () { st.kill(); bandVel = 0; };
 }
 
+function wantBtnBand(on) {
+  if (!btnBand) return;
+  btnBand.wanted = !!on;
+  btnBand.visible = !!on;
+  bandRefreshTicker();
+}
+
 function initMarqueeMotion(gsap, ScrollTrigger) {
   var track = $("#marquee-track"), wrap = $("#za-koga");
   if (!track || !wrap) return null;
   root.classList.add("js-marquee");              /* hands over from the CSS loop */
 
   var tl = gsap.to(track, { xPercent: -50, duration: 46, ease: "none", repeat: -1 });
-  var dir = 1;
+  var dir = 1, target = 1, hovering = false;
+
+  /* eased in the ticker rather than by a tween per scroll frame */
+  var ease = function () {
+    var cur = tl.timeScale();
+    var next = cur + (target - cur) * 0.09;
+    if (Math.abs(next - target) < 0.004) next = target;
+    if (next !== cur) tl.timeScale(next);
+  };
+  gsap.ticker.add(ease);
+
   var st = ScrollTrigger.create({
     start: 0, end: "max",
     onUpdate: function (self) {
+      if (hovering) return;
       var v = self.getVelocity();
-      var d = v < 0 ? -1 : 1;
-      if (d !== dir) { dir = d; gsap.to(tl, { timeScale: d, duration: 0.35, overwrite: true }); }
-      var boost = Math.min(3.4, 1 + Math.abs(v) / 900);
-      gsap.to(tl, { timeScale: d * boost, duration: 0.25, overwrite: true });
-      gsap.to(tl, { timeScale: d, duration: 1.1, delay: 0.25, overwrite: false, ease: "power2.out" });
+      dir = v < -40 ? -1 : v > 40 ? 1 : dir;
+      target = dir * Math.min(3.2, 1 + Math.abs(v) / 1100);
     }
   });
+  /* and settles back to a walk once the scroll stops */
+  var settleTs = setInterval(function () {
+    if (hovering) return;
+    /* the boost decays, and the direction returns to its resting sign — an
+       upward flick reverses the strip while you flick, not for ever */
+    var mag = 1 + (Math.abs(target) - 1) * 0.55;
+    if (mag < 1.04) { dir = 1; mag = 1; }
+    target = dir * mag;
+  }, 220);
 
-  var hovering = false;
-  var onEnter = function () { hovering = true; gsap.to(tl, { timeScale: 0, duration: 0.4, overwrite: true }); };
-  var onLeave = function () { hovering = false; gsap.to(tl, { timeScale: dir, duration: 0.5, overwrite: true }); };
+  var onEnter = function () { hovering = true; target = 0; };
+  var onLeave = function () { hovering = false; target = dir; };
   if (matchMedia("(hover: hover) and (pointer: fine)").matches) {
     wrap.addEventListener("pointerenter", onEnter, { passive: true });
     wrap.addEventListener("pointerleave", onLeave, { passive: true });
@@ -3399,6 +3667,8 @@ function initMarqueeMotion(gsap, ScrollTrigger) {
 
   return function () {
     st.kill(); tl.kill();
+    clearInterval(settleTs);
+    gsap.ticker.remove(ease);
     if (io) io.disconnect();
     wrap.removeEventListener("pointerenter", onEnter);
     wrap.removeEventListener("pointerleave", onLeave);
@@ -3421,7 +3691,9 @@ function initVoiceProbe(gsap, ScrollTrigger) {
   var b = voiceBand;
   b.reveal = 0.04;
   gsap.set(marks, { opacity: 0, y: 6 });
-  var seen = false, lastHz = -1, wasIn = null;
+  var seen = false, lastHz = -1, wasIn = null, frameW = frame.clientWidth || 1;
+  b.scanOwned = true;              /* the scrub drives the highlight from here */
+  root.classList.add("js-probe");  /* and only now is the cursor worth showing */
 
   function hzAt(x) {
     var f = F_MIN * Math.pow(F_MAX / F_MIN, x);
@@ -3434,14 +3706,16 @@ function initVoiceProbe(gsap, ScrollTrigger) {
     end: "bottom 20%",
     scrub: 0.55,
     invalidateOnRefresh: true,
+    onRefresh: function () { frameW = frame.clientWidth || 1; },
     onUpdate: function (self) {
       var p = self.progress;
       if (window.__glasDebug) window.__glasProbeP = p;
       if (b.audioOwned) return;               /* the player has the band */
-      var w = frame.clientWidth || 1;
 
-      /* the probe */
-      cursor.style.transform = "translate3d(" + (p * w).toFixed(1) + "px,0,0)";
+      /* The probe's x is the same 0..1 axis the canvas draws on, so comparing
+         it against X_LO/X_HI — which are positions on that axis, not scroll
+         positions — is exact, not a coincidence. */
+      cursor.style.transform = "translate3d(" + (p * frameW).toFixed(1) + "px,0,0)";
       var hz = hzAt(p);
       if (hz !== lastHz) { lastHz = hz; read.textContent = hz + " Hz"; }
       var inBand = p >= X_LO && p <= X_HI;
@@ -3465,7 +3739,10 @@ function initVoiceProbe(gsap, ScrollTrigger) {
 
   return function () {
     st.kill();
+    b.endSweep();
     b.reveal = 1; b.drive = 0; b.scan = -0.25;
+    b.scanOwned = false; b.audioOwned = false;
+    root.classList.remove("js-probe");
     cursor.style.transform = "";
     cursor.classList.remove("in-band");
     gsap.set(marks, { clearProps: "all" });
@@ -3672,7 +3949,7 @@ function initMotionSystem(gsap, ScrollTrigger) {
             gsap.set(["#ph-content", "#ph-incoming", "#ph-call", "#ph-thread", "#ph-confirm", "#ph-note",
                       ".ph-turn", ".ph-typing", "#ph-check-path"], { clearProps: "all" });
             var w = $("#ph-wave"); if (w) w.classList.remove("is-speaking");
-            var t = $("#ph-timer"); if (t) t.textContent = "00:" + CALL_LEN;
+            var t = $("#ph-timer"); if (t) t.textContent = STATIC_TIMER;
           };
         }));
         push(safe("lines",    function () { return initLineReveals(gsap, ScrollTrigger); }));
