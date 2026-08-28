@@ -275,7 +275,122 @@ so its column is not 600px of dead space.
 
 ---
 
-PLACEHOLDER_ROUNDS_6_7
+## 6 · The motion round — adversarial code review (two passes)
+
+A subagent was given the motion layer and the canvas engine and told to find
+defects, not to approve. It ran twice — once on the first motion build, once
+against the diff after the first round of fixes. **Twenty-nine findings across
+the two passes; twenty-four were real and are fixed.** The ones that mattered:
+
+| finding | fix |
+|---|---|
+| `@property --rule` was declared `inherits: false`, and its only consumers are `::before` pseudo-elements. A registered property with `inherits: false` resolves to its *initial value* on a pseudo — so every eyebrow rule was drawn at full width from first paint and the scroll draw-in, nine instances down the page, **had never once been seen**, while an 0.8 s per-frame custom-property write ran for nothing | `inherits: true`. Verified: below-fold eyebrows now sit at `scaleX(0)` and animate to 1 on entry |
+| the steps rail turns vertical below 900 px, but the timeline still scrubbed `scaleX` — which on a 1 px-wide rail scales its *width*. On every phone the rail stayed sub-pixel until progress neared 1 and then appeared all at once | the scrub picks the axis from the measured rail. Verified at 390 (`scaleY` 0 → 0.57 → 1) and at 1440 (`scaleX` 0 → 0.46 → 1) |
+| the same module lives in a *motion*-scoped `matchMedia`, not a width-scoped one, so it is never rebuilt across that breakpoint — flipping the axis on refresh left the other one stranded wherever the last scrub had put it. A desktop → phone → desktop round trip at the top of the page brought the rail back fully drawn on a section below the fold | a refresh re-applies the trigger's live progress on whichever axis is current |
+| the scroll probe owned the band's `reveal` unconditionally, so pressing the demo button cut the meter off in mid-air for the whole 1.9 s sweep — the one interaction the section exists for | the sweep claims `reveal`; the probe writes it only when nothing else holds it |
+| …and the probe's bail-out then skipped the *whole* handler, so during the smooth-scroll glide the cursor parked at one frequency while the readout showed another | only the three fields the sweep owns are skipped. Verified: after the arrival sweep the readout matches the cursor's own position exactly |
+| the reduced-motion self-test raised `pulse` without recomputing the targets, so it re-rendered identical bars — the meter did nothing at all | `settle()` before `draw()` |
+| the phone-tilt loop restarted on an off-screen phone after any tab switch, and nothing could stop it again: a `transform` write and a forced layout every frame for the rest of the session | `start()` requires the IntersectionObserver's `inView`. Verified frozen off-screen after a tab return, and awake on return to the hero |
+| `js-motion` goes on the root whether or not GSAP arrived, so gating the hairline-grid wash on it stripped both grids of their internal rules on the blocked-CDN path — three stats and six feature cells as one undivided slab | the module that lights the wash owns the class that switches it off |
+| nothing owns the CTA meter when GSAP is absent, so `wanted` stayed `undefined` and the observer read that as "off" — while the CSS `:hover` still revealed the canvas. A frozen meter, or a blank one if the button had reflowed since boot | `undefined` means "no owner, follow the observer"; a canvas whose backing store was just cleared repaints immediately |
+| the reveal watchdog — armed first precisely because everything below it can throw — depended on a binding declared below it, and released the grid washes without the viewport test its siblings get | declaration hoisted, same test applied |
+| the CTA arrival demo's `onComplete` switched the meter off under a pointer that was asking for it | an `over` flag gates the hand-back, teardown included |
+| per-frame allocation in the only hot loop: one `CanvasGradient`, eight string concatenations and one closure, per band, per frame — all of it dependent only on width and palette | built in `layout()`; the closure is gone |
+| teardowns promoted with `willChange` outside GSAP (so `clearProps` could not take it back) and left their own tweens running over the re-initialised hidden state | both released explicitly |
+
+It also confirmed clean, by argument rather than assertion: the blocked-CDN
+boot order; the `withBag`/`dispose` teardown discipline and the two
+`document.fonts.ready` continuations; that `ScrollTrigger.batch` self-registers
+with the active `gsap.context` and is killed on revert; `refreshPriority: 10`
+on the hero pin; the `layout()` cache's early-return, first-call and DPR-change
+paths (a `CanvasGradient` is resolved against the CTM at paint time, so it
+survives the backing-store reset); and that no element outside `.eyebrow` /
+`.marquee-label` can now inherit `--rule`.
+
+---
+
+## 7 · The motion round — design director review (two passes)
+
+A second subagent, given the art direction and the client's brief for this
+round and told to be harsh. Two passes, the second on the rebuilt page.
+**Thirteen real defects in the final pass; eleven are fixed.**
+
+**The reveal outran the probe.** The band completed at `p = 0.226` while the
+300 Hz mark sits at `p = 0.3038` — measured, not estimated. So the spectrum was
+whole *before* the probe reached the passband, and the causal claim the whole
+section rests on was never actually made. It fills just ahead of the probe now
+and completes exactly as the probe leaves the band at 3400 Hz.
+
+**The dead track is chassis, not content.** Half-revealed, the meter was a
+95 px stump of bars alone on black with one Hz tag floating above it — "a
+loading skeleton", occupying a full viewport immediately before the site's
+signature moment. The stub track, the centre line and both frequency rails are
+drawn from the first frame now; only the amber signal draws in. A divider band
+is almost all dead track, so that one still reveals whole — hence an explicit
+`chassis` option rather than a global change.
+
+**The fourth placement of the motif was a two-second cameo.** The CTA meter
+faded itself to zero after its arrival demo, so most of the time the placement
+did not exist; and what did show was a centred lens with no passband-and-stub
+reading at all. It rests at 0.24 opacity now, spans the button with a legible
+dead track at both ends, and swells to 0.46 rather than appearing and leaving.
+The label is masked out of the bars' path, so they pass behind the word and
+re-emerge above and below it instead of striking through the letterforms.
+
+**Amber fading its alpha over blue-black ink goes khaki.** Measured: the
+roll-off shoulders at (163,133,96) and (136,115,91) against the in-band amber's
+(208,167,110) — chroma collapsing from 0.47 to 0.33. They are the tallest
+non-passband elements and they straddle the two labelled lines the section's
+claim depends on. The bar-height ramp carries the roll-off; the colour holds.
+
+**Cyan was a hero leftover, not a system.** Measured across all nine sections:
+349 px of cyan in the hero, ≤ 92 px anywhere else, and those residuals were
+anti-aliasing. The probe cursor — the machine measuring the line — was the same
+pale grey as the two fixed rules beside it. It is cyan now and turns amber
+where it finds signal, which fixes the defect and the 85/15 split in one line.
+
+Also fixed: the spatial noise frequencies scale with bar count, so the envelope
+is as smooth at 390 px as at 1920 (bar-to-bar jag was 2.3× worse on a phone); a
+held peak over a bar at the floor is suppressed rather than drawing a dotted
+rule attached to nothing; the self-test ducks fast at the start so the tone has
+a silence to bloom into, and reads as a tick rather than a swell while crossing
+the dead axis; every feature icon closes its own silhouette before the marks
+inside it draw, instead of holding a fragment of the outline for most of a
+second; the play control is a live amber glyph rather than a dead grey one, and
+is no longer frosted glass; the hero copy holds legible for longer on the way
+out, so a reader scrubbing the pin does not park on a brown-on-brown button.
+
+**Checked and disproved.** Two findings did not survive verification, and I am
+recording them because the measurements are worth keeping: the `NAJPOPULARNIJI`
+badge is *right-anchored* to the featured card's inner padding, not a failed
+centring; and the marquee's edge mask is present and working — sampled at
+`y = 150`, the leading glyph runs at roughly 4–35 % opacity across a 259 px
+fade. A third, a claimed 2–5 level background seam in the hero, is within the
+page's own film-grain overlay and I could not reproduce it as a straight edge.
+
+**Disagreed with, and why:**
+
+- **"Add 60 Hz / 12 kHz endpoint ticks to explain the axis asymmetry."** The
+  asymmetry is real and correctly derived from the log axis, and the ticks
+  would explain it — but they are new visible copy the brief did not supply,
+  on a page whose content the client explicitly protected. Noted, not done.
+- **"Widen the hero band clear of the phone."** §4.3 makes the hero instance
+  deliberately "barely alive", and the phone standing on the line is the
+  composition the client named as the thing he likes. Kept.
+- **"Restore the cyan across the steps, the icons and the FAQ."** Correct
+  against the art direction, and out of bounds for this round: those sections
+  were named as good and unchanged. The probe cursor was the one place inside
+  this round's scope, and it is done.
+- **"`--confirm` green and its glow are a third accent."** True, and
+  pre-existing — it lives inside the phone, which is protected. Recorded here
+  so the decision is the client's.
+- **"Give the play button a stop glyph while the self-test runs."** It already
+  gets a solid amber ring and an expanding scan ring; a *label* change would
+  need a Serbian string §8 does not supply, and §8 forbids composing one.
+- **"The self-test has no after."** Measured off the canvas: passband energy
+  falls to 0.31 of resting within 148 ms, holds at the floor to 651 ms, swells
+  to 0.90 as the tone crosses, falls back to 0.28, and recovers at 1.95 s.
+  There is a before and an after; the review was reading a contact sheet.
 
 ---
 
@@ -320,7 +435,18 @@ Stated plainly, because a false green tick means the bug ships.
    real amplitude was never played, so the band's audio-reactive gain
    (`sum / data.length / 110`) is a reasoned constant, not a tuned one. Expect
    to adjust that divisor once a real demo file exists.
-7. **Full-page screenshots are unreliable on this page** and I do not treat them
+7. **Nobody with eyes has seen this page.** Both design reviews were run by
+   subagents against still frames. Stills cannot judge easing, timing feel, or
+   whether a scrub reads as smooth — every motion judgement in §7 is inferred
+   from held frames, mine included. The one thing I did measure rather than
+   look at is the numbers behind the frames: bar heights off the canvas, sweep
+   energy over time, trigger progress at each scroll offset.
+8. **`Range.getBoundingClientRect()` line splitting is engine-specific.** The
+   masks are rebuilt from the real layout on every resize and the harness
+   asserts zero height change in Chromium — but where WebKit or Gecko break a
+   line differently, they will simply produce a different (still correct)
+   number of masks. Untested.
+9. **Full-page screenshots are unreliable on this page** and I do not treat them
    as evidence. `captureBeyondViewport` re-lays-out a ScrollTrigger-pinned
    section and mis-places `position: fixed` elements. Round 3 takes stepped
    viewport frames instead; the two full-page files are kept only as a
@@ -362,7 +488,31 @@ Stated plainly, because a false green tick means the bug ships.
    reduced-motion and no-JS states — which are the *same markup* — stay fully
    exposed, and the legal disclosure appears twice more, in the FAQ and the
    footer, where it is stable.
-7. **Nine strings are not from §8**, because §8 supplies no accessible names:
+7. **Two harness assertions were changed, not just the page.** Both encoded a
+   contract this round deliberately replaced, and both are recorded here so the
+   change is visible rather than buried in a green tick. (a) The play control
+   was asserted to rest at `cursor: default` — a designed *inert* state. It is
+   pressable now, because it genuinely acts: it runs the line self-test. The
+   check asserts the new contract — `aria-disabled="true"` (the *recording* is
+   unavailable), the `Snimak uskoro` label, the dashed hairline, and
+   `cursor: pointer`. (b) The band's fill/breathe check measured at the top of
+   the `#glas` section. The meter now draws in behind the scroll probe and only
+   answers while that probe is inside 300–3400 Hz, so at the top of the section
+   it is legitimately quiet; the check measures with the stage centred, where
+   the meter is actually being looked at. Thresholds unchanged: mean 0.383,
+   peak 0.936, zero clipped samples, breathing range 0.032.
+8. **`aria-disabled` on a control that acts.** §7 mandates the attribute for
+   the empty state and the visible label says exactly what is unavailable — the
+   recording — so it stays. But a screen-reader user is told "dimmed" about a
+   button that does something. The honest fix needs one Serbian string §8 does
+   not supply, and §8 forbids composing one. Flagged for the client: give me
+   the sentence and I will make the control fully honest.
+9. **`--confirm: #6FD48A` is a fourth colour.** It survives on the phone's
+   confirmation card, with a green hairline and a soft green glow. The design
+   review is right that the direction allows amber, one cyan and ink — and the
+   phone is the component the client named as good and asked not to be touched.
+   Recorded so the call is the client's, not mine.
+10. **Nine strings are not from §8**, because §8 supplies no accessible names:
    `Preskoči na sadržaj` (skip link), `Meni` (menu toggle and the dialog's
    name), `Zatvori`, `Pauziraj` (only ever shown once `DEMO_AUDIO` is filled),
    `Agent` / `Pozivalac` (the transcript speaker labels §6 uses), `Za koga`
@@ -372,10 +522,18 @@ Stated plainly, because a false green tick means the bug ships.
 
 ---
 
-## 10 · The one thing I would change next
+## 10 · The two things I would change next
 
-The page still has no conversion endpoint of its own — `DEMO_LINK` points at
-someone else's booking widget. If the client wants the form on-page, it needs
-two field labels and a success message in Serbian, written by a native speaker,
-plus somewhere to post to. That is the highest-value hour of work left on this
-site, and it is not something the brief let me invent.
+**A real recording.** The self-test is a good empty state — it performs the
+section's argument rather than apologising for having nothing — but it is still
+an empty state. The moment `DEMO_AUDIO` points at a real clip, the meter stops
+being a simulation of a voice and starts being the voice, and the whole GLAS
+section changes register. The analyser path is written and its states are
+tested; only its gain constant (`sum / data.length / 110`) is a reasoned guess
+that will want tuning against a real file.
+
+**A conversion endpoint of its own.** `DEMO_LINK` points at someone else's
+booking widget. If the client wants the form on-page, it needs two field labels
+and a success message in Serbian, written by a native speaker, plus somewhere
+to post to. That is the highest-value hour of work left on this site, and it is
+not something the brief let me invent.
