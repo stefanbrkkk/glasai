@@ -1057,6 +1057,19 @@ h3 {
   white-space: nowrap;
 }
 .play .ico-pause { display: none; }
+.play.is-scanning { color: var(--signal); border-color: var(--signal); border-style: solid; }
+.play.is-scanning::after {
+  content: ""; position: absolute; inset: -0.35rem; border-radius: 50%;
+  border: 1px solid var(--signal);
+  opacity: 0;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .js-motion .play.is-scanning::after { animation: scan-ring 1.9s var(--ease) 1; }
+}
+@keyframes scan-ring {
+  0%   { opacity: 0.9; transform: scale(0.94); }
+  100% { opacity: 0;   transform: scale(1.5); }
+}
 .play.is-playing .ico-play { display: none; }
 .play.is-playing .ico-pause { display: block; }
 
@@ -1454,7 +1467,7 @@ html:not(.js) .faq-panel > div,
       <h1 data-hero="2" data-split>Nijedan poziv ne ostaje bez odgovora.</h1>
       <p class="lede" data-hero="3">AI agent koji se javlja za dve sekunde, vodi razgovor prirodnim srpskim jezikom i zakazuje termine direktno u vaš kalendar — 24 sata dnevno, sedam dana u nedelji.</p>
       <div class="hero-cta" data-hero="4">
-        <a class="btn btn--primary btn--magnetic" href="#glas">Poslušaj demo</a>
+        <a class="btn btn--primary btn--magnetic" href="#glas" data-plays-demo>Poslušaj demo</a>
         <a class="btn btn--ghost btn--magnetic" href="#cta">Zakaži razgovor</a>
       </div>
       <ul class="microstats" data-hero="5">
@@ -1996,41 +2009,71 @@ function safe(name, fn) {
 
 /* ═══ 1 · THE BAND ═════════════════════════════════════════════════════════
    One canvas component, four placements. The lit region is exactly the slice
-   of the spectrum a telephone line passes: 300 Hz – 3400 Hz.
+   of the spectrum a telephone line passes: 300 Hz – 3400 Hz. Everything
+   outside it is drawn as a flat stub — not merely dimmer, but visibly *cut*.
+
+   It behaves like a real meter rather than a sine wave: every bar has its own
+   fast attack and slow release, a peak that floats and falls, an elliptical
+   bloom under the passband, and a slow scan that walks the spectrum.
 
    new Band(canvas, {
-     amp     : 0..1   how tall the bars get at full energy
+     amp     : 0..1   bar height at full level
      speed   : n      how much spectrum-time passes per real second
      dim     : 0..1   alpha of everything outside the telephone band
      bar/gap : px     bar geometry
-     base    : 0..1   resting energy, restored whenever a drive lets go
+     base    : 0..1   resting level, the floor everything else rises from
+     bloom   : bool   draw the elliptical glow under the passband
      ink     : bool   draw dark-on-light (the amber CTA button fill)
    })
-   Two properties are written live, from outside:
-     .energy  0..1    the call loop, the audio analyser, a tap on the player
-     .reveal  0..1    how much of the width is drawn, left to right
-   ═══════════════════════════════════════════════════════════════════════ */
+
+   Four inputs, all written from outside, all combined by level():
+     .base    the resting floor
+     .drive   0..1  the call loop, the scroll scrub, the audio analyser
+     .pulse   0..1  a transient — the sweep self-test, a tap on the player
+     bandVel  0..1  shared: how fast the page is being scrolled right now
+   plus .reveal 0..1, how much of the width is drawn, left to right.        */
 var F_MIN = 60, F_MAX = 12000, F_LO = 300, F_HI = 3400;
 var LOG_SPAN = Math.log(F_MAX / F_MIN);
 function fx(f) { return Math.log(f / F_MIN) / LOG_SPAN; }
 var X_LO = fx(F_LO), X_HI = fx(F_HI);          /* 0.3038 … 0.7620 */
-var EDGE_PX = 14;                              /* filter roll-off, in device px */
+var EDGE_PX = 22;                              /* filter roll-off, in device px */
+
+var ATTACK = 0.40, RELEASE = 0.052;            /* a meter's ballistics */
+var PEAK_FALL = 0.20;                          /* peak decay, level per second */
+var bandVel = 0;                               /* shared scroll-velocity boost */
+var SPEC_GAIN = 3.4;                           /* normalises spectrum() to ~0..1 */
 
 function smoothstep(a, b, x) {
-  var t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  var t = (x - a) / (b - a);
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
   return t * t * (3 - 2 * t);
 }
-/* a cheap, smooth, seedless pseudo-spectrum — deterministic in (x, t) */
-function spectrum(x, t) {
-  var env = Math.exp(-Math.pow((x - 0.44) / 0.33, 2)) * 0.82 + 0.2;
-  var n = Math.sin(x * 17.3 + t * 2.30) * 0.50
-        + Math.sin(x *  8.1 - t * 1.70 + 1.3) * 0.32
-        + Math.sin(x * 31.7 + t * 3.05 + 2.1) * 0.18;
-  return env * (0.34 + 0.66 * (n * 0.5 + 0.5));
+/* A pseudo-spectrum that reads as a *voice*, not as noise: a broad vocal
+   envelope, two formants that drift the way a mouth changes shape, a syllabic
+   amplitude so it breathes instead of droning, and a little grain on top.
+   Deterministic in (x, t) — no state, no seed, identical on every device. */
+function spectrum(x, t, pt) {
+  var env = Math.exp(-Math.pow((x - 0.42) / 0.34, 2)) * 0.66 + 0.16;
+  var f1 = 0.395 + 0.040 * Math.sin(t * 0.93);
+  var f2 = 0.585 + 0.052 * Math.sin(t * 0.61 + 2.1);
+  env += 0.34 * Math.exp(-Math.pow((x - f1) / 0.052, 2))
+       + 0.26 * Math.exp(-Math.pow((x - f2) / 0.064, 2));
+  var syl = 0.60 + 0.40 * Math.pow(Math.abs(Math.sin(pt * 3.4 + 0.4)), 0.5);
+  var n = Math.sin(x * 17.3 + t * 2.30) * 0.38
+        + Math.sin(x *  8.1 - t * 1.70 + 1.3) * 0.24
+        + Math.sin(x * 31.7 + t * 3.05 + 2.1) * 0.20
+        + Math.sin(x * 54.9 - t * 4.40 + 0.7) * 0.13
+        + Math.sin(x * 96.7 + t * 6.10 + 1.9) * 0.08;
+  n = n * 0.5 + 0.5;
+  /* SPEC_GAIN normalises the whole thing so a band's `amp` stays in 0..1 and
+     the loudest bar lands near the top of its canvas. Measured, not guessed. */
+  return SPEC_GAIN * env * syl * (0.20 + 0.80 * Math.pow(n, 1.45));
 }
 
 var bands = [];
 var rafId = 0, lastNow = 0, tickerWanted = false;
+var HAS_ROUND = typeof CanvasRenderingContext2D !== "undefined" &&
+                !!CanvasRenderingContext2D.prototype.roundRect;
 
 function Band(canvas, opts) {
   this.c = canvas;
@@ -2040,18 +2083,70 @@ function Band(canvas, opts) {
   this.amp    = opts.amp    != null ? opts.amp    : 0.5;
   this.speed  = opts.speed  != null ? opts.speed  : 0.10;
   this.dim    = opts.dim    != null ? opts.dim    : 0.10;
-  this.bar    = opts.bar    != null ? opts.bar    : 3;
-  this.gap    = opts.gap    != null ? opts.gap    : 2;
+  this.bar    = opts.bar    != null ? opts.bar    : 4;
+  this.gap    = opts.gap    != null ? opts.gap    : 3;
   this.base   = opts.base   != null ? opts.base   : 0.14;
-  this.ink    = !!opts.ink;   /* draw dark-on-light, for the amber CTA button */
-  this.energy = this.base;
+  this.bloom  = opts.bloom !== false;
+  this.ink    = !!opts.ink;             /* dark-on-light, for the amber button */
+  this.drive = 0;
+  this.pulse = 0;
   this.reveal = 1;
-  this.t = 0;
-  this.w = 0; this.h = 0; this.dpr = 0;
+  this.t = 0;                           /* spectrum clock, scaled by speed */
+  this.pt = 0;                          /* phrase clock, real seconds */
+  this.scan = -0.25;                    /* the walking highlight, in x units */
+  this.sweepT = -1;                     /* >=0 while the self-test tone runs */
+  this.sweepDur = 1.8;
+  this.w = 0; this.h = 0; this.dpr = 0; this.n = 0;
+  this.v = null; this.pk = null;
   this.visible = false;
   this.animate = true;
   bands.push(this);
 }
+
+Band.prototype.level = function () {
+  var e = this.base;
+  if (this.drive > e) e = this.drive;
+  if (this.pulse > e) e = this.pulse;
+  e += bandVel * 0.28;
+  return e < 0 ? 0 : e > 1 ? 1 : e;
+};
+
+Band.prototype.layout = function () {
+  this.stepPx = this.bar + this.gap;
+  var n = Math.max(1, Math.floor((this.w + this.gap) / this.stepPx));
+  if (n !== this.n || !this.v) {
+    this.n = n;
+    this.v = new Float32Array(n);
+    this.pk = new Float32Array(n);
+    this.settle();
+  }
+};
+
+/* fill the meter with the value it would converge on — used for the first
+   frame and for every static (reduced-motion) render */
+Band.prototype.settle = function () {
+  for (var i = 0; i < this.n; i++) {
+    var v = this.shape(i) * this.gain();
+    if (v > 1) v = 1;
+    this.v[i] = v;
+    this.pk[i] = v;
+  }
+};
+
+Band.prototype.gain = function () {
+  return this.amp * (0.28 + 0.72 * this.level());
+};
+
+/* the raw spectrum at bar i, already shaped by the telephone filter */
+Band.prototype.shape = function (i) {
+  var x = (i * this.stepPx + this.bar / 2) / this.w;
+  var edge = Math.min(0.05, EDGE_PX / Math.max(1, this.w));
+  var inBand = smoothstep(X_LO - edge, X_LO + edge, x) * (1 - smoothstep(X_HI - edge, X_HI + edge, x));
+  var a = spectrum(x, this.t, this.pt);
+  /* outside the passband the line simply does not carry it */
+  return a * (0.16 + 0.84 * inBand);
+};
+
 Band.prototype.measure = function () {
   var r = this.c.getBoundingClientRect();
   if (!r.width || !r.height) return false;
@@ -2062,56 +2157,174 @@ Band.prototype.measure = function () {
   this.c.width  = Math.max(1, Math.round(w * dpr));
   this.c.height = Math.max(1, Math.round(h * dpr));
   this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  this.layout();
   return true;
 };
 Band.prototype.resize = function () { if (this.measure()) this.draw(); };
-Band.prototype.step = function (dt) { this.t += dt * this.speed; this.draw(); };
-Band.prototype.draw = function () {
-  if (!this.w && !this.measure()) return;
-  var ctx = this.ctx, w = this.w, h = this.h, cy = h / 2;
-  var step = this.bar + this.gap;
-  var half = h / 2 - 1;
-  var gain = this.amp * (0.30 + 0.70 * Math.min(1, Math.max(0, this.energy)));
-  var edgeX = this.reveal * w;
-  var edge = Math.min(0.05, EDGE_PX / Math.max(1, w));   /* a fixed optical width */
-  var LIT = this.ink ? "7,10,18"    : "255,180,84";
-  var DIM = this.ink ? "7,10,18"    : "255,190,120";
-  var CAP = this.ink ? "26,18,6"    : "255,217,160";
 
-  ctx.clearRect(0, 0, w, h);
+/* a test tone that walks the whole spectrum. Nothing happens until it reaches
+   300 Hz, it blooms across the passband, and it dies again at 3400 Hz — which
+   is the entire argument of the section, performed in under two seconds. */
+Band.prototype.sweep = function (dur) {
+  this.sweepDur = dur || 1.8;
+  this.sweepT = 0;
+  if (!this.animate) {                       /* reduced motion: two states */
+    this.pulse = 0.85; this.draw();
+    var self = this;
+    clearTimeout(this._sweepTo);
+    this._sweepTo = setTimeout(function () { self.pulse = 0; self.draw(); }, 900);
+    this.sweepT = -1;
+  }
+};
 
-  /* the line itself */
-  ctx.fillStyle = "rgba(" + DIM + ",0.10)";
-  ctx.fillRect(0, Math.round(cy), edgeX, 1);
+Band.prototype.step = function (dt) {
+  this.t += dt * this.speed;
+  this.pt += dt;
+  this.scan += dt * 0.085;
+  if (this.scan > 1.3) this.scan = -0.25;
 
-  for (var px = 0; px + this.bar <= w; px += step) {
-    if (px > edgeX) break;
-    var x = (px + this.bar / 2) / w;
-    var inBand = smoothstep(X_LO - edge, X_LO + edge, x) * (1 - smoothstep(X_HI - edge, X_HI + edge, x));
-    var a = spectrum(x, this.t);
-    var mag = a * (0.42 + 0.58 * inBand);
-    var bh = Math.max(1, mag * gain * half);
-
-    ctx.fillStyle = inBand > 0.02
-      ? "rgba(" + LIT + "," + (this.dim + (0.92 - this.dim) * inBand).toFixed(3) + ")"
-      : "rgba(" + DIM + "," + this.dim.toFixed(3) + ")";
-    ctx.fillRect(px, cy - bh, this.bar, bh * 2);
-
-    /* lit caps — only inside the telephone band */
-    if (inBand > 0.35 && bh > 3) {
-      ctx.fillStyle = "rgba(" + CAP + "," + (0.55 * inBand).toFixed(3) + ")";
-      ctx.fillRect(px, cy - bh, this.bar, 1.4);
-      ctx.fillRect(px, cy + bh - 1.4, this.bar, 1.4);
+  if (this.sweepT >= 0) {
+    this.sweepT += dt / this.sweepDur;
+    if (this.sweepT >= 1) { this.sweepT = -1; this.pulse = 0; }
+    else {
+      var sx = -0.06 + this.sweepT * 1.12;
+      var edge = Math.min(0.05, EDGE_PX / Math.max(1, this.w));
+      this.pulse = 0.92 * smoothstep(X_LO - edge * 3, X_LO + edge * 3, sx) *
+                          (1 - smoothstep(X_HI - edge * 3, X_HI + edge * 3, sx));
+      this.scan = sx;
     }
   }
 
-  /* the drawing head, while the divider is still being drawn */
-  if (this.reveal < 0.999) {
-    var g = ctx.createLinearGradient(edgeX - 26, 0, edgeX, 0);
-    g.addColorStop(0, "rgba(" + CAP + ",0)");
-    g.addColorStop(1, "rgba(" + CAP + ",0.85)");
-    ctx.fillStyle = g;
-    ctx.fillRect(Math.max(0, edgeX - 26), cy - 1, 26, 2);
+  var g = this.gain();
+  var k = dt * 60; if (k > 2) k = 2;
+  var fall = PEAK_FALL * dt;
+  for (var i = 0; i < this.n; i++) {
+    var target = this.shape(i) * g;
+    var cur = this.v[i];
+    var rate = (target > cur ? ATTACK : RELEASE) * k;
+    if (rate > 1) rate = 1;
+    cur += (target - cur) * rate;
+    if (cur > 1) cur = 1;
+    this.v[i] = cur;
+    var p = this.pk[i] - fall;
+    this.pk[i] = cur > p ? cur : p;
+  }
+  this.draw();
+};
+
+Band.prototype.draw = function () {
+  if (!this.w && !this.measure()) return;
+  var ctx = this.ctx, w = this.w, h = this.h, cy = h / 2;
+  var half = h / 2 - 2;
+  var edgeX = this.reveal * w;
+  var edge = Math.min(0.05, EDGE_PX / Math.max(1, this.w));
+  var lvl = this.level();
+  var LIT  = this.ink ? "7,10,18"  : "255,180,84";
+  var DIM  = this.ink ? "7,10,18"  : "255,190,120";
+  var CAP  = this.ink ? "26,18,6"  : "255,217,160";
+  var rad  = this.bar >= 3 && HAS_ROUND ? this.bar / 2 : 0;
+
+  ctx.clearRect(0, 0, w, h);
+
+  /* ── the bloom under the passband: one elliptical gradient, not a filter ── */
+  if (this.bloom && !this.ink) {
+    var gx0 = X_LO * w, gx1 = X_HI * w;
+    var vis = Math.min(gx1, edgeX);
+    if (vis > gx0) {
+      ctx.save();
+      if (this.reveal < 0.999) { ctx.beginPath(); ctx.rect(0, 0, edgeX, h); ctx.clip(); }
+      ctx.translate((gx0 + gx1) / 2, cy);
+      ctx.scale((gx1 - gx0) / 2 + 34, half * 0.86);
+      var bg = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+      bg.addColorStop(0, "rgba(255,180,84," + (0.05 + 0.15 * lvl).toFixed(3) + ")");
+      bg.addColorStop(0.55, "rgba(255,168,70," + (0.02 + 0.07 * lvl).toFixed(3) + ")");
+      bg.addColorStop(1, "rgba(255,168,70,0)");
+      ctx.fillStyle = bg;
+      ctx.fillRect(-1, -1, 2, 2);
+      ctx.restore();
+    }
+  }
+
+  /* ── the line itself: brightest where it actually carries signal ── */
+  var lg = ctx.createLinearGradient(0, 0, w, 0);
+  lg.addColorStop(0, "rgba(" + DIM + ",0.07)");
+  lg.addColorStop(Math.max(0.001, X_LO), "rgba(" + DIM + ",0.09)");
+  lg.addColorStop((X_LO + X_HI) / 2, "rgba(" + LIT + ",0.26)");
+  lg.addColorStop(Math.min(0.999, X_HI), "rgba(" + DIM + ",0.09)");
+  lg.addColorStop(1, "rgba(" + DIM + ",0.07)");
+  ctx.fillStyle = lg;
+  ctx.fillRect(0, Math.round(cy), edgeX, 1);
+
+  /* ── the bars ── */
+  var i, x, inBand, bh, sc, a;
+  for (i = 0; i < this.n; i++) {
+    var px = i * this.stepPx;
+    if (px > edgeX) break;
+    x = (px + this.bar / 2) / w;
+    inBand = smoothstep(X_LO - edge, X_LO + edge, x) * (1 - smoothstep(X_HI - edge, X_HI + edge, x));
+
+    /* the walking highlight, and the sweep tone riding on top of it */
+    var d = Math.abs(x - this.scan);
+    sc = d < 0.075 ? (1 - d / 0.075) * (this.sweepT >= 0 ? 1 : 0.42) : 0;
+
+    bh = this.v[i] * half;
+    if (bh < 0.6) bh = 0.6;
+
+    if (inBand > 0.03) {
+      a = (this.dim + (0.90 - this.dim) * inBand) * (1 + sc * 0.55);
+      if (a > 1) a = 1;
+      var top = cy - bh;
+      var grd = ctx.createLinearGradient(0, top, 0, cy + bh);
+      grd.addColorStop(0,   "rgba(" + CAP + "," + (a * 0.92).toFixed(3) + ")");
+      grd.addColorStop(0.5, "rgba(" + LIT + "," + a.toFixed(3) + ")");
+      grd.addColorStop(1,   "rgba(" + CAP + "," + (a * 0.92).toFixed(3) + ")");
+      ctx.fillStyle = grd;
+      ctx.beginPath();
+      if (rad) ctx.roundRect(px, top, this.bar, bh * 2, rad);
+      else ctx.rect(px, top, this.bar, bh * 2);
+      ctx.fill();
+
+      /* the peak: what the line reached, floating down */
+      var ph = this.pk[i] * half;
+      if (ph > bh + 1.2 && ph > 2.5) {
+        ctx.fillStyle = "rgba(" + CAP + "," + (0.34 + 0.5 * inBand).toFixed(3) + ")";
+        ctx.beginPath();
+        if (rad) {
+          ctx.roundRect(px, cy - ph - 1.6, this.bar, 1.6, 0.8);
+          ctx.roundRect(px, cy + ph, this.bar, 1.6, 0.8);
+        } else {
+          ctx.rect(px, cy - ph - 1.6, this.bar, 1.6);
+          ctx.rect(px, cy + ph, this.bar, 1.6);
+        }
+        ctx.fill();
+      }
+    } else {
+      /* outside the telephone band: a flat stub. The line throws this away. */
+      var sh = Math.min(bh, half * 0.11) + 0.4;
+      ctx.fillStyle = "rgba(" + DIM + "," + (this.dim * (1 + sc)).toFixed(3) + ")";
+      ctx.fillRect(px, cy - sh, this.bar, sh * 2);
+    }
+  }
+
+  /* ── the reflection: the half below the line fades out, so the band reads as
+        sitting on a surface. Erased, not painted over — painting a dark rect on
+        a transparent canvas would show as a box against the section behind. ── */
+  ctx.globalCompositeOperation = "destination-out";
+  var ref = ctx.createLinearGradient(0, cy, 0, h);
+  ref.addColorStop(0, "rgba(0,0,0,0)");
+  ref.addColorStop(0.45, "rgba(0,0,0,0.30)");
+  ref.addColorStop(1, "rgba(0,0,0,0.66)");
+  ctx.fillStyle = ref;
+  ctx.fillRect(0, cy, w, h - cy);
+  ctx.globalCompositeOperation = "source-over";
+
+  /* ── the drawing head, while a divider is still being drawn ── */
+  if (this.reveal < 0.999 && this.reveal > 0.001) {
+    var g2 = ctx.createLinearGradient(edgeX - 30, 0, edgeX, 0);
+    g2.addColorStop(0, "rgba(" + CAP + ",0)");
+    g2.addColorStop(1, "rgba(" + CAP + ",0.9)");
+    ctx.fillStyle = g2;
+    ctx.fillRect(Math.max(0, edgeX - 30), cy - 1.5, 30, 3);
   }
 };
 
@@ -2120,6 +2333,8 @@ function bandTick(now) {
   var dt = (now - lastNow) / 1000;
   lastNow = now;
   if (!(dt > 0) || dt > 0.1) dt = 0.016;
+  bandVel *= Math.pow(0.045, dt);              /* the velocity boost decays */
+  if (bandVel < 0.002) bandVel = 0;
   for (var i = 0; i < bands.length; i++) {
     var b = bands[i];
     if (b.visible && b.animate) b.step(dt);
@@ -2143,9 +2358,11 @@ var heroBand = null, voiceBand = null, btnBand = null;
 
 function setBandsMotion(on) {
   for (var i = 0; i < bands.length; i++) {
-    bands[i].animate = on;
-    if (!on) { bands[i].reveal = 1; bands[i].energy = bands[i].base; bands[i].draw(); }
+    var b = bands[i];
+    b.animate = on;
+    if (!on) { b.reveal = 1; b.drive = 0; b.pulse = 0; b.sweepT = -1; b.settle(); b.draw(); }
   }
+  if (!on) bandVel = 0;
   bandRefreshTicker();
 }
 
@@ -2153,10 +2370,10 @@ function initBands() {
   $$("canvas[data-band]").forEach(function (c) {
     var kind = c.getAttribute("data-band");
     var b;
-    if (kind === "hero")         b = new Band(c, { amp: 0.62, speed: 0.075, dim: 0.10,  bar: 3, gap: 3, base: 0.12 });
-    else if (kind === "divider") b = new Band(c, { amp: 0.95, speed: 0.055, dim: 0.13,  bar: 2, gap: 3, base: 0.42 });
-    else if (kind === "voice")   b = new Band(c, { amp: 0.92, speed: 0.170, dim: 0.09,  bar: 4, gap: 3, base: 0.30 });
-    else                         b = new Band(c, { amp: 0.60, speed: 0.240, dim: 0.13,  bar: 2, gap: 2, base: 0.5, ink: true });
+    if (kind === "hero")         b = new Band(c, { amp: 0.60, speed: 0.075, dim: 0.11, bar: 4, gap: 4, base: 0.16 });
+    else if (kind === "divider") b = new Band(c, { amp: 0.60, speed: 0.055, dim: 0.13, bar: 3, gap: 3, base: 0.42 });
+    else if (kind === "voice")   b = new Band(c, { amp: 0.72, speed: 0.165, dim: 0.10, bar: 5, gap: 4, base: 0.34 });
+    else                         b = new Band(c, { amp: 0.42, speed: 0.240, dim: 0.13, bar: 2, gap: 2, base: 0.5, ink: true, bloom: false });
     if (!b.ctx) return;                  /* no 2d context — leave the slot empty */
     b.kind = kind;
     if (kind === "hero")  heroBand = b;
@@ -2185,7 +2402,6 @@ function initBands() {
   }
   setBandsMotion(!REDUCED());
 }
-
 /* ═══ 2 · CONFIG-DRIVEN PLACEHOLDERS ═══════════════════════════════════════
    Empty is a designed state, not a broken one. §7                          */
 function initDemoSlots() {
@@ -2229,27 +2445,28 @@ function initPrimaryCta() {
 
 /* No src → no <audio> element at all. An <audio> with an empty src throws. */
 var audioEl = null;
+var demoSweep = null;          /* set by whichever player state is in force */
 function initDemoAudio() {
   var btn = $("#play"), label = $("#play-label"), vh = $("#play-vh");
   if (!btn) return;
   var src = String(CONFIG.DEMO_AUDIO || "").trim();
 
   if (!src) {
-    /* „uskoro” — inert, but it answers a tap instead of ignoring it */
-    var settle = 0;
+    /* No recording yet — so the button plays the *line* instead. A test tone
+       walks the spectrum from 60 Hz to 12 kHz; nothing happens until it
+       reaches 300, it blooms across the passband, and it dies at 3400. The
+       empty state performs the argument the section is making. */
+    var busy = 0;
     on(btn, "click", function () {
-      if (!voiceBand) return;
-      voiceBand.energy = 0.85;
-      clearTimeout(settle);
-      if (window.gsap && voiceBand.animate) {
-        window.gsap.to(voiceBand, { energy: voiceBand.base, duration: 1.1, ease: EASE });
-      } else {
-        /* reduced motion, or no GSAP: one frame in, one frame back */
-        voiceBand.draw();
-        settle = setTimeout(function () { voiceBand.energy = voiceBand.base; voiceBand.draw(); }, 1100);
-      }
+      if (!voiceBand || busy) return;
+      busy = 1;
+      btn.classList.add("is-scanning");
+      voiceBand.sweep(1.9);
+      busy = setTimeout(function () { btn.classList.remove("is-scanning"); busy = 0; }, 2000);
     });
-    keep(function () { clearTimeout(settle); });
+    /* the hero's „Poslušaj demo” lands here — let it fire the same sweep */
+    demoSweep = function () { if (voiceBand && !busy) btn.click(); };
+    keep(function () { clearTimeout(busy); btn.classList.remove("is-scanning"); demoSweep = null; });
     return;
   }
 
@@ -2279,17 +2496,21 @@ function initDemoAudio() {
       analyser.getByteFrequencyData(data);
       var sum = 0;
       for (var i = 0; i < data.length; i++) sum += data[i];
-      voiceBand.energy = Math.min(1, (sum / data.length) / 110);
+      voiceBand.drive = Math.min(1, (sum / data.length) / 110);
     } else {
-      voiceBand.energy = 0.75 + 0.25 * Math.sin(performance.now() / 240);
+      voiceBand.drive = 0.72 + 0.24 * Math.sin(performance.now() / 240);
     }
+    /* the band draws itself in as the recording plays: reveal is the playhead */
+    var d = audioEl.duration;
+    if (d && isFinite(d) && d > 0) voiceBand.reveal = Math.min(1, audioEl.currentTime / d);
     sampling = requestAnimationFrame(sample);
   }
   function stopSampling() {
     if (sampling) { cancelAnimationFrame(sampling); sampling = 0; }
-    if (voiceBand) voiceBand.energy = voiceBand.base;
+    if (voiceBand) { voiceBand.drive = 0; voiceBand.reveal = 1; }
   }
 
+  demoSweep = function () { if (audioEl.paused) btn.click(); };
   on(btn, "click", function () {
     if (audioEl.paused) {
       connect();
@@ -2315,6 +2536,7 @@ function initDemoAudio() {
   });
   on(audioEl, "error", function () { stopSampling(); });
   keep(function () {
+    demoSweep = null;
     stopSampling();
     try { audioEl.pause(); audioEl.removeAttribute("src"); } catch (e) {}
     if (actx && actx.state !== "closed") { try { actx.close(); } catch (e) {} }
@@ -2437,8 +2659,7 @@ function initPhoneLoop(gsap) {
 
   var turns   = $$(".ph-turn", thread);
   var typings = $$(".ph-typing", thread);
-  var band    = heroBand || { energy: 0, base: 0 };
-  var BASE_E  = band.base != null ? band.base : 0.1;
+  var band    = heroBand || { drive: 0, base: 0 };
 
   var CUES = [
     { typ: 2.90,  bub: 3.55,  speakTo: 6.60,  agent: true  },
@@ -2475,7 +2696,7 @@ function initPhoneLoop(gsap) {
     gsap.set(thread, { y: 0 });
     if (checkLen) gsap.set(checkP, { strokeDasharray: checkLen, strokeDashoffset: checkLen });
     wave.classList.remove("is-speaking");
-    band.energy = BASE_E;
+    band.drive = 0;
     paintTimer(0);
   }
 
@@ -2493,12 +2714,12 @@ function initPhoneLoop(gsap) {
   });
 
   /* 0 – 2 s · dolazni poziv — the line breathes behind the phone */
-  tl.to(band, { energy: 0.52, duration: 0.55, ease: "sine.inOut", yoyo: true, repeat: 2 }, 0.1);
+  tl.to(band, { drive: 0.55, duration: 0.55, ease: "sine.inOut", yoyo: true, repeat: 2 }, 0.1);
 
   /* 2 s · javljanje */
   tl.to(incoming, { opacity: 0, duration: 0.36, ease: "power2.inOut" }, ANSWER)
     .to(call,     { opacity: 1, duration: 0.42, ease: "power2.out"  }, ANSWER + 0.1)
-    .to(band,     { energy: 0.20, duration: 0.5 }, ANSWER);
+    .to(band,     { drive: 0.18, duration: 0.5 }, ANSWER);
 
   /* 3 – 19 s · transkript */
   CUES.forEach(function (cue, i) {
@@ -2516,12 +2737,12 @@ function initPhoneLoop(gsap) {
 
     if (cue.agent) {
       tl.call(function () { wave.classList.add("is-speaking"); }, null, cue.bub)
-        .to(band, { energy: 0.72, duration: 0.35, ease: "sine.out" }, cue.bub)
+        .to(band, { drive: 0.74, duration: 0.35, ease: "sine.out" }, cue.bub)
         .call(function () { wave.classList.remove("is-speaking"); }, null, cue.speakTo)
-        .to(band, { energy: 0.24, duration: 0.6, ease: "sine.inOut" }, cue.speakTo);
+        .to(band, { drive: 0.22, duration: 0.6, ease: "sine.inOut" }, cue.speakTo);
     } else {
-      tl.to(band, { energy: 0.42, duration: 0.35, ease: "sine.out" }, cue.bub)
-        .to(band, { energy: 0.20, duration: 0.7, ease: "sine.inOut" }, cue.bub + 1.5);
+      tl.to(band, { drive: 0.40, duration: 0.35, ease: "sine.out" }, cue.bub)
+        .to(band, { drive: 0.18, duration: 0.7, ease: "sine.inOut" }, cue.bub + 1.5);
     }
   });
 
@@ -2534,8 +2755,8 @@ function initPhoneLoop(gsap) {
     .set(confirm, { display: "flex" }, CONFIRM_AT)
     .fromTo(confirm, { opacity: 0, y: 16, scale: 0.92 },
                      { opacity: 1, y: 0, scale: 1, duration: 0.62, ease: SPRING }, CONFIRM_AT)
-    .to(band, { energy: 0.9, duration: 0.4, ease: "power2.out" }, CONFIRM_AT)
-    .to(band, { energy: BASE_E, duration: 1.6, ease: "sine.inOut" }, CONFIRM_AT + 0.5);
+    .to(band, { drive: 0.92, duration: 0.4, ease: "power2.out" }, CONFIRM_AT)
+    .to(band, { drive: 0, duration: 1.6, ease: "sine.inOut" }, CONFIRM_AT + 0.5);
   if (checkLen) {
     tl.to(checkP, { strokeDashoffset: 0, duration: 0.55, ease: "power2.inOut" }, CONFIRM_AT + 0.18);
   }
@@ -2930,7 +3151,9 @@ function navOffset() {
   }
   return h + 24;                             /* == the CSS scroll-padding-top */
 }
+var sweepOnArrival = 0;
 function initAnchors() {
+  keep(function () { clearTimeout(sweepOnArrival); });
   on(document, "click", function (e) {
     var a = e.target.closest ? e.target.closest('a[href^="#"]') : null;
     if (!a) return;
@@ -2948,6 +3171,11 @@ function initAnchors() {
     }
     if (!target.hasAttribute("tabindex")) target.setAttribute("tabindex", "-1");
     target.focus({ preventScroll: true });
+    /* landing on the voice section from „Poslušaj demo” plays the line */
+    if (id === "#glas" && a.hasAttribute("data-plays-demo") && demoSweep) {
+      clearTimeout(sweepOnArrival);
+      sweepOnArrival = setTimeout(function () { if (demoSweep) demoSweep(); }, 850);
+    }
   });
 }
 
