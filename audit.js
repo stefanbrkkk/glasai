@@ -70,7 +70,34 @@ const fontCss = fs.readFileSync(path.join(FIX, 'fonts.css'), 'utf8');
 function gstaticFile(url) {
   return path.join(FIX, 'gstatic', url.replace('https://fonts.gstatic.com/', '').replace(/\//g, '_'));
 }
-async function wire(ctx, { blockCdn = false, blockFonts = false } = {}) {
+/* the ElevenLabs widget's config endpoint — the real widget refuses to render
+   without a `widget_config`, so the harness answers with the shape the bundle's
+   own defaults describe. The conversation itself (a WebSocket to ElevenLabs)
+   cannot be reached from here and is never attempted by these rounds. */
+const WIDGET_CFG = JSON.stringify({ widget_config: { variant: 'full', placement: 'bottom-right',
+  avatar: { type: 'orb', color_1: '#2792dc', color_2: '#9ce6e6' }, feedback_mode: 'none', language: 'sr',
+  mic_muting_enabled: false, transcript_enabled: false, text_input_enabled: false, default_expanded: false,
+  always_expanded: false, dismissible: false, text_contents: { start_call: 'Start call' }, language_presets: {},
+  disable_banner: true, text_only: false, supports_text_only: false } });
+async function wire(ctx, { blockCdn = false, blockFonts = false, blockWidget = null } = {}) {
+  const widgetDown = blockWidget === null ? blockCdn : blockWidget;
+  await ctx.route(/unpkg\.com/, r => {
+    if (widgetDown) return r.abort('failed');
+    const f = path.join(NM, '@elevenlabs/convai-widget-embed/dist/index.js');
+    if (!fs.existsSync(f)) return r.abort('failed');
+    r.fulfill({ status: 200, contentType: 'text/javascript; charset=utf-8', body: fs.readFileSync(f) });
+  });
+  /* the widget also pulls its orb-avatar texture from Google Storage; a 1×1 PNG
+     stands in for it so a clean run stays clean */
+  await ctx.route(/storage\.googleapis\.com\/eleven-public-cdn/, r => {
+    if (widgetDown) return r.abort('failed');
+    r.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64') });
+  });
+  await ctx.route(/elevenlabs\.io/, r => {
+    if (widgetDown) return r.abort('failed');
+    if (/\/v1\/convai\/agents\/[^/]+\/widget/.test(r.request().url())) return r.fulfill({ status: 200, contentType: 'application/json', body: WIDGET_CFG });
+    r.fulfill({ status: 500, contentType: 'application/json', body: '{}' });
+  });
   await ctx.route(/fonts\.googleapis\.com/, r => {
     if (blockFonts) return r.abort('failed');
     r.fulfill({ status: 200, contentType: 'text/css; charset=utf-8', body: fontCss });
@@ -94,7 +121,7 @@ async function wire(ctx, { blockCdn = false, blockFonts = false } = {}) {
 }
 
 /* ── console / error collector ────────────────────────────────────────── */
-const EXPECTED_HOST = /cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|fonts\.g(oogleapis|static)\.com|lenis/;
+const EXPECTED_HOST = /cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|fonts\.g(oogleapis|static)\.com|lenis|unpkg\.com|elevenlabs\.io|eleven-public-cdn/;
 function watch(page, bag) {
   page.on('console', m => {
     if (m.type() !== 'error') return;
@@ -106,7 +133,7 @@ function watch(page, bag) {
   page.on('pageerror', e => bag.push('pageerror: ' + (e && e.message)));
   page.on('requestfailed', r => {
     const u = r.url();
-    if (/cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|fonts\.g(oogleapis|static)\.com/.test(u)) return; // intentional in blocked runs
+    if (/cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|fonts\.g(oogleapis|static)\.com|unpkg\.com|elevenlabs\.io|eleven-public-cdn/.test(u)) return; // intentional in blocked runs
     bag.push('requestfailed: ' + u);
   });
 }
@@ -255,6 +282,11 @@ const PHONE_STATE = `(() => {
     rec(4, 'phone falls back to the booked state (transcript + confirmation readable)', st.bubbles && st.confirmShown);
     rec(4, 'page scrolls', st.canScroll === true);
     rec(4, 'body text present', st.text > 2500, st.text + ' chars');
+    await page.waitForTimeout(5000);                /* the engine gets 8 s before the block folds */
+    const talk = await page.evaluate(`({ gone: document.querySelector('#talk').classList.contains('is-gone'), ready: document.querySelector('#talk').classList.contains('is-ready'),
+      talkVisible: document.querySelector('#talk').offsetHeight > 0 })`);
+    rec(4, 'the live-demo block folds away when its engine never arrives — no dead button, no empty box', talk.gone && !talk.ready && !talk.talkVisible, JSON.stringify(talk));
+    rec(4, 'still zero console errors after the fold', bag.length === 0, bag.slice(0, 3).join(' | '));
     await page.evaluate(SCROLL_TO + `(document.body.scrollHeight)`);
     await page.waitForTimeout(900);
     await page.screenshot({ path: path.join(SHOTS, 'cdn-blocked-bottom.png'), fullPage: false });
@@ -851,6 +883,107 @@ const PHONE_STATE = `(() => {
   }
 
   /* ── 13 · touch device — F10, every pointer effect needs a real alternative ─ */
+  head('14 · The live demo — the widget driven through its own hook, on a fake clock');
+  {
+    const TALK_ST = `(() => { const g = id => document.getElementById(id); const t = g('talk');
+      return { ready: t.classList.contains('is-ready'), gone: t.classList.contains('is-gone'), live: t.classList.contains('is-live'),
+        ctl: g('talk-ctl').classList.contains('is-on'), card: g('talk-card').classList.contains('is-on'),
+        label: g('talk-label').textContent, busy: g('talk-btn').getAttribute('aria-busy'), clock: g('talk-clock').textContent,
+        rule: g('talk-rule').style.transform, noteOn: g('talk-note').classList.contains('is-on'), liveOn: g('talk-live').classList.contains('is-on'),
+        timers: (window.__glasTalkTimers || []).length, tel: !!g('talk-card').querySelector('a[href^="tel:"]'),
+        telSlot: !!g('talk-card').querySelector('[data-talk-tel]'), book: g('talk-book').getAttribute('href'),
+        engineBtn: !!(document.querySelector('elevenlabs-convai') && document.querySelector('elevenlabs-convai').shadowRoot && document.querySelector('elevenlabs-convai').shadowRoot.querySelector('button')),
+        engineHidden: getComputedStyle(g('talk-engine')).visibility === 'hidden' }; })()`;
+    const FAKE = `(() => { const cfg = {}; document.querySelector('elevenlabs-convai').dispatchEvent(new CustomEvent('elevenlabs-convai:call', { bubbles: true, composed: true, detail: { config: cfg } }));
+      window.__fake = { ended: 0, muted: null, ctx: [], vol: 0.3,
+        endSession() { this.ended++; setTimeout(() => cfg.onDisconnect({ reason: 'user' }), 40); return Promise.resolve(); },
+        setMicMuted(m) { this.muted = m; }, getOutputVolume() { return this.vol; }, sendContextualUpdate(t) { this.ctx.push(t); }, isOpen() { return !this.ended; } };
+      const hooks = ['onConversationCreated', 'onConnect', 'onDisconnect', 'onError'].every(k => typeof cfg[k] === 'function');
+      cfg.onConversationCreated(window.__fake); cfg.onConnect({ conversationId: 'x' }); return hooks; })()`;
+    for (const filled of [false, true]) {
+      const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+      await wire(ctx);
+      if (filled) await ctx.route('**/index.html', async r => {
+        const body = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8').replace('DEMO_TELEFON: ""', 'DEMO_TELEFON: "+381 64 123 4567"').replace('DEMO_LINK:    ""', 'DEMO_LINK:    "https://cal.example/glasai"');
+        r.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body });
+      });
+      const page = await ctx.newPage(); const bag = [];
+      watch(page, bag);
+      await page.addInitScript(() => { window.__glasDebug = true; });
+      await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
+      await page.waitForTimeout(2500);
+      let st = await page.evaluate(TALK_ST);
+      const tag = filled ? 'filled' : 'empty';
+      rec(14, `${tag}: block becomes ready only once the engine renders its button`, st.ready && !st.gone && st.ctl && !st.card && st.engineBtn, JSON.stringify(st));
+      rec(14, `${tag}: the engine is never painted and never in the tab order`, st.engineHidden === true);
+      rec(14, `${tag}: end card — booking button and the number line`, filled ? (st.tel && st.book === 'https://cal.example/glasai') : (!st.tel && !st.telSlot && st.book === '#cta'), JSON.stringify({ tel: st.tel, slot: st.telSlot, book: st.book }));
+      if (filled) { rec(14, 'filled: zero console errors', bag.length === 0, bag.slice(0, 3).join(' | ')); await ctx.close(); continue; }
+
+      await page.evaluate(SCROLL_TO + `(document.querySelector('#glas').getBoundingClientRect().top + window.scrollY)`);
+      await page.waitForTimeout(700);
+      await page.evaluate(`(() => { window.__calls = 0; document.getElementById('talk-engine').addEventListener('elevenlabs-convai:call', e => { window.__calls++; window.__hooks = ['onConversationCreated','onConnect','onDisconnect','onError'].every(k => typeof e.detail.config[k] === 'function'); }); })()`);
+      await page.click('#talk-btn'); await page.waitForTimeout(700);
+      st = await page.evaluate(TALK_ST);
+      const real = await page.evaluate(`({ calls: window.__calls, hooks: window.__hooks })`);
+      rec(14, 'pressing the page\'s button presses the real engine\'s: one elevenlabs-convai:call, carrying the page\'s four hooks', real.calls === 1 && real.hooks === true && st.label === 'Povezujem…' && st.busy === 'true', JSON.stringify({ real, label: st.label }));
+      await page.click('#talk-btn'); await page.waitForTimeout(400);
+      st = await page.evaluate(TALK_ST);
+      rec(14, 'a change of mind while connecting returns to the start, with no timer left', st.label === 'Razgovaraj sa agentom' && st.busy === null && st.timers === 0 && st.ctl, JSON.stringify(st));
+
+      await page.clock.install();
+      await page.click('#talk-btn'); await page.clock.runFor(300);
+      const hooks = await page.evaluate(FAKE); await page.clock.runFor(100);
+      st = await page.evaluate(TALK_ST);
+      rec(14, 'a connected session goes live: „Slušam”, the clock at 00:40, the rule full', hooks && st.live && st.label === 'Slušam' && st.clock === '00:40' && st.rule === 'scaleX(1)' && st.liveOn && !st.noteOn, JSON.stringify(st));
+      await page.clock.runFor(10000); st = await page.evaluate(TALK_ST);
+      rec(14, 'ten seconds in: 00:30, the rule three-quarters', st.clock === '00:30' && /scaleX\(0\.7[45]/.test(st.rule), JSON.stringify({ clock: st.clock, rule: st.rule }));
+      await page.clock.runFor(21500);
+      const nudged = await page.evaluate(`window.__fake.ctx.length`);
+      rec(14, 'the agent is told to wrap up before the cap', nudged === 1, 'contextual updates: ' + nudged);
+      await page.clock.runFor(8600); st = await page.evaluate(TALK_ST);
+      const cap = await page.evaluate(`({ muted: window.__fake.muted, ended: window.__fake.ended })`);
+      rec(14, 'at forty seconds the visitor\'s line is muted and the clock reads 00:00 — but a speaking agent is not cut off', st.clock === '00:00' && st.rule === 'scaleX(0)' && cap.muted === true && cap.ended === 0, JSON.stringify(cap));
+      await page.clock.runFor(1500);
+      rec(14, 'still speaking 1.5 s past the cap: still not cut', (await page.evaluate(`window.__fake.ended`)) === 0);
+      await page.evaluate(`window.__fake.vol = 0`); await page.clock.runFor(800);
+      const endedAfterQuiet = await page.evaluate(`window.__fake.ended`);
+      await page.clock.runFor(1000); st = await page.evaluate(TALK_ST);
+      rec(14, 'half a second of silence ends the session, and the end card takes the widget\'s place', endedAfterQuiet === 1 && st.card && !st.ctl && !st.live, JSON.stringify(st));
+      rec(14, 'the countdown and every other timer are cleared, not left ticking', st.timers === 0, 'live timers: ' + st.timers);
+      const c1 = st.clock; await page.clock.runFor(5000); const c2 = (await page.evaluate(TALK_ST)).clock;
+      rec(14, 'the clock does not move after the end', c1 === c2, c1 + ' → ' + c2);
+      const replaced = await page.evaluate(`document.querySelector('elevenlabs-convai') !== null && document.querySelectorAll('elevenlabs-convai').length === 1`);
+      rec(14, 'a fresh engine is in place for the next run, and only one', replaced === true);
+      await page.click('#talk-again'); await page.clock.runFor(300); st = await page.evaluate(TALK_ST);
+      rec(14, 'the demo can be started again', st.ctl && !st.card && st.label === 'Razgovaraj sa agentom', JSON.stringify(st));
+
+      /* a second run whose agent never stops talking hits the hard ceiling */
+      await page.click('#talk-btn'); await page.clock.runFor(300);
+      await page.evaluate(`(() => { const cfg = {}; document.querySelector('elevenlabs-convai').dispatchEvent(new CustomEvent('elevenlabs-convai:call', { bubbles: true, composed: true, detail: { config: cfg } }));
+        window.__fake2 = { ended: 0, endSession() { this.ended++; setTimeout(() => cfg.onDisconnect({}), 40); return Promise.resolve(); }, setMicMuted() {}, getOutputVolume() { return 0.5; }, sendContextualUpdate() {}, isOpen() { return !this.ended; } };
+        cfg.onConversationCreated(window.__fake2); cfg.onConnect({}); })()`);
+      await page.clock.runFor(40200);
+      const atCap = await page.evaluate(`window.__fake2.ended`);
+      await page.clock.runFor(6300); st = await page.evaluate(TALK_ST);
+      const afterGrace = await page.evaluate(`window.__fake2.ended`);
+      rec(14, 'an agent that never goes quiet is ended at the grace ceiling — each run capped the same way', atCap === 0 && afterGrace === 1 && st.card && st.timers === 0, JSON.stringify({ atCap, afterGrace, timers: st.timers }));
+      rec(14, 'zero console errors across every state', bag.length === 0, bag.slice(0, 3).join(' | '));
+      await ctx.close();
+    }
+    /* reduced motion: the block is not motion, so it must still work */
+    {
+      const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' });
+      await wire(ctx);
+      const page = await ctx.newPage(); const bag = [];
+      watch(page, bag);
+      await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
+      await page.waitForTimeout(2500);
+      const st = await page.evaluate(TALK_ST);
+      rec(14, 'reduced motion: the block is ready and its control live', st.ready && st.ctl && st.engineBtn && bag.length === 0, JSON.stringify(st));
+      await ctx.close();
+    }
+  }
+
   head('13 · Touch (Pixel 7) — no dead elements where hover is impossible');
   {
     const ctx = await browser.newContext({ ...devices['Pixel 7'] });

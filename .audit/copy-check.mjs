@@ -42,14 +42,14 @@ const EXPECT = {
   steps: [
     ['01', 'Poziv stiže', 'Agent se javlja za manje od dve sekunde. Uvek istim tonom — ljubaznim.'],
     ['02', 'Razgovor teče prirodno', 'Razume pitanja, odgovara na srpskom, hrvatskom ili bosanskom i zna kada poziv treba da preusmeri na vas.'],
-    ['03', 'Termin je u kalendaru', 'Zakazuje direktno u vaš kalendar i šalje SMS potvrdu klijentu. Vi samo dođete na posao.']
+    ['03', 'Termin je u kalendaru', 'Zakazuje direktno u vaš kalendar. Vi samo dođete na posao.']
   ],
 
   featH2: 'Sve što recepcija radi. Bez pauze.',
   feats: [
-    ['Zakazivanje termina', 'Direktna sinhronizacija sa Google kalendarom i sistemima za zakazivanje.'],
+    ['Zakazivanje termina', 'Direktna sinhronizacija sa Google kalendarom.'],
     ['Odgovori na česta pitanja', 'Radno vreme, cene, lokacija, priprema za pregled — agent zna vaš biznis.'],
-    ['SMS potvrde i podsetnici', 'Potvrda odmah, podsetnik dan ranije. Manje nedolazaka.'],
+    ['Usklađen sa zakonom', 'Agent u prvoj rečenici kaže da je veštačka inteligencija i da se poziv snima. Pozivalac u svakom trenutku može da traži čoveka.'],
     ['Prebacivanje na čoveka', 'Dovoljno je da pozivalac kaže „operater”. Hitne i složene pozive prosleđuje vama, sa kratkim rezimeom razgovora.'],
     ['Radi non-stop', 'Noć, vikend, praznik, gužva — svaki poziv dobije odgovor.'],
     ['Snimci i izveštaji', 'Transkript svakog razgovora i nedeljni pregled: koliko poziva, koliko termina.']
@@ -60,13 +60,23 @@ const EXPECT = {
   voiceSub: 'Telefonska veza propušta samo uzak pojas — od 300 do 3400 herca. Ono što lepo zvuči na slušalicama tu se često raspadne. Naš glas je biran merenjem kroz tu istu liniju, jer to je jedino što vaš pacijent zaista čuje.',
   voiceMarks: ['300 Hz', '3400 Hz'],
   voiceCap: 'Isti opseg koji propušta svaka telefonska veza.',
+  /* the live demo — the client's copy for it, exactly */
+  talk: {
+    start: 'Razgovaraj sa agentom',
+    note:  'Govorite naglas — agent odgovara na srpskom. Traje četrdeset sekundi.',
+    connecting: 'Povezujem…',
+    live: 'Slušam',
+    cardH: 'Demo je gotov.',
+    cardP: 'Za pun razgovor zakažite petnaest minuta sa nama.',
+    cardBtn: 'Zakaži razgovor'
+  },
 
   marquee: 'Stomatološke ordinacije · Frizerski i kozmetički saloni · Auto servisi · Privatne klinike · Fizioterapeuti · Agencije za nekretnine · Restorani · Advokatske kancelarije ·',
 
   priceH2: 'Jednostavno kao i sam agent.',
   prices: [
-    ['Starter', '99 €', '/ mesečno', ['Do 200 poziva mesečno', 'Zakazivanje termina', 'SMS potvrde', 'Osnovni izveštaji'], 'Započni'],
-    ['Professional', '199 €', '/ mesečno', ['Do 600 poziva mesečno', 'Sve iz Starter paketa', 'Prebacivanje poziva', 'Prilagođen glas i skripta', 'Prioritetna podrška'], 'Zakaži demo'],
+    ['Starter', '99 €', '/ mesečno', ['Do 200 poziva mesečno', 'Zakazivanje termina', 'Prebacivanje na čoveka', 'Osnovni izveštaji'], 'Započni'],
+    ['Professional', '199 €', '/ mesečno', ['Do 600 poziva mesečno', 'Sve iz Starter paketa', 'Prilagođena skripta i ton', 'Prioritetna podrška'], 'Zakaži demo'],
     ['Enterprise', 'Po dogovoru', '', ['Neograničeni pozivi', 'Više lokacija', 'Integracije po meri', 'Ugovor o nivou usluge (SLA)'], 'Kontaktiraj nas']
   ],
   priceBadge: 'Najpopularniji',
@@ -78,7 +88,7 @@ const EXPECT = {
     ['Da li agent zvuči robotski?', 'Koristi najnoviju generaciju glasovne sinteze za srpski jezik — prirodne pauze, intonaciju i naglasak. Poslušajte demo i procenite sami.'],
     ['Šta ako agent ne zna odgovor?', 'Iskreno kaže da će proveriti, zapiše poruku ili odmah prebaci poziv na vas — nikada ne izmišlja.'],
     ['Mogu li da tražim da razgovaram sa čovekom?', 'U svakom trenutku. Dovoljno je reći „operater” i poziv ide na vaš broj.'],
-    ['Kako se povezuje sa mojim kalendarom?', 'Podržava Google kalendar i najčešće sisteme za zakazivanje. Celo podešavanje radimo mi.'],
+    ['Kako se povezuje sa mojim kalendarom?', 'Radi sa Google kalendarom. Celo podešavanje radimo mi.'],
     ['Da li radi na hrvatskom i bosanskom?', 'Da. Razume i odgovara na sva tri jezika i prilagođava se sagovorniku.'],
     ['Koliko traje podešavanje?', 'Obično pet do sedam dana od prvog razgovora do prvog primljenog poziva.'],
     ['Šta se dešava sa snimcima razgovora?', 'Čuvaju se bezbedno i dostupni su samo vama, u skladu sa propisima o zaštiti podataka o ličnosti.']
@@ -99,9 +109,9 @@ const EXPECT = {
     ['Pozivalac', 'Dobar dan, hteo bih da zakažem pregled.'],
     ['Agent', 'Naravno. Prvi slobodan termin je u sredu u 14.00 — da li vam odgovara?'],
     ['Pozivalac', 'Može, sreda je super.'],
-    ['Agent', 'Zakazano — sreda u 14.00. Potvrda stiže SMS-om. Prijatan dan!']
+    ['Agent', 'Zakazano — sreda u 14.00. Ponoviću: sreda, četrnaest časova. Prijatan dan!']
   ],
-  phone: ['Dolazni poziv', 'AI AGENT AKTIVAN', 'zakonska najava', 'Termin zakazan', 'Sreda · 14.00', 'SMS potvrda poslata'],
+  phone: ['Dolazni poziv', 'AI AGENT AKTIVAN', 'zakonska najava', 'Termin zakazan', 'Sreda · 14.00', 'Upisano u kalendar'],
   playLabel: 'Snimak uskoro'
 };
 
@@ -171,6 +181,12 @@ eq('step bodies', (await T('.step p')).join('|'), EXPECT.steps.map(s => s[2]).jo
 
 /* features */
 eq('features h2', await T1('#mogucnosti h2'), EXPECT.featH2);
+eq('talk: button', await T1('#talk-label'), EXPECT.talk.start);
+eq('talk: note', await T1('#talk-note'), EXPECT.talk.note);
+eq('talk: card heading', await T1('#talk-card h3'), EXPECT.talk.cardH);
+eq('talk: card body', await T1('#talk-card p'), EXPECT.talk.cardP);
+eq('talk: card button', await T1('#talk-book'), EXPECT.talk.cardBtn);
+eq('talk: run-again reuses the start label', await T1('#talk-again'), EXPECT.talk.start);
 eq('feature titles', (await T('.feat h3')).join('|'), EXPECT.feats.map(f => f[0]).join('|'));
 eq('feature bodies', (await T('.feat p')).join('|'), EXPECT.feats.map(f => f[1]).join('|'));
 
@@ -256,6 +272,9 @@ const hits = DECEPTION.filter(re => re.test(html)).map(String);
 ok('no claim implies callers are deceived', hits.length === 0, hits.join(' '));
 ok('the AI disclosure is stated in the FAQ', /Da, na po(č|c)etku svakog poziva\. To je zakonska obaveza/.test(html));
 ok('the AI disclosure is stated in the footer', /Agent na po(č|c)etku svakog poziva najavljuje da je ve(š|s)ta(č|c)ka inteligencija\./.test(html));
+ok('talk: the state labels exist only in the script, verbatim', /"Povezujem…"/.test(html) && /"Slušam"/.test(html));
+ok('talk: no SMS anywhere in the file — markup, comments, meta, script', !/sms/i.test(html));
+ok('talk: the widget snippet is present verbatim', html.includes('<elevenlabs-convai agent-id="agent_5701m14n57q9e25ryes2tg8tdjhd"></elevenlabs-convai><script src="https://unpkg.com/@elevenlabs/convai-widget-embed" async type="text/javascript"></script>'));
 ok('the AI disclosure is the first line of the transcript', /Ja sam ve(š|s)ta(č|c)ka inteligencija, poziv se snima/.test(html));
 ok('a human is always reachable — stated in copy', /Dovoljno je re(ć|c)i „operater” i poziv ide na va(š|s) broj\./.test(html));
 

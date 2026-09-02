@@ -1165,6 +1165,88 @@ h3 {
   color: var(--muted); text-align: center;
 }
 
+/* ─── 14b · TALK — the live demo ────────────────────────────────────────
+   The official ElevenLabs widget is the engine and nothing more: it sits in a
+   one-pixel box that is never painted, and the page drives it through a
+   control of its own — this page's button, this page's type, this page's
+   countdown. Both states of the block share one grid cell, so swapping them
+   never moves what sits below. If the engine never arrives the block folds
+   away and the section is exactly what it was. */
+.talk {
+  position: relative;
+  margin-top: clamp(1.75rem, 3.2vw, 2.5rem);
+  display: grid; justify-items: center;
+  /* the two states differ in height; the swap animates the box between
+     them (once, on a state change — nothing here runs per frame) and the
+     one that is off stays out of flow, so the block is only ever as tall as
+     what it is showing */
+  transition: height var(--d-mid) var(--ease);
+}
+.talk.is-gone { display: none; }
+.talk-state.is-off { display: none; }
+.talk-state {
+  grid-area: 1 / 1;
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  gap: 0.9rem;
+  opacity: 0; transform: translateY(8px); visibility: hidden;
+  transition: opacity var(--d-mid) var(--ease), transform var(--d-mid) var(--ease), visibility 0s linear var(--d-mid);
+}
+.talk-state.is-on {
+  opacity: 1; transform: none; visibility: visible;
+  transition: opacity var(--d-mid) var(--ease), transform var(--d-mid) var(--ease), visibility 0s;
+}
+.talk-btn svg { width: 1.05em; height: 1.05em; flex: none; color: var(--machine); }
+.talk-btn :is(path, rect, line) { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.talk-btn[aria-busy="true"] { cursor: progress; }
+.talk-btn[aria-busy="true"] svg { opacity: 0.45; }
+.talk-dot { display: none; width: 0.5em; height: 0.5em; border-radius: 50%; background: var(--machine); flex: none; }
+.talk.is-live .talk-btn { border-color: var(--machine); }
+.talk.is-live .talk-btn svg { display: none; }
+.talk.is-live .talk-dot { display: inline-block; }
+.js-motion .talk.is-live .talk-dot { animation: blink 1.9s steps(1, end) infinite; }
+/* under the button: the note before, the clock during — one cell again */
+.talk-sub { display: grid; justify-items: center; }
+.talk-sub > * {
+  grid-area: 1 / 1;
+  opacity: 0; visibility: hidden;
+  transition: opacity var(--d-mid) var(--ease), visibility 0s linear var(--d-mid);
+}
+.talk-sub > .is-on { opacity: 1; visibility: visible; transition: opacity var(--d-mid) var(--ease), visibility 0s; }
+.talk-note {
+  font-size: var(--t-sm); line-height: 1.55; color: var(--muted);
+  max-width: 38ch; text-wrap: balance;
+}
+.talk-live { display: flex; flex-direction: column; align-items: center; gap: 0.6rem; width: min(100%, 22rem); }
+.talk-clock {
+  font-family: var(--f-mono); font-size: var(--t-sm); font-weight: 600;
+  letter-spacing: var(--track-mono); color: var(--machine);
+}
+/* the forty seconds, draining — the same gesture as every rule on the page */
+.talk-rule { position: relative; display: block; width: 100%; height: 1px; background: var(--line-hard); overflow: hidden; }
+.talk-rule i {
+  position: absolute; inset: 0; display: block;
+  background: var(--machine); transform-origin: left center;
+  transition: transform 260ms linear;
+}
+.talk-card h3 { font-size: var(--t-lg); letter-spacing: -0.01em; }
+.talk-card p  { color: var(--muted); font-size: var(--t-sm); line-height: 1.55; max-width: 36ch; text-wrap: balance; }
+.talk-card-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.75rem; margin-top: 0.15rem; }
+.talk-again {
+  font-family: var(--f-mono); font-size: var(--t-xs); font-weight: 600;
+  letter-spacing: var(--track-mono); text-transform: uppercase;
+  color: var(--muted); background: none; border: 0; padding: 0.4em 0.2em; cursor: pointer;
+  border-radius: var(--r-xs);
+  transition: color var(--d-micro) var(--ease);
+}
+@media (hover: hover) and (pointer: fine) { .talk-again:hover { color: var(--signal); } }
+/* the engine: present, running, never painted, never in the tab order.
+   A transform keeps its fixed-position parts inside this box. */
+.talk-engine {
+  position: absolute; left: 0; top: 0; width: 1px; height: 1px;
+  overflow: hidden; visibility: hidden; pointer-events: none;
+  transform: translateZ(0);
+}
+
 /* ─── 15 · MARQUEE ──────────────────────────────────────────────────────── */
 .marquee {
   position: relative;
@@ -1471,6 +1553,7 @@ html:not(.js) .faq-panel > div,
   .marquee-track { animation: none; }
   .phone-float { animation: none; }
   .cursor-glow { display: none; }
+  .talk-rule i { transition: none; }
 }
 
 /* ─── 23 · HIGH CONTRAST ────────────────────────────────────────────────── */
@@ -1490,6 +1573,7 @@ html:not(.js) .faq-panel > div,
 
 /* ─── 24 · PRINT ────────────────────────────────────────────────────────── */
 @media print {
+  .talk-engine, .talk-live { display: none !important; }
   .nav, .menu, .grain, .glow, .band, .cursor-glow, .phone-stage { display: none !important; }
   /* draw-ins hold their hidden state until scrolled to; paper never scrolls */
   .feat-ico :is(path, circle, rect, line, polyline) { stroke-dasharray: none !important; stroke-dashoffset: 0 !important; }
@@ -1650,7 +1734,7 @@ html:not(.js) .faq-panel > div,
                           <span class="ph-typing" aria-hidden="true"><i></i><i></i><i></i></span>
                           <div class="ph-turn ph-turn--agent">
                             <span class="ph-who">Agent</span>
-                            <p class="ph-bubble">Zakazano — sreda u 14.00. Potvrda stiže SMS-om. Prijatan dan!</p>
+                            <p class="ph-bubble">Zakazano — sreda u 14.00. Ponoviću: sreda, četrnaest časova. Prijatan dan!</p>
                           </div>
 
                         </div>
@@ -1664,7 +1748,7 @@ html:not(.js) .faq-panel > div,
                         <span class="ph-confirm-body">
                           <span class="ph-confirm-title">Termin zakazan</span>
                           <span class="ph-confirm-meta num">Sreda · 14.00</span>
-                          <span class="ph-confirm-sub">SMS potvrda poslata</span>
+                          <span class="ph-confirm-sub">Upisano u kalendar</span>
                         </span>
                       </div>
                     </div>
@@ -1746,7 +1830,7 @@ html:not(.js) .faq-panel > div,
           <span class="step-n" aria-hidden="true">03</span>
           <div class="step-body">
             <h3 class="step-title">Termin je u kalendaru</h3>
-            <p>Zakazuje direktno u vaš kalendar i šalje SMS potvrdu klijentu. Vi samo dođete na posao.</p>
+            <p>Zakazuje direktno u vaš kalendar. Vi samo dođete na posao.</p>
           </div>
         </li>
       </ol>
@@ -1768,7 +1852,7 @@ html:not(.js) .faq-panel > div,
           <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2.2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="3" x2="8" y2="7"/><line x1="16" y1="3" x2="16" y2="7"/><polyline class="anim anim--pop" points="8.8 14.9 11 17.1 15.4 12.7"/></svg>
         </span>
         <h3>Zakazivanje termina</h3>
-        <p>Direktna sinhronizacija sa Google kalendarom i sistemima za zakazivanje.</p>
+        <p>Direktna sinhronizacija sa Google kalendarom.</p>
       </li>
       <li class="feat" data-fx="card">
         <span class="feat-ico" aria-hidden="true">
@@ -1779,10 +1863,10 @@ html:not(.js) .faq-panel > div,
       </li>
       <li class="feat" data-fx="card">
         <span class="feat-ico" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M3 5.8A1.8 1.8 0 0 1 4.8 4h11.4A1.8 1.8 0 0 1 18 5.8v5.4a1.8 1.8 0 0 1-1.8 1.8H8.4L3 17.4z"/><g class="anim anim--pop"><circle cx="17.2" cy="16.6" r="4.4"/><polyline points="17.2 14.4 17.2 16.8 19.1 17.8"/></g></svg>
+          <svg viewBox="0 0 24 24"><path d="M12 3.2 5 5.9v5.3c0 4.4 2.9 8.3 7 9.6 4.1-1.3 7-5.2 7-9.6V5.9z"/><polyline class="anim anim--pop" points="8.9 12.1 11.1 14.3 15.2 9.9"/></svg>
         </span>
-        <h3>SMS potvrde i podsetnici</h3>
-        <p>Potvrda odmah, podsetnik dan ranije. Manje nedolazaka.</p>
+        <h3>Usklađen sa zakonom</h3>
+        <p>Agent u prvoj rečenici kaže da je veštačka inteligencija i da se poziv snima. Pozivalac u svakom trenutku može da traži čoveka.</p>
       </li>
       <li class="feat" data-fx="card">
         <span class="feat-ico" aria-hidden="true">
@@ -1844,6 +1928,35 @@ html:not(.js) .faq-panel > div,
         </button>
         <span class="play-label" id="play-label" aria-hidden="true">Snimak uskoro</span>
       </div>
+
+      <div class="talk" id="talk">
+        <div class="talk-state" id="talk-ctl">
+          <button class="btn btn--ghost btn--magnetic talk-btn" id="talk-btn" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.3a6.5 6.5 0 0 0 13 0"/><line x1="12" y1="17.8" x2="12" y2="21"/></svg>
+            <i class="talk-dot" aria-hidden="true"></i>
+            <span id="talk-label" aria-live="polite">Razgovaraj sa agentom</span>
+          </button>
+          <div class="talk-sub">
+            <p class="talk-note is-on" id="talk-note">Govorite naglas — agent odgovara na srpskom. Traje četrdeset sekundi.</p>
+            <div class="talk-live" id="talk-live" aria-hidden="true">
+              <span class="talk-clock num" id="talk-clock">00:40</span>
+              <span class="talk-rule"><i id="talk-rule"></i></span>
+            </div>
+          </div>
+        </div>
+        <div class="talk-state talk-card is-off" id="talk-card" role="status">
+          <h3>Demo je gotov.</h3>
+          <p>Za pun razgovor zakažite petnaest minuta sa nama.</p>
+          <div class="talk-card-row">
+            <a class="btn btn--primary btn--magnetic" id="talk-book" href="#cta">Zakaži razgovor</a>
+            <span data-talk-tel></span>
+          </div>
+          <button class="talk-again" id="talk-again" type="button">Razgovaraj sa agentom</button>
+        </div>
+        <div class="talk-engine" id="talk-engine" aria-hidden="true">
+          <elevenlabs-convai agent-id="agent_5701m14n57q9e25ryes2tg8tdjhd"></elevenlabs-convai><script src="https://unpkg.com/@elevenlabs/convai-widget-embed" async type="text/javascript"></script>
+        </div>
+      </div>
     </div>
 
     <p class="voice-cap" data-reveal data-lines>Isti opseg koji propušta svaka telefonska&nbsp;veza.</p>
@@ -1880,7 +1993,7 @@ html:not(.js) .faq-panel > div,
         <ul class="price-list">
           <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.6 9.4 17.5 19.5 7"/></svg>Do 200 poziva mesečno</li>
           <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.6 9.4 17.5 19.5 7"/></svg>Zakazivanje termina</li>
-          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.6 9.4 17.5 19.5 7"/></svg>SMS potvrde</li>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.6 9.4 17.5 19.5 7"/></svg>Prebacivanje na čoveka</li>
           <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.6 9.4 17.5 19.5 7"/></svg>Osnovni izveštaji</li>
         </ul>
         <a class="btn btn--ghost btn--magnetic" href="#cta">Započni</a>
@@ -1893,8 +2006,7 @@ html:not(.js) .faq-panel > div,
         <ul class="price-list">
           <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.6 9.4 17.5 19.5 7"/></svg>Do 600 poziva mesečno</li>
           <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.6 9.4 17.5 19.5 7"/></svg>Sve iz Starter paketa</li>
-          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.6 9.4 17.5 19.5 7"/></svg>Prebacivanje poziva</li>
-          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.6 9.4 17.5 19.5 7"/></svg>Prilagođen glas i skripta</li>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.6 9.4 17.5 19.5 7"/></svg>Prilagođena skripta i ton</li>
           <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.6 9.4 17.5 19.5 7"/></svg>Prioritetna podrška</li>
         </ul>
         <a class="btn btn--primary btn--magnetic" href="#cta">Zakaži demo</a>
@@ -1944,7 +2056,7 @@ html:not(.js) .faq-panel > div,
       </div>
       <div class="faq-item">
         <h3><button class="faq-q" type="button" id="faq-q5" aria-expanded="false" aria-controls="faq-p5">Kako se povezuje sa mojim kalendarom?<svg class="faq-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9.5 6 6 6-6"/></svg></button></h3>
-        <div class="faq-panel" id="faq-p5" role="region" aria-labelledby="faq-q5"><div><p>Podržava Google kalendar i najčešće sisteme za zakazivanje. Celo podešavanje radimo mi.</p></div></div>
+        <div class="faq-panel" id="faq-p5" role="region" aria-labelledby="faq-q5"><div><p>Radi sa Google kalendarom. Celo podešavanje radimo mi.</p></div></div>
       </div>
       <div class="faq-item">
         <h3><button class="faq-q" type="button" id="faq-q6" aria-expanded="false" aria-controls="faq-p6">Da li radi na hrvatskom i bosanskom?<svg class="faq-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9.5 6 6 6-6"/></svg></button></h3>
@@ -2722,6 +2834,203 @@ function initBands() {
   }
   setBandsMotion(!REDUCED());
 }
+/* ═══ 1b · TALK — the live demo ═══════════════════════════════════════════
+   The official widget is the engine; the page is the instrument panel. The
+   widget's one public hook — the `elevenlabs-convai:call` event, whose
+   `detail.config` is spread into the SDK's startSession — is where the page
+   attaches its own callbacks and receives the live Conversation. From there
+   it can end the call, mute the line and read the output level, which is
+   everything the forty-second cap needs. Nothing here logs; a failure is a
+   quiet return to the state the visitor started from.                      */
+var TALK_CAP = 40;              /* seconds — the hard cap, not a suggestion */
+var TALK_GRACE = 6;             /* how long after the cap a sentence may finish */
+var TALK_NUDGE = 31;            /* when the agent is told to wrap up */
+var TALK_READY_MS = 8000;       /* how long to wait for the engine before folding */
+var TALK_CONNECT_MS = 15000;    /* how long „Povezujem…” may last */
+var TALK_ENGINE_MS = 5000;      /* a fresh engine's button, after a run */
+function initTalk() {
+  var root = $("#talk"), ctl = $("#talk-ctl"), card = $("#talk-card"), engine = $("#talk-engine");
+  var btn = $("#talk-btn"), label = $("#talk-label"), note = $("#talk-note"), live = $("#talk-live");
+  var clock = $("#talk-clock"), rule = $("#talk-rule"), book = $("#talk-book"), again = $("#talk-again");
+  if (!root || !ctl || !card || !engine || !btn || !label || !note || !live || !clock || !rule) return;
+  var widget = engine.querySelector("elevenlabs-convai");
+  if (!widget) return;
+  var proto = widget.cloneNode(false);           /* a clean engine for every run */
+
+  /* the card's button goes where the primary CTA goes: the booking link,
+     else the section where booking happens */
+  var link = String(CONFIG.DEMO_LINK || "").trim();
+  if (book) {
+    if (link) { book.href = link; if (/^https?:/i.test(link)) { book.target = "_blank"; book.rel = "noopener"; } }
+    else book.href = "#cta";
+  }
+  /* the number — only if there is one. No placeholder, no dead link. */
+  var num = String(CONFIG.DEMO_TELEFON || "").trim();
+  var telSlot = card.querySelector("[data-talk-tel]");
+  if (telSlot) {
+    if (num) {
+      var tel = document.createElement("a");
+      tel.className = "btn btn--ghost btn--magnetic";
+      tel.href = "tel:" + num.replace(/[^\d+]/g, "");
+      tel.textContent = num;
+      telSlot.parentNode.replaceChild(tel, telSlot);
+    } else telSlot.parentNode.removeChild(telSlot);
+  }
+
+  var state = "idle", conv = null, timers = [], startedAt = 0, ended = false;
+  if (window.__glasDebug) window.__glasTalkTimers = timers;
+  function later(fn, ms) { var id = setTimeout(function () { drop(id); fn(); }, ms); timers.push(id); return id; }
+  function every(fn, ms) { var id = setInterval(fn, ms); timers.push(id); return id; }
+  function drop(id) { var i = timers.indexOf(id); if (i >= 0) timers.splice(i, 1); }
+  function cancel(id) { clearTimeout(id); clearInterval(id); drop(id); }
+  function stopTimers() { while (timers.length) { var id = timers.pop(); clearTimeout(id); clearInterval(id); } }
+  keep(stopTimers);
+
+  /* A state swap is a cross-fade *and* a height change. The box is pinned
+     at its current height, the incoming state is laid out, the box is sent
+     to the incoming height, and only once the fade is over does the outgoing
+     state leave the flow — so nothing below ever jumps. */
+  var swapT = 0;
+  function show(which) {
+    var into = which === "card" ? card : ctl, outOf = which === "card" ? ctl : card;
+    if (into.classList.contains("is-on") && outOf.classList.contains("is-off")) return;
+    clearTimeout(swapT);
+    var h0 = root.offsetHeight;
+    root.style.height = h0 + "px";
+    into.classList.remove("is-off"); outOf.classList.remove("is-off");
+    var h1 = into.offsetHeight;
+    root.style.height = h1 + "px";                /* the transition carries it */
+    into.classList.add("is-on"); outOf.classList.remove("is-on");
+    swapT = setTimeout(function () {
+      outOf.classList.add("is-off");
+      root.style.height = "";
+    }, 460);
+  }
+  keep(function () { clearTimeout(swapT); });
+  function sub(which) {
+    note.classList.toggle("is-on", which === "note");
+    live.classList.toggle("is-on", which === "live");
+    live.setAttribute("aria-hidden", which === "live" ? "false" : "true");
+  }
+  function paint(left) {
+    var s = Math.max(0, Math.ceil(left));
+    clock.textContent = "00:" + (s < 10 ? "0" : "") + s;
+    rule.style.transform = "scaleX(" + (Math.max(0, Math.min(TALK_CAP, left)) / TALK_CAP).toFixed(4) + ")";
+  }
+  function engineButton() {
+    var sr = widget && widget.shadowRoot;
+    if (!sr) return null;
+    var bs = sr.querySelectorAll("button");
+    for (var i = 0; i < bs.length; i++) if (bs[i].offsetWidth || bs[i].offsetHeight) return bs[i];
+    return null;
+  }
+  function freshEngine() {
+    var next = proto.cloneNode(false);
+    if (widget.parentNode) widget.parentNode.replaceChild(next, widget); else engine.appendChild(next);
+    widget = next;
+  }
+
+  /* ── the block shows only once the engine can actually be driven ── */
+  var readyPoll = every(function () {
+    if (!engineButton()) return;
+    cancel(readyPoll); cancel(readyNet);
+    root.classList.add("is-ready");
+    show("ctl");
+  }, 250);
+  var readyNet = later(function () {
+    cancel(readyPoll);
+    root.classList.add("is-gone");                 /* the section is what it was */
+    if (window.ScrollTrigger) window.ScrollTrigger.refresh();
+  }, TALK_READY_MS);
+
+  /* ── the engine's one public hook ── */
+  on(engine, "elevenlabs-convai:call", function (e) {
+    var cfg = e.detail && e.detail.config;
+    if (!cfg) return;
+    cfg.onConversationCreated = function (c) {
+      /* a session that arrives after the visitor gave up is ended, unheard */
+      if (state !== "connecting") { try { c.endSession(); } catch (err) {} return; }
+      conv = c;
+    };
+    cfg.onConnect = function () {
+      if (state !== "connecting") { try { if (conv) conv.endSession(); } catch (err) {} return; }
+      goLive();
+    };
+    cfg.onDisconnect = function () { finish(); };
+    cfg.onError = function () { if (state === "connecting") reset(); };
+  });
+
+  function start() {
+    if (state !== "idle") return;
+    state = "connecting"; ended = false; conv = null;
+    btn.setAttribute("aria-busy", "true");
+    label.textContent = "Povezujem…";
+    /* a fresh engine may still be fetching its config; wait for its button */
+    var pressed = false;
+    var wait = every(function () {
+      var b = engineButton();
+      if (!b || pressed) return;
+      pressed = true; cancel(wait);
+      b.click();
+    }, 120);
+    later(function () { if (state === "connecting") reset(); }, TALK_CONNECT_MS);
+  }
+  function goLive() {
+    state = "live"; startedAt = performance.now();
+    btn.removeAttribute("aria-busy");
+    label.textContent = "Slušam";
+    root.classList.add("is-live");
+    paint(TALK_CAP); sub("live");
+    every(tick, 250);
+    later(function () {
+      try { if (conv && conv.sendContextualUpdate) conv.sendContextualUpdate("The demo ends in a few seconds. Finish your current thought in one short sentence and say goodbye."); } catch (err) {}
+    }, TALK_NUDGE * 1000);
+    later(capReached, TALK_CAP * 1000);
+  }
+  function tick() { if (state === "live") paint(TALK_CAP - (performance.now() - startedAt) / 1000); }
+  function capReached() {
+    if (state !== "live") return;
+    state = "ending"; paint(0);
+    /* the line closes to the visitor first; the agent may finish its sentence */
+    try { if (conv && conv.setMicMuted) conv.setMicMuted(true); } catch (err) {}
+    var quiet = 0;
+    var hard = later(end, TALK_GRACE * 1000);
+    var watch = every(function () {
+      var v = 0;
+      try { v = conv && conv.getOutputVolume ? conv.getOutputVolume() : 0; } catch (err) { v = 0; }
+      quiet = v > 0.02 ? 0 : quiet + 1;
+      if (quiet >= 2) { cancel(watch); cancel(hard); end(); }      /* half a second of silence */
+    }, 250);
+  }
+  function end() {
+    stopTimers();
+    try { if (conv && conv.endSession) conv.endSession(); } catch (err) {}
+    later(finish, 1500);                            /* onDisconnect normally lands first */
+  }
+  function reset() {
+    ended = true; stopTimers();
+    state = "idle"; conv = null;
+    root.classList.remove("is-live");
+    btn.removeAttribute("aria-busy");
+    label.textContent = "Razgovaraj sa agentom";
+    sub("note");
+    freshEngine();
+  }
+  function finish() {
+    if (ended) return;
+    var ran = state === "live" || state === "ending";
+    reset();
+    show(ran ? "card" : "ctl");
+  }
+
+  on(btn, "click", function () {
+    if (state === "idle") start();
+    else if (state === "connecting") reset();       /* the visitor changed their mind */
+    else end();                                     /* live or ending: stop now */
+  });
+  if (again) on(again, "click", function () { ended = false; show("ctl"); });
+}
+
 /* ═══ 2 · CONFIG-DRIVEN PLACEHOLDERS ═══════════════════════════════════════
    Empty is a designed state, not a broken one. §7                          */
 function initDemoSlots() {
@@ -3001,9 +3310,9 @@ function initPhoneLoop(gsap) {
     { typ: 6.95,  bub: 7.55,  speakTo: null,  agent: false },
     { typ: 9.55,  bub: 10.25, speakTo: 13.05, agent: true  },
     { typ: 13.45, bub: 14.05, speakTo: null,  agent: false },
-    { typ: 15.85, bub: 16.55, speakTo: 19.20, agent: true  }
+    { typ: 15.85, bub: 16.55, speakTo: 19.55, agent: true  }
   ];
-  var ANSWER = 2.0, CONFIRM_AT = 19.85, OUT_AT = 22.35, RESET_AT = 23.02, IN_AT = 23.10, TOTAL = 24.0;
+  var ANSWER = 2.0, CONFIRM_AT = 20.15, OUT_AT = 22.55, RESET_AT = 23.22, IN_AT = 23.30, TOTAL = 24.0;
 
   var checkLen = 0;
   try { checkLen = checkP.getTotalLength() || 0; } catch (e) { checkLen = 0; }
@@ -4208,6 +4517,7 @@ function boot() {
   safe("demo-slots",  initDemoSlots);
   safe("primary-cta", initPrimaryCta);
   safe("demo-audio",  initDemoAudio);
+  safe("talk",        initTalk);
   safe("nav",         initNav);
   safe("menu",        initMenu);
   safe("faq",         initFaq);
