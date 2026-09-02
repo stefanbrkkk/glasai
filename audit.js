@@ -329,7 +329,7 @@ const LAPTOP_ST = `(() => {
     rec(4, 'page scrolls', st.canScroll === true);
     rec(4, 'body text present', st.text > 2500, st.text + ' chars');
     const lap = await page.evaluate(LAPTOP_ST);
-    rec(4, 'the laptop stands open, untransformed, with the address and its button in plain view', lap.lid === 'none' && lap.lap === 'none' && lap.uiShown && lap.mail === 'mailto:support@glasai.online', JSON.stringify(lap));
+    rec(4, 'the laptop stands open, untransformed, with the address and its button in plain view', lap.identity && lap.lidRatio >= 0.99 && lap.uiShown && lap.mail === 'mailto:support@glasai.online', JSON.stringify(lap));
     await page.waitForTimeout(5000);                /* the engine gets 8 s before the block folds */
     const talk = await page.evaluate(`({ gone: document.querySelector('#talk').classList.contains('is-gone'), ready: document.querySelector('#talk').classList.contains('is-ready'),
       talkVisible: document.querySelector('#talk').offsetHeight > 0 })`);
@@ -371,7 +371,7 @@ const LAPTOP_ST = `(() => {
     rec(5, 'no js-motion / js-loop class', a.motionCls === false && a.loopCls === false);
     rec(5, 'phone rests in the booked state', a.bubbles && a.confirm !== 'none' && parseFloat(a.confirmOp) > 0.9 && a.incoming === 'hidden');
     const lap5 = await page.evaluate(LAPTOP_ST);
-    rec(5, 'the laptop is open and still — nothing scrubbed, nothing hidden', lap5.lid === 'none' && lap5.lap === 'none' && lap5.uiShown, JSON.stringify(lap5));
+    rec(5, 'the laptop is open and still — nothing scrubbed, nothing hidden', lap5.identity && lap5.lidRatio >= 0.99 && lap5.progress === null && lap5.uiShown, JSON.stringify(lap5));
     rec(5, 'zero console errors', bag.length === 0, bag.slice(0, 3).join(' | '));
     await page.screenshot({ path: path.join(SHOTS, 'reduced-motion.png'), fullPage: true });
     await ctx.close();
@@ -878,6 +878,7 @@ const LAPTOP_ST = `(() => {
     await wire(ctx);
     const page = await ctx.newPage(); const bag = [];
     watch(page, bag);
+    await page.addInitScript(() => { window.__glasDebug = true; });   /* the player's element is not in the DOM */
     await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
     await page.waitForTimeout(2200);
 
@@ -964,9 +965,31 @@ const LAPTOP_ST = `(() => {
                monotonic: marks.every((v, i) => i === 0 || v >= marks[i - 1] - 0.05),
                swing: +(Math.max(...amps) / Math.min(...amps)).toFixed(3) };
     })()`);
-    rec(12, 'the recording plays, and the meter answers it', play.playing === true && play.label === 'Pauziraj' && play.swing > 1.05, JSON.stringify(play));
+    rec(12, 'the recording plays, and the meter answers it', play.playing === true && play.label === 'Zaustavi' && play.swing > 1.05, JSON.stringify(play));
     rec(12, 'the playhead walks the passband as it plays — never blank while a voice is speaking',
         play.first >= 0.30 && play.last > play.first + 0.15 && play.monotonic, JSON.stringify({ first: play.first, last: play.last, monotonic: play.monotonic }));
+    /* the control is play-from-the-start and stop, never pause-and-resume:
+       pressed mid-clip it rewinds, and every play — after a stop, after the
+       end — begins at the first word */
+    const again = await page.evaluate(`(async () => {
+      const a = window.__glasAudio, btn = document.querySelector('#play'), lbl = document.querySelector('#play-label');
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      a.pause(); a.currentTime = 0; await wait(300);          /* a known state: stopped, at the top */
+      btn.click(); await wait(900);                            /* playing, most of a second in */
+      const playing = { paused: a.paused, t: +a.currentTime.toFixed(2), label: lbl.textContent.trim() };
+      btn.click(); await wait(250);                            /* pressed while playing */
+      const stopped = { paused: a.paused, t: +a.currentTime.toFixed(2), label: lbl.textContent.trim() };
+      btn.click(); await wait(400);                            /* and again: from the top */
+      const restarted = { paused: a.paused, t: +a.currentTime.toFixed(2) };
+      await new Promise(r => { a.addEventListener('ended', r, { once: true }); setTimeout(r, 12000); });
+      const ended = { ended: a.ended, label: lbl.textContent.trim() };
+      btn.click(); await wait(400);                            /* after the end: from the top */
+      const third = { paused: a.paused, t: +a.currentTime.toFixed(2) };
+      a.pause();
+      return { playing, stopped, restarted, ended, third };
+    })()`);
+    rec(12, 'pressed while playing, the control stops and rewinds — no resume from mid-sentence', !again.playing.paused && again.playing.t > 0.5 && again.playing.label === 'Zaustavi' && again.stopped.paused && again.stopped.t === 0 && again.stopped.label === 'Poslušaj agenta', JSON.stringify({ playing: again.playing, stopped: again.stopped }));
+    rec(12, 'every play starts at the first word — after a stop, and after the end', !again.restarted.paused && again.restarted.t < 0.8 && again.ended.ended && again.ended.label === 'Poslušaj agenta' && !again.third.paused && again.third.t < 0.8, JSON.stringify({ restarted: again.restarted, ended: again.ended, third: again.third }));
     rec(12, 'zero console errors across the motion system', bag.length === 0, bag.slice(0, 3).join(' | '));
     await ctx.close();
   }

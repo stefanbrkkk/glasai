@@ -3521,6 +3521,7 @@ function initDemoAudio() {
   audioEl = new Audio();
   audioEl.preload = "metadata";
   audioEl.src = src;
+  if (window.__glasDebug) window.__glasAudio = audioEl;    /* the harness reads its clock */
   btn.removeAttribute("aria-disabled");
   btn.classList.remove("is-empty");
   label.textContent = PLAY_NAME;
@@ -3579,14 +3580,20 @@ function initDemoAudio() {
     if (voiceBand) { voiceBand.drive = 0; voiceBand.reveal = 1; voiceBand.audioOwned = false; }
   }
 
+  /* A seven-second clip has no use for pause-and-resume: pressed while it
+     plays, the control stops and rewinds, and every play starts at the first
+     word. (Resumed, the clip came back in mid-sentence — on „operater” — and
+     read as broken.) */
+  function rewind() { try { audioEl.currentTime = 0; } catch (e) {} }
   demoSweep = function () { if (audioEl.paused) btn.click(); };
   on(btn, "click", function () {
     if (audioEl.paused) {
       connect();
       if (actx && actx.state === "suspended") actx.resume();
+      rewind();
       var p = audioEl.play();
       if (p && p.catch) p.catch(function () { /* autoplay policy — silent */ });
-    } else { audioEl.pause(); }
+    } else { audioEl.pause(); rewind(); }
   });
   on(audioEl, "play", function () {
     if (voiceBand) voiceBand.audioOwned = true;
@@ -3594,7 +3601,7 @@ function initDemoAudio() {
        recording is running — it stands down until the clip is over */
     root.classList.add("js-audio");
     btn.classList.add("is-playing");
-    label.textContent = "Pauziraj"; vh.textContent = "Pauziraj";
+    label.textContent = "Zaustavi"; vh.textContent = "Zaustavi";
     if (!sampling) sample();
   });
   on(audioEl, "pause", function () {

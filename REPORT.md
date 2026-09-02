@@ -508,6 +508,39 @@ And by eye: filmstrips at 1440 and 390 at progress 0 / 0.15 / 0.35 / 0.6 / 1
 and the page bottom, the reduced-motion and no-CDN bottoms, and the copied
 state.
 
+### 3e · The recording's control, and the snippet checked once more
+
+The client, playing the recording several times, heard it come back on
+„operater" — the last word of its first sentence. The control was
+pause-and-resume: pressed while the clip played it paused, and the next press
+resumed mid-sentence. For a seven-second clip that is the wrong model. It is
+now play-from-the-start and stop: pressed while playing it stops and rewinds,
+and every play — after a stop, after the end, from the hero's „Poslušaj
+demo" — begins at the first word. The label while playing reads `Zaustavi`
+instead of `Pauziraj`, because that is what pressing it does. Round 12 now
+presses the control mid-clip and reads `currentTime` back at 0, plays again
+and reads it under 0.8 s, waits for `ended`, plays a third time and reads it
+under 0.8 s again.
+
+The widget snippet was checked once more against the text the client pasted,
+byte for byte — `<elevenlabs-convai agent-id="agent_5701m14n57q9e25ryes2tg8tdjhd"></elevenlabs-convai><script src="https://unpkg.com/@elevenlabs/convai-widget-embed" async type="text/javascript"></script>` —
+and is present exactly once. The unpinned URL resolves to the package's
+latest release, and the registry's latest release on the day of this pass is
+**0.17.1** (published 2026-08-26): the same build the harness serves and the
+one the forty-second cap was verified against. So on the client's machine the
+page is driving the exact engine that round 14 drives.
+
+Why a press still does not reach the agent cannot be established from here —
+ElevenLabs is unreachable from this sandbox — but the page's side is
+accounted for: the press dispatches one `elevenlabs-convai:call` carrying the
+four hooks, and a session the service refuses (no credits, an agent that is
+not public, a domain not on the agent's allowlist, „require terms" left on)
+lands on the failure path and shows „Povezivanje nije uspelo — pokušajte
+ponovo." for four seconds. The three dashboard settings to check, in order:
+credits; the agent's *Allowlist* under its widget settings must contain the
+site's domain or be empty; *Require terms* must be off. With those in place
+the first real conversation still needs a person with a microphone.
+
 ### 4 · What could **not** be verified, and how the rest was
 
 - **No conversation was ever held.** ElevenLabs' API and WebSocket are blocked
@@ -945,7 +978,7 @@ Stated plainly, because a false green tick means the bug ships.
    Recorded so the call is the client's, not mine.
 10. **Nine strings are not from §8**, because §8 supplies no accessible names:
    `Preskoči na sadržaj` (skip link), `Meni` (menu toggle and the dialog's
-   name), `Zatvori`, `Pauziraj` (only ever shown once `DEMO_AUDIO` is filled),
+   name), `Zatvori`, `Zaustavi` (only ever shown once `DEMO_AUDIO` is filled),
    `Agent` / `Pozivalac` (the transcript speaker labels §6 uses), `Za koga`
    (§8's own name for section 6, used as its eyebrow), plus `21.40` and
    `+381 6• ••• ••••` in the phone chrome. All are single dictionary words or

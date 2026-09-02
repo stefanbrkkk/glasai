@@ -317,7 +317,7 @@ const strayAria = ARIA.filter(a => a && !ALLOWED_ARIA.has(a.trim()));
 ok('no generated Serbian in aria-label / title / alt', strayAria.length === 0, JSON.stringify(strayAria));
 
 /* every string that is NOT in §8 must be one of the declared exceptions */
-const DECLARED_EXTRA = ['Preskoči na sadržaj', 'Meni', 'Zatvori', 'Pauziraj', '21.40', '+381 6• ••• •••', '00:22', 'Agent', 'Pozivalac',
+const DECLARED_EXTRA = ['Preskoči na sadržaj', 'Meni', 'Zatvori', 'Zaustavi', '21.40', '+381 6• ••• •••', '00:22', 'Agent', 'Pozivalac',
   /* the live demo's own words, written once its copy was delegated: a stop name, an ending, a clock label, a failed attempt, a new-window hint */
   'Slušam — prekini demo', 'Završavam…', 'Preostalo', 'Povezivanje nije uspelo — pokušajte ponovo.', '(otvara se u novom prozoru)',
   /* the player's own name, once a recording exists: it plays the agent — „Poslušaj demo” is the hero link that scrolls here */
