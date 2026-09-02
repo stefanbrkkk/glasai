@@ -1437,32 +1437,54 @@ html:not(.js) .faq-panel > div,
 /* ─── 18 · KONTAKT — the laptop ─────────────────────────────────────────── */
 .contact {
   position: relative; overflow: hidden;
-  padding-block: clamp(5.5rem, 11vw, 9.5rem) clamp(4.5rem, 8vw, 7.5rem);
+  padding-block: var(--sect-pad) calc(var(--sect-pad) + 1rem);
   border-top: 1px solid var(--line-soft);
-  text-align: center;
 }
+/* The heading beside the laptop, as the hero's copy sits beside the phone —
+   so the address is on screen the moment the section is, not a viewport
+   below it. On narrow screens the two stack. */
 .contact-inner {
   position: relative; z-index: 2;
-  display: flex; flex-direction: column; align-items: center; gap: var(--stack-md);
-  container-type: inline-size;            /* the laptop's em is 1/46 of this width */
+  display: grid; grid-template-columns: minmax(0, 1fr);
+  gap: var(--stack-lg);
 }
-.sec-head--center { align-items: center; max-width: 36rem; }
-.sec-head--center .eyebrow { justify-content: center; }
-.contact .lede { text-align: center; max-width: 52ch; }
+.contact-copy { display: flex; flex-direction: column; gap: var(--stack-md); }
+.contact .lede { max-width: 44ch; }
+@media (min-width: 1024px) {
+  .contact-inner {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.25fr);
+    align-items: center;
+    gap: clamp(2rem, 5vw, 5rem);
+  }
+}
+/* The laptop's em is 1/46 of this column's content width. The deck's front
+   edge, nearer the eye, draws about 8 % wider than the lid on each side; the
+   column keeps that much clear, so the deck's corners are never cut by the
+   edge of a phone or, at the widths where the page margin is thin, by the
+   edge of the window. */
+.laptop-col { min-width: 0; container-type: inline-size; padding-inline: 4%; }
+@media (min-width: 1024px) and (max-width: 1320px) { .laptop-col { padding-inline: 2% 8%; } }
+@media (min-width: 1321px) { .laptop-col { padding-inline: 0; } }
 
 /* ── the device ──
    A real hinge, not a picture of one: the lid pivots on its bottom edge, the
    deck lies flat toward the reader, and the eye sits level with the top of
    the stage, so the deck is seen from a little above. Everything is em, one
    em being 1/46 of the width, and the perspective is em too — the object is
-   the same drawing at every size. At rest nothing is transformed but the deck
-   and the lid's back cover, so the address and its button are drawn flat and
+   the same drawing at every size.
+
+   The lid and its back cover are sibling faces on one angle, --lid, each
+   hiding its own back: the classic card flip. The lid establishes no 3D
+   context of its own — Chrome on a phone would not hit-test the children of
+   a face inside one, and the button on the screen would be unreachable — it
+   is one flat plane inside the laptop's. At rest --lid is 0deg and nothing
+   else is transformed, so the address and its button are drawn flat and
    crisp. The closed, turned-away state is set by the script, never here: a
    page with no motion simply shows the laptop open. */
+@property --lid { syntax: "<angle>"; inherits: true; initial-value: 0deg; }
 .laptop-stage {
   position: relative;
   width: 100%;
-  margin-top: clamp(1rem, 3vw, 2.25rem);
   display: flex; justify-content: center;
   font-size: calc(min(46rem, 100vw - 2 * var(--gut)) / 46);
   font-size: min(1rem, calc(100cqw / 46));
@@ -1475,16 +1497,13 @@ html:not(.js) .faq-panel > div,
   transform-style: preserve-3d;
   transform-origin: 50% calc(100% - 6.8em);   /* the hinge */
 }
-.laptop-lid {
-  position: relative;
-  transform-style: preserve-3d;
+.laptop-lid, .laptop-back {
   transform-origin: 50% 100%;
-}
-.laptop-front, .laptop-back {
-  border-radius: 1.1em 1.1em 0.55em 0.55em;
   -webkit-backface-visibility: hidden;
           backface-visibility: hidden;
 }
+.laptop-lid { position: relative; transform: rotateX(var(--lid)); }
+.laptop-front, .laptop-back { border-radius: 1.1em 1.1em 0.55em 0.55em; }
 .laptop-front {
   position: relative;
   min-height: 29em;
@@ -1500,8 +1519,8 @@ html:not(.js) .faq-panel > div,
   box-shadow: inset 0 0 0 1px rgba(120,170,220,0.22);
 }
 .laptop-back {
-  position: absolute; inset: 0;
-  transform: rotateY(180deg);
+  position: absolute; left: 0; right: 0; top: 0; height: calc(100% - 6.8em);   /* the lid's box */
+  transform: rotateX(var(--lid)) rotateY(180deg);
   display: grid; place-items: center;
   background: linear-gradient(160deg, #3b332b 0%, #1c1813 48%, #2a241d 100%);
   box-shadow: 0 0 0 1px rgba(255,205,150,0.18);
@@ -2275,13 +2294,16 @@ html:not(.js) .faq-panel > div,
   <div class="glow glow--a" aria-hidden="true"></div>
   <div class="glow glow--b" aria-hidden="true"></div>
   <div class="container contact-inner">
-    <div class="sec-head sec-head--center" data-reveal>
-      <p class="eyebrow">KONTAKT</p>
-      <h2 data-lines>Čujte ga uživo.</h2>
+    <div class="contact-copy">
+      <div class="sec-head" data-reveal>
+        <p class="eyebrow">KONTAKT</p>
+        <h2 data-lines>Čujte ga uživo.</h2>
+      </div>
+      <p class="lede" data-reveal data-lines>Zakažite razgovor od petnaest minuta — pokazaćemo vam kako zvuči vaš budući agent i koliko poziva mesečno propuštate.</p>
     </div>
-    <p class="lede" data-reveal data-lines>Zakažite razgovor od petnaest minuta — pokazaćemo vam kako zvuči vaš budući agent i koliko poziva mesečno propuštate.</p>
 
     <!-- ── the laptop ── -->
+    <div class="laptop-col">
     <div class="laptop-stage" id="laptop-stage">
       <div class="laptop" id="laptop">
         <div class="laptop-lid" id="laptop-lid">
@@ -2308,8 +2330,8 @@ html:not(.js) .faq-panel > div,
               </div>
             </div>
           </div>
-          <div class="laptop-back" aria-hidden="true"><span class="laptop-logo"></span></div>
         </div>
+        <div class="laptop-back" aria-hidden="true"><span class="laptop-logo"></span></div>
         <div class="laptop-base" aria-hidden="true">
           <div class="laptop-deck">
             <span class="laptop-hinge"></span>
@@ -2321,6 +2343,7 @@ html:not(.js) .faq-panel > div,
         </div>
       </div>
       <span class="laptop-halo" id="laptop-halo" aria-hidden="true"></span>
+    </div>
     </div>
   </div>
 </section>
@@ -4365,35 +4388,43 @@ function initJourney(gsap, ScrollTrigger, tilt) {
 }
 
 /* ═══ 9b · THE LAPTOP ═════════════════════════════════════════════════════
-   The contact section's device opens as the reader arrives: closed and turned
-   away below the fold, upright and square-on by the time the address can be
-   read. One scrubbed timeline owns every part — the lid, the turn, the light
-   the screen throws on the keys and the desk, the glare, the words. Initial
+   The contact section's device opens as the reader arrives: shut and turned
+   away as it comes into view, upright and square-on by the time the address
+   can be read. One scrubbed timeline owns every part — the hinge (one angle,
+   --lid, that the lid and its cover both wear), the turn, the light the
+   screen throws on the keys and the desk, the glare, the words. Initial
    states are set here, never in CSS: with no GSAP the laptop simply stands
    open, and at rest nothing on it is transformed. */
 function initLaptop(gsap, ScrollTrigger) {
-  var lap = $("#laptop"), lid = $("#laptop-lid"), base = $(".laptop-base");
-  if (!lap || !lid || !base) return null;
+  var lap = $("#laptop"), base = $(".laptop-base");
+  if (!lap || !base) return null;
   var ui = $$("#lap-ui > :not(.vh)");
   var lit = [$("#laptop-lit"), $("#laptop-halo")].filter(Boolean);
   var glare = $("#laptop-glare");
-  gsap.set(lap, { rotationX: -9, rotationY: -16, y: 24 });
-  gsap.set(lid, { rotationX: -90 });
+  gsap.set(lap, { "--lid": "-90deg", rotationX: -9, rotationY: -16, y: 24 });
   gsap.set(ui, { opacity: 0, y: 14 });
   gsap.set(lit, { opacity: 0 });
   var tl = gsap.timeline({ defaults: { ease: "none" } });
-  tl.to(lid, { rotationX: 0, duration: 1, ease: "power1.inOut" }, 0)
+  tl.to(lap, { "--lid": "0deg", duration: 1, ease: "power1.inOut" }, 0)
     .to(lap, { rotationX: 0, rotationY: 0, y: 0, duration: 1, ease: "power1.inOut" }, 0)
     .to(lit, { opacity: 1, duration: 0.45, ease: "power1.in" }, 0.3)
     .to(ui,  { opacity: 1, y: 0, duration: 0.3, stagger: 0.08, ease: "power2.out" }, 0.45);
   if (glare) tl.fromTo(glare, { xPercent: -70 }, { xPercent: 25, duration: 0.85 }, 0.1);
-  /* measured from the hinge, which is where a closed laptop actually is: it
-     comes into view shut, sits shut for a beat, and is open by the time the
-     hinge reaches the lower third */
-  var st = ScrollTrigger.create({ trigger: base, start: "top 84%", end: "top 56%", scrub: 0.6, animation: tl });
+  /* Measured from the hinge, which is where a shut laptop actually is: it
+     opens across the lower quarter of the viewport as it comes into view. The
+     end is wherever the hinge can actually get to — at the bottom of a phone,
+     with only the footer below, it never reaches the lower third, and a scrub
+     that ended there would leave the lid a few degrees short for ever. Read
+     off the layout, not the transforms, at every refresh. */
+  function docTop(el) { var y = 0; while (el) { y += el.offsetTop; el = el.offsetParent; } return y; }
+  function endAt() {
+    var reach = (docTop(base) - (document.documentElement.scrollHeight - window.innerHeight)) / window.innerHeight * 100;
+    return "top " + Math.min(84, Math.max(72, Math.ceil(reach) + 3)) + "%";
+  }
+  var st = ScrollTrigger.create({ trigger: base, start: "top 96%", end: endAt, scrub: 0.6, animation: tl });
   return function () {
     st.kill(); tl.kill();
-    gsap.set([lap, lid, glare].concat(ui, lit).filter(Boolean), { clearProps: "all" });
+    gsap.set([lap, glare].concat(ui, lit).filter(Boolean), { clearProps: "all" });
   };
 }
 
@@ -4855,7 +4886,7 @@ function initMotionSystem(gsap, ScrollTrigger) {
         push(safe("laptop",   function () { return initLaptop(gsap, ScrollTrigger); },
           /* it hides the screen's words before it builds its trigger; a throw
              in between must not leave the address unreadable */
-          function () { gsap.set(["#laptop", "#laptop-lid", "#laptop-lit", "#laptop-halo", "#laptop-glare", "#lap-ui > *"], { clearProps: "all" }); }));
+          function () { gsap.set(["#laptop", "#laptop-lit", "#laptop-halo", "#laptop-glare", "#lap-ui > *"], { clearProps: "all" }); }));
         push(safe("draw-ins", function () { return initDrawIns(gsap, ScrollTrigger); }));
         push(safe("steps",    function () { return initSteps(gsap, ScrollTrigger); }));
         push(safe("dividers", function () { return initDividerDraw(gsap, ScrollTrigger); }));

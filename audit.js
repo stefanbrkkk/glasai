@@ -220,7 +220,7 @@ const LAPTOP_ST = `(() => {
   const st = window.ScrollTrigger && ScrollTrigger.getAll().find(t => t.trigger && t.trigger.classList && t.trigger.classList.contains('laptop-base'));
   const lid = g('#laptop-lid'), r = lid.getBoundingClientRect();
   const ui = Array.from(document.querySelectorAll('#lap-ui > :not(.vh)'));
-  const id = m => m === 'none' || m === 'matrix(1, 0, 0, 1, 0, 0)';
+  const id = m => m === 'none' || m === 'matrix(1, 0, 0, 1, 0, 0)' || m === 'matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)';
   return { progress: st ? +st.progress.toFixed(2) : null, lid: cs('#laptop-lid').transform, lap: cs('#laptop').transform,
            identity: id(cs('#laptop-lid').transform) && id(cs('#laptop').transform) && ui.every(e => id(getComputedStyle(e).transform)),
            lidRatio: +(r.height / lid.offsetHeight).toFixed(2),
@@ -982,15 +982,16 @@ const LAPTOP_ST = `(() => {
     await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
     await page.waitForTimeout(2000);
     /* a pricing button: the section arrives under the nav, focus lands on it,
-       and the laptop waits shut at the foot of the viewport */
+       and the laptop — beside the heading — is open with its button in view,
+       having swung open during the glide */
     await page.evaluate(SCROLL_TO + `(document.querySelector('#cene').getBoundingClientRect().top + window.scrollY)`);
     await page.waitForTimeout(700);
     await page.click('.price:nth-of-type(2) .btn');
-    await page.waitForTimeout(1900);
-    const land = await page.evaluate(`(() => { const r = document.querySelector('#kontakt').getBoundingClientRect(); const h = document.querySelector('.laptop-base').getBoundingClientRect();
-      return { hash: location.hash, top: Math.round(r.top), hinge: +(h.top / innerHeight).toFixed(2), focus: document.activeElement.id }; })()`);
+    await page.waitForTimeout(2200);
+    const land = await page.evaluate(`(() => { const r = document.querySelector('#kontakt').getBoundingClientRect(); const b = document.querySelector('#lap-copy').getBoundingClientRect();
+      return { hash: location.hash, top: Math.round(r.top), focus: document.activeElement.id, btnTop: Math.round(b.top), btnBottom: Math.round(b.bottom), inView: b.top >= 0 && b.bottom <= innerHeight }; })()`);
     let lp = await page.evaluate(LAPTOP_ST);
-    rec(15, 'a plan\'s button lands on the contact section: heading under the nav, focus on the section, laptop still shut', land.hash === '#kontakt' && land.top >= 60 && land.top <= 130 && land.focus === 'kontakt' && lp.progress === 0 && lp.lidRatio < 0.55 && lp.uiHidden, JSON.stringify({ land, progress: lp.progress, lidRatio: lp.lidRatio }));
+    rec(15, 'a plan\'s button lands on the contact section: heading under the nav, focus on the section, the copy button on screen with the laptop open', land.hash === '#kontakt' && land.top >= 60 && land.top <= 130 && land.focus === 'kontakt' && land.inView && lp.progress === 1 && lp.identity && lp.uiShown, JSON.stringify({ land, progress: lp.progress, identity: lp.identity }));
     /* the scrub, sampled: shut, half, open. A shut lid lies flat and, seen
        from a little above and tilted toward the eye, still projects to
        roughly half its height — so the three are compared with each other */

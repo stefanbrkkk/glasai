@@ -422,24 +422,52 @@ button on its screen, and then the footer.*
 
 **The laptop**
 
+- It sits beside the heading, as the hero's phone sits beside the headline —
+  the page opens and closes on a device to the right of its words — so the
+  address is on screen the moment the section is, not a viewport below it.
+  (The first cut stacked the laptop under a centred heading; the client saw
+  it and said a person had to scroll too far to reach the button. Measured:
+  on arrival from a plan the hinge now sits at 64 % of a 1440×900 viewport,
+  the scrub is complete, and the copy button is in view.) Below 1024 px the
+  two stack, left-aligned like every other section.
 - A hinge, not a picture of one. In CSS 3D the lid pivots on its bottom edge
   (`rotateX(-90deg)` shut, `0` open); the deck lies flat toward the reader
   (`rotateX(90deg)`, one thickness below the hinge); the deck's front edge is
-  a third face; the lid has a front (bezel, camera, screen) and a back cover
-  (rotated 180°, backface hidden) with the amber dot. The eye sits level with
-  the top of the stage, so the deck is seen from a little above, and the
-  perspective is in em, so the object is the same drawing at every width.
-- One em is 1/46 of the width (container-query units, with a `vw` fallback
-  declared first), so the device scales as one drawing from 360 to 1920 px —
-  while the words on its screen use the page's clamp tokens, so they stay
-  readable on a phone, where the lid simply grows taller than 16:10.
+  a third face; the lid (bezel, camera, screen) and its back cover (the amber
+  dot) are sibling faces on one registered angle, `--lid`, each hiding its
+  own back — the card flip. The eye sits level with the top of the stage, so
+  the deck is seen from a little above, and the perspective is in em, so the
+  object is the same drawing at every width.
+- Why sibling faces and not a lid with two children: the first cut gave the
+  lid `preserve-3d` with the two faces inside it, and on a phone Chrome
+  hit-tested the front face's own box above its children — `elementFromPoint`
+  at the button's centre returned the bezel, and a tap did nothing, even with
+  the lid untransformed. Nine CSS variants were tried in the harness; only a
+  flat lid fixed it, and a flat lid with children faces renders the closed
+  laptop as a mirrored screen. So the lid establishes no 3D context: it is
+  one flat plane inside the laptop's, and the cover is another. Round 13 now
+  taps the button on a Pixel 7 and reads the clipboard; a probe confirmed the
+  hit on Pixel 7, iPad Mini and desktop, at rest and mid-swing.
+- One em is 1/46 of the column's width (container-query units, with a `vw`
+  fallback declared first), so the device scales as one drawing from 360 to
+  1920 px — while the words on its screen use the page's clamp tokens, so
+  they stay readable on a phone, where the lid simply grows taller than
+  16:10. The column keeps 4 % clear on each side (8 % on the right between
+  1024 and 1320 px) so the deck's nearer, wider front edge is never cut by the
+  edge of the screen.
 - The scrub is one GSAP timeline on one ScrollTrigger whose trigger is the
-  hinge line, `top 84%` → `top 56%`, `scrub: 0.6`. The laptop comes into view
-  shut — the reader sees the cover and the dot — sits shut for a beat, then
-  opens across 28 % of the viewport while the device turns from
-  `rotateY(-16deg) rotateX(-9deg)` to square-on. The screen's light on the
-  keys and the pool on the desk fade in from 30 %; the three lines on the
-  screen arrive staggered from 45 %; a glare sweeps the glass.
+  hinge line: `top 96%` to an end that is *measured* — the hinge's place at
+  the page's full scroll plus a margin, never above 72 % and never below
+  84 %. The first cut ended at 56 % and on a Pixel 7, with only the footer
+  below the laptop, the hinge could reach 55 %: the lid stopped three degrees
+  short for ever. Read off the layout (`offsetTop`, not the transformed
+  rects), re-evaluated at every refresh. The laptop comes into view shut —
+  the reader sees the cover and the dot — and opens across roughly the lower
+  quarter of the viewport while the device turns from `rotateY(-16deg)
+  rotateX(-9deg)` to square-on. The screen's light on the keys and the pool
+  on the desk fade in from 30 %; the three lines on the screen arrive
+  staggered from 45 %; a glare sweeps the glass. Arriving by a plan's button,
+  the reader sees it swing open during the glide.
 - Initial states are set by the script, never by CSS. With GSAP absent
   (round 4) or reduced motion (round 5) the laptop stands open. At rest every
   transform is identity — round 15 asserts it — so the address and its button
@@ -467,9 +495,9 @@ and the CTA-fill triggers inside `initDrawIns`. The page is smaller in code
 than it was and has one fewer canvas ticking.
 
 **Verified** — round 15 is new, and rounds 4, 5, 7, 13 and 14 grew: a plan's
-button lands with the heading under the nav, focus on the section and the
-laptop still shut; shut below the fold the lid projects to under 30 % of its
-height with the words off and the deck unlit; half-way through the scroll the
+button lands with the heading under the nav, focus on the section, the laptop
+open and the copy button on screen; shut below the fold the lid projects to
+about half its height with the words off and the deck unlit; half-way through the scroll the
 lid is half-way open; at rest progress is 1, every transform identity, the
 words on, the deck lit; the button writes the address to the clipboard, says
 „Kopirano" at the same width and announces it once, and is back two seconds
@@ -537,7 +565,7 @@ headless Chromium against the real file.
 | 12 | Throttle + motion system | the recording plays and the meter answers it, and the playhead walks the passband without ever going blank; boots and scrolls under 4× CPU throttle; every trigger measured against the pinned layout; all 12 `[data-lines]` hosts split with **zero** height change to any element and zero change to the document; line masks preserve the text exactly; the band fills its canvas without clipping and breathes rather than drones; the probe sweeps below, through and above the telephone band |
 | 13 | Touch (Pixel 7) | sway replaces cursor tilt, magnetism never engages, no pin, menu works by tap, the player answers a tap without erroring; the laptop stands open at the bottom, its button and address are real tap targets, a tap copies |
 | 14 | **The live demo** — the real widget bundle served locally, its config and avatar texture stubbed, the microphone granted, the session driven through the widget's own hook on a fake clock | ready only once the engine renders its button; engine never painted, never focusable; the page's button presses the engine's — one `elevenlabs-convai:call` carrying the four hooks; a change of mind while connecting leaves no timer; live → `00:30` at ten seconds with the rule at ¾; the wrap-up nudge at 31 s; at 40 s the mic is muted and the clock reads `00:00` but a speaking agent is not cut; half a second of silence ends it and the card takes the widget's place; zero timers, a frozen clock, one fresh engine; restart works; while live the control is named for what pressing it does, and past the cap it says it is finishing; an attempt that never connects comes back after 8 s with a notice that steps aside after 4 s; an early hang-up — which the widget never forwards — is noticed within a tick and ends on the card; an agent that never goes quiet is ended at 46 s; the card's number line only with `DEMO_TELEFON`, the booking link when `DEMO_LINK` is set; reduced motion still live; zero console errors in every state |
-| 15 | **Kontakt** — the laptop and the address | a plan's button lands under the nav with focus on the section and the laptop shut; shut → half → open sampled off the scrub, with the lid's projected height, the words, the deck's light and identity transforms asserted at each; the button copies, says „Kopirano" at the same width, announces once and reverts; the address is a `mailto:`; an instant jump to the bottom leaves it open; zero console errors |
+| 15 | **Kontakt** — the laptop and the address | a plan's button lands under the nav with focus on the section, the laptop open and the copy button in view; shut → half → open sampled off the scrub, with the lid's projected height, the words, the deck's light and identity transforms asserted at each; the button copies, says „Kopirano" at the same width, announces once and reverts; the address is a `mailto:`; an instant jump to the bottom leaves it open; zero console errors |
 
 **Round 4 — content (`node .audit/copy-check.mjs`): 88 / 88 passed.** Every
 visible string diffed against §8/§6/§7 character for character (only NBSP is
