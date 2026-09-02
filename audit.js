@@ -471,7 +471,11 @@ const PHONE_STATE = `(() => {
         const ink = () => { const d = cx.getImageData(0, 0, c.width, c.height).data; let s = 0; for (let i = 3; i < d.length; i += 40) s += d[i]; return s; };
         const e = document.querySelector('#glas'); window.__glasLenis ? window.__glasLenis.scrollTo(e, { immediate: true }) : e.scrollIntoView();
         await new Promise(r => setTimeout(r, 1200));
-        const before = ink();
+        /* the meter breathes at rest, so the baseline is an average — a single
+           sample can land on a dip and make the sweep look shallower than it is */
+        let before = 0;
+        for (let k = 0; k < 8; k++) { await new Promise(r => setTimeout(r, 90)); before += ink(); }
+        before /= 8;
         document.querySelector('#play').click();
         const scanning = document.querySelector('#play').classList.contains('is-scanning');
         let lo = Infinity, hi = 0;
@@ -512,12 +516,22 @@ const PHONE_STATE = `(() => {
     await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
 
+    /* Bounded by what is observed, not by the clock. Three cycles take ~74 s
+       on a machine with a spare core; on a loaded one each sample round-trip
+       costs more and the confirmation window is easy to sample straight past,
+       which used to report zero wraps for a loop that was fine. It now watches
+       until it has seen three, with a ceiling so it can still fail. */
     const samples = [];
-    const until = Date.now() + 74000;              // ~3 × 24 s
-    while (Date.now() < until) {
-      samples.push(await page.evaluate(PHONE_STATE));
+    const deadline = Date.now() + 200000, t0 = Date.now();
+    let cycles = 0, wasIdle = true;
+    while (Date.now() < deadline && cycles < 3) {
+      const s = await page.evaluate(PHONE_STATE);
+      samples.push(s);
+      if (s.confirm > 0.8) wasIdle = false;
+      if (s.incoming > 0.8 && !wasIdle) { cycles++; wasIdle = true; }
       await page.waitForTimeout(180);
     }
+    const took = Math.round((Date.now() - t0) / 1000);
     // a) never two conversational states at once
     // a 0.4 s cross-fade is the design; two states *both* legible is the bug
     const overlap = samples.filter(s => s.incoming > 0.55 && s.call > 0.55 && s.content > 0.5);
@@ -530,10 +544,8 @@ const PHONE_STATE = `(() => {
     let back = 0;
     for (let i = 1; i < secs.length; i++) if (secs[i] < secs[i - 1] && secs[i] !== 0) back++;
     rec(8, 'timer never runs backwards (only resets to 00:00)', back === 0, back + ' regressions');
-    // d) three confirmations seen => at least three cycles observed
-    let cycles = 0, wasIdle = true;
-    for (const s of samples) { if (s.incoming > 0.8 && !wasIdle) { cycles++; wasIdle = true; } if (s.confirm > 0.8) wasIdle = false; }
-    rec(8, 'three full cycles observed with a clean wrap', cycles >= 2, cycles + ' wraps seen in ~74 s');
+    // d) three confirmations seen => three full cycles observed
+    rec(8, 'three full cycles observed with a clean wrap', cycles >= 3, `${cycles} wraps in ${took} s over ${samples.length} samples`);
     // e) the seam is dark — no flash of the old state
     const flash = samples.filter(s => s.content < 0.9 && s.content > 0.05 && s.confirm > 0.5 && s.incoming > 0.5);
     rec(8, 'no flash of the previous state across the seam', flash.length === 0);
