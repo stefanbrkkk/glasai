@@ -2964,7 +2964,7 @@ function initTalk() {
   function sub(which) {
     note.classList.toggle("is-on", which === "note");
     live.classList.toggle("is-on", which === "live");
-    live.setAttribute("aria-hidden", which === "live" ? "false" : "true");
+    if (which === "live") live.removeAttribute("aria-hidden"); else live.setAttribute("aria-hidden", "true");
   }
   function paint(left) {
     var s = Math.max(0, Math.ceil(left - 0.0005));   /* a hair under a whole second is that second */
