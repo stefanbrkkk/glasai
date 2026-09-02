@@ -274,7 +274,7 @@ h3 {
 
 /* ─── 6 · THE BAND (signature motif) ────────────────────────────────────── */
 /* One component, four placements: hero line, section divider, voice section,
-   CTA button fill. Nothing else in the page draws a spectrum. */
+   the laptop's screen. Nothing else in the page draws a spectrum. */
 .band { position: relative; display: block; }
 .band canvas {
   width: 100%; height: 100%; display: block;
@@ -299,20 +299,13 @@ h3 {
           mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
 }
 .band--voice { height: clamp(12.5rem, 26vw, 17.5rem); }
-.band--btn {
-  position: absolute; inset: 0; z-index: 0;
-  /* The motif's fourth placement lives here, so it is present at rest, not
-     only for the two seconds of its arrival demo. Quiet enough that the label
-     always wins. */
-  opacity: 0.24; pointer-events: none;
-  transition: opacity var(--d-mid) var(--ease);
-  /* The label is the point; the meter is behind it. This lets the bars pass
-     under the word and re-emerge above and below it instead of striking
-     through the letterforms. */
-  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 24%, rgba(0,0,0,0.10) 41%, rgba(0,0,0,0.10) 59%, #000 76%, #000 100%);
-          mask-image: linear-gradient(180deg, #000 0%, #000 24%, rgba(0,0,0,0.10) 41%, rgba(0,0,0,0.10) 59%, #000 76%, #000 100%);
-  -webkit-mask-repeat: no-repeat;
-          mask-repeat: no-repeat;
+.band--screen {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 0;
+  /* The motif's fourth placement: the agent's line, faint at the foot of the
+     laptop's screen — under the address, never across it. */
+  height: 6.5em; opacity: 0.55; pointer-events: none;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent);
+          mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent);
 }
 
 /* Pulled back into the gap it sits in, so a boundary with a divider and a
@@ -416,8 +409,6 @@ h3 {
 
 .btn--nav { padding: 0.7em 1.1em; font-size: var(--t-xs); }
 
-.btn--xl { padding: 1.15em 2.1em; font-size: var(--t-base); letter-spacing: 0.05em; }
-
 /* rotating conic border, fine pointer only */
 .btn--magnetic::before {
   content: ""; position: absolute; inset: -1px; z-index: 0;
@@ -435,7 +426,6 @@ h3 {
 }
 @media (hover: hover) and (pointer: fine) {
   .btn--magnetic:hover::before, .btn--magnetic:focus-visible::before { opacity: 1; }
-  .btn--cta:hover .band--btn { opacity: 0.46; }
 }
 @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
   .js-motion .btn--magnetic:hover::before,
@@ -449,23 +439,6 @@ h3 {
   .btn--magnetic:active { box-shadow: 0 0 0 3px var(--signal-dim); }
 }
 
-/* the designed disabled state for an unset CONFIG value */
-.chip-off {
-  display: inline-flex; align-items: center; gap: 0.65em;
-  padding: 0.95em 1.5em;
-  font-family: var(--f-mono); font-size: var(--t-sm);
-  letter-spacing: 0.06em; text-transform: uppercase;
-  color: var(--muted);
-  border: 1px dashed var(--line-hard);
-  border-radius: var(--r-sm);
-  background: rgba(255,255,255,0.012);
-  cursor: default;
-}
-.chip-off::before {
-  content: ""; width: 0.45rem; height: 0.45rem; flex: none;
-  border-radius: 50%; border: 1px solid var(--muted);
-}
-.chip-off--nav { padding: 0.7em 1.05em; font-size: var(--t-xs); }
 
 /* ─── 8 · NAV ───────────────────────────────────────────────────────────── */
 .nav {
@@ -1461,18 +1434,202 @@ html:not(.js) .faq-panel > div,
   .faq-panel > div { transition-delay: 0s; }
 }
 
-/* ─── 18 · FINAL CTA ────────────────────────────────────────────────────── */
-.cta {
+/* ─── 18 · KONTAKT — the laptop ─────────────────────────────────────────── */
+.contact {
   position: relative; overflow: hidden;
-  padding-block: clamp(6rem, 13vw, 11rem);
+  padding-block: clamp(5.5rem, 11vw, 9.5rem) clamp(4.5rem, 8vw, 7.5rem);
   border-top: 1px solid var(--line-soft);
   text-align: center;
 }
-.cta-inner { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: var(--stack-md); }
-.cta h2 { max-width: 14ch; }
-.cta .lede { text-align: center; max-width: 52ch; }
-.cta-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.9rem; margin-top: 0.75rem; }
-.btn--cta { overflow: hidden; }
+.contact-inner {
+  position: relative; z-index: 2;
+  display: flex; flex-direction: column; align-items: center; gap: var(--stack-md);
+  container-type: inline-size;            /* the laptop's em is 1/46 of this width */
+}
+.sec-head--center { align-items: center; max-width: 36rem; }
+.sec-head--center .eyebrow { justify-content: center; }
+.contact .lede { text-align: center; max-width: 52ch; }
+
+/* ── the device ──
+   A real hinge, not a picture of one: the lid pivots on its bottom edge, the
+   deck lies flat toward the reader, and the eye sits level with the top of
+   the stage, so the deck is seen from a little above. Everything is em, one
+   em being 1/46 of the width, and the perspective is em too — the object is
+   the same drawing at every size. At rest nothing is transformed but the deck
+   and the lid's back cover, so the address and its button are drawn flat and
+   crisp. The closed, turned-away state is set by the script, never here: a
+   page with no motion simply shows the laptop open. */
+.laptop-stage {
+  position: relative;
+  width: 100%;
+  margin-top: clamp(1rem, 3vw, 2.25rem);
+  display: flex; justify-content: center;
+  font-size: calc(min(46rem, 100vw - 2 * var(--gut)) / 46);
+  font-size: min(1rem, calc(100cqw / 46));
+  perspective: 190em;
+  perspective-origin: 50% 0%;
+}
+.laptop {
+  position: relative;
+  width: min(46em, 100%);
+  transform-style: preserve-3d;
+  transform-origin: 50% calc(100% - 6.8em);   /* the hinge */
+}
+.laptop-lid {
+  position: relative;
+  transform-style: preserve-3d;
+  transform-origin: 50% 100%;
+}
+.laptop-front, .laptop-back {
+  border-radius: 1.1em 1.1em 0.55em 0.55em;
+  -webkit-backface-visibility: hidden;
+          backface-visibility: hidden;
+}
+.laptop-front {
+  position: relative;
+  min-height: 29em;
+  padding: 0.9em 0.9em 1.35em;
+  display: flex;
+  background: linear-gradient(148deg, #4a4238 0%, #241f1a 18%, #15130f 42%, #2e2822 68%, #100e0c 100%);
+  box-shadow: 0 0 0 1px rgba(255,205,150,0.16);
+}
+.laptop-cam {
+  position: absolute; left: 50%; top: 0.22em; z-index: 3;
+  width: 0.46em; height: 0.46em; margin-left: -0.23em; border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, #2d3b52 0%, #0a1018 62%, #05080e 100%);
+  box-shadow: inset 0 0 0 1px rgba(120,170,220,0.22);
+}
+.laptop-back {
+  position: absolute; inset: 0;
+  transform: rotateY(180deg);
+  display: grid; place-items: center;
+  background: linear-gradient(160deg, #3b332b 0%, #1c1813 48%, #2a241d 100%);
+  box-shadow: 0 0 0 1px rgba(255,205,150,0.18);
+}
+.laptop-logo {
+  width: 1.9em; height: 1.9em; border-radius: 50%;
+  background: var(--signal);
+  box-shadow: 0 0 0 0.4em var(--signal-dim), 0 0 2.2em rgba(255,180,84,0.35);
+  opacity: 0.85;
+}
+.laptop-screen {
+  position: relative; flex: 1; min-width: 0;
+  overflow: hidden;
+  border-radius: 0.5em;
+  background: radial-gradient(120% 70% at 50% 0%, #121B2A 0%, #080D16 55%, #05080E 100%);
+  box-shadow: inset 0 0 0 1px rgba(255,190,120,0.07), inset 0 0.4em 1.6em rgba(0,0,0,0.7);
+  display: flex; flex-direction: column;
+  isolation: isolate;
+}
+.laptop-glare {
+  position: absolute; inset: -30%; z-index: 5; pointer-events: none;
+  background: linear-gradient(104deg, transparent 34%, rgba(255,225,190,0.05) 45%, rgba(255,235,210,0.10) 50%, rgba(255,225,190,0.04) 56%, transparent 66%);
+  transform: translate3d(25%, 0, 0);      /* where the scroll leaves it */
+}
+/* the screen's own chrome: the brand, and the same late hour as the phone */
+.lap-bar {
+  position: relative; z-index: 2; flex: none;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 1em 1.4em 0;
+  font-family: var(--f-mono); font-size: var(--t-xs); font-weight: 600;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--muted);
+}
+.lap-bar-brand { display: inline-flex; align-items: center; gap: 0.55em; }
+.lap-bar-brand i { width: 0.5em; height: 0.5em; border-radius: 50%; background: var(--signal); box-shadow: 0 0 0 2px var(--signal-dim); }
+.lap-ui {
+  position: relative; z-index: 2; flex: 1;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: clamp(0.8rem, 1.6vw, 1.1rem);
+  /* the band at the foot of the screen keeps its own room */
+  padding: clamp(1rem, 2.5vw, 1.5rem) clamp(1rem, 4vw, 3rem) calc(6.5em + 0.75rem);
+}
+.lap-title { font-size: var(--t-lg); }
+.lap-mail {
+  font-family: var(--f-mono); font-weight: 600;
+  font-size: clamp(1rem, 0.86rem + 0.7vw, 1.4rem);
+  letter-spacing: 0.02em;
+  color: var(--signal-hi);
+  text-decoration: underline; text-decoration-color: var(--line-hard);
+  text-underline-offset: 0.3em; text-decoration-thickness: 1px;
+  overflow-wrap: anywhere;
+  border-radius: var(--r-xs);
+  transition: color var(--d-micro) var(--ease), text-decoration-color var(--d-micro) var(--ease);
+}
+@media (hover: hover) and (pointer: fine) { .lap-mail:hover { color: var(--signal); text-decoration-color: var(--signal); } }
+.lap-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.75rem; margin-top: 0.35rem; }
+/* the copy button: two faces in one cell — a clipboard with „Kopiraj adresu”,
+   a check with „Kopirano” — so the button never changes width under the
+   pointer. The face that is off is visibility:hidden, which also keeps it
+   out of the button's name. */
+.lap-copy { display: inline-grid; place-items: center; }
+.lap-copy-face {
+  grid-area: 1 / 1;
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.6em;
+  transition: opacity var(--d-micro) var(--ease), transform var(--d-micro) var(--spring);
+}
+.lap-copy-face svg { width: 1.05em; height: 1.05em; flex: none; }
+.lap-copy-face :is(path, rect) { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.lap-copy-face:not(.is-on) { opacity: 0; visibility: hidden; transform: scale(0.92); }
+
+/* the deck: hinge, keys, trackpad, and the light the screen throws on them */
+.laptop-base {
+  position: relative; height: 6.8em;
+  transform-style: preserve-3d;
+  pointer-events: none;
+}
+.laptop-deck, .laptop-edge {
+  position: absolute; left: 0; right: 0; top: 0;
+  transform-origin: 50% 0;
+}
+.laptop-deck {
+  height: 26em;
+  transform: rotateX(90deg) translateZ(-0.9em);
+  overflow: hidden;
+  border-radius: 0 0 1.3em 1.3em;
+  background: linear-gradient(180deg, #2a241d 0%, #1b1712 16%, #151210 62%, #1e1a15 100%);
+  box-shadow: 0 0 0 1px rgba(255,205,150,0.14);
+}
+.laptop-edge {
+  height: 0.9em;
+  transform: rotateX(90deg) translateZ(-0.9em) translateY(26em) rotateX(-90deg);
+  border-radius: 0 0 0.55em 0.55em;
+  background: linear-gradient(180deg, #3a3129, #1b1713 55%, #0f0d0b);
+  box-shadow: 0 0 0 1px rgba(255,205,150,0.10);
+}
+.laptop-hinge {
+  position: absolute; left: 3.2em; right: 3.2em; top: 0; height: 0.8em;
+  border-radius: 0 0 0.4em 0.4em;
+  background: linear-gradient(180deg, #05080e, #1a1612);
+}
+.laptop-keys {
+  position: absolute; left: 3.9em; right: 3.9em; top: 1.9em; height: 7.9em;
+  border-radius: 0.3em;
+  background: repeating-linear-gradient(90deg, rgba(255,235,210,0.06) 0 2.45em, transparent 2.45em 2.75em);
+  -webkit-mask-image: repeating-linear-gradient(180deg, #000 0 1.75em, transparent 1.75em 2.05em);
+          mask-image: repeating-linear-gradient(180deg, #000 0 1.75em, transparent 1.75em 2.05em);
+}
+.laptop-pad {
+  position: absolute; left: 50%; top: 11.4em;
+  width: 13em; height: 8.4em; margin-left: -6.5em;
+  border-radius: 0.6em;
+  border: 1px solid rgba(255,205,150,0.12);
+  background: rgba(255,255,255,0.025);
+}
+.laptop-lit {
+  position: absolute; inset: 0;
+  background: radial-gradient(70% 62% at 50% 0%, rgba(255,180,90,0.15), transparent 70%);
+}
+/* the light on the desk — outside the 3D group, so it stays a flat pool */
+.laptop-halo {
+  position: absolute; left: 50%; bottom: -3em; z-index: -1;
+  width: min(56em, 130%); height: 10em;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(50% 50% at 50% 50%, rgba(255,180,90,0.16), transparent 70%);
+  filter: blur(14px);
+  pointer-events: none;
+}
 
 /* ─── 19 · FOOTER ───────────────────────────────────────────────────────── */
 .footer { border-top: 1px solid var(--line-soft); padding-block: clamp(2.5rem, 5vw, 4rem); }
@@ -1520,9 +1677,10 @@ html:not(.js) .faq-panel > div,
   animation-play-state: paused !important;
 }
 
-/* the nav demo chip needs room; below this width the CTA carries the nav alone */
+/* the demo number, once there is one, needs room in the nav; below this
+   width the CTA carries the nav alone and the number lives in the menu */
 @media (max-width: 1180px) {
-  .nav-actions .chip-off--nav { display: none; }
+  .nav-actions .btn--nav.btn--ghost { display: none; }
 }
 
 /* ─── 21 · RESPONSIVE ───────────────────────────────────────────────────── */
@@ -1538,7 +1696,7 @@ html:not(.js) .faq-panel > div,
 }
 @media (max-width: 900px) {
   .nav-links { display: none; }
-  .nav-actions .btn--nav, .nav-actions .chip-off--nav { display: none; }
+  .nav-actions .btn--nav { display: none; }
   .burger { display: flex; }
 
   .hero { min-height: 0; padding-top: calc(var(--nav-h) + clamp(2rem, 7vh, 3.5rem)); }
@@ -1566,8 +1724,8 @@ html:not(.js) .faq-panel > div,
   .footer-legal { flex-direction: column; align-items: flex-start; }
 }
 @media (max-width: 400px) {
-  .hero-cta, .cta-row { flex-direction: column; align-items: stretch; }
-  .hero-cta > *, .cta-row > * { justify-content: center; }
+  .hero-cta, .lap-row { flex-direction: column; align-items: stretch; }
+  .hero-cta > *, .lap-row > * { justify-content: center; }
 }
 
 /* ─── 22 · REDUCED MOTION ───────────────────────────────────────────────── */
@@ -1597,7 +1755,6 @@ html:not(.js) .faq-panel > div,
   .grain { opacity: 0; }
   .glow { opacity: 0.22; }
   .btn--ghost { border-width: 2px; }
-  .chip-off { border-style: solid; }
 }
 
 /* ─── 24 · PRINT ────────────────────────────────────────────────────────── */
@@ -1605,6 +1762,10 @@ html:not(.js) .faq-panel > div,
   .talk-engine, .talk-live { display: none !important; }
   .talk-card h3:focus { outline: none; }
   .nav, .menu, .grain, .glow, .band, .cursor-glow, .phone-stage { display: none !important; }
+  /* the address prints flat: no deck, no cover, no light */
+  .laptop-stage { perspective: none; }
+  .laptop-base, .laptop-back, .laptop-glare, .laptop-halo { display: none !important; }
+  .laptop, .laptop-lid, .lap-ui > * { transform: none !important; opacity: 1 !important; }
   /* draw-ins hold their hidden state until scrolled to; paper never scrolls */
   .feat-ico :is(path, circle, rect, line, polyline) { stroke-dasharray: none !important; stroke-dashoffset: 0 !important; }
   .eyebrow, .marquee-label { --rule: 1 !important; }
@@ -1636,7 +1797,7 @@ html:not(.js) .faq-panel > div,
 
     <div class="nav-actions">
       <span data-demo-slot="nav"></span>
-      <a class="btn btn--primary btn--nav btn--magnetic" href="#cta">Zakaži demo</a>
+      <a class="btn btn--primary btn--nav btn--magnetic" href="#kontakt">Zakaži demo</a>
       <button class="burger" id="burger" type="button" aria-expanded="false" aria-controls="menu">
         <span aria-hidden="true"></span><span class="vh">Meni</span>
       </button>
@@ -1653,7 +1814,7 @@ html:not(.js) .faq-panel > div,
     <a class="menu-link" style="--i:4" href="#pitanja">Pitanja</a>
   </nav>
   <div class="menu-foot">
-    <a class="btn btn--primary" href="#cta">Zakaži demo</a>
+    <a class="btn btn--primary" href="#kontakt">Zakaži demo</a>
     <span data-demo-slot="menu"></span>
   </div>
 </div>
@@ -1675,7 +1836,7 @@ html:not(.js) .faq-panel > div,
       <p class="lede" data-hero="3">AI agent koji se javlja za dve sekunde, vodi razgovor prirodnim srpskim jezikom i zakazuje termine direktno u vaš kalendar — 24 sata dnevno, sedam dana u nedelji.</p>
       <div class="hero-cta" data-hero="4">
         <a class="btn btn--primary btn--magnetic" href="#glas" data-plays-demo>Poslušaj demo</a>
-        <a class="btn btn--ghost btn--magnetic" href="#cta">Zakaži razgovor</a>
+        <a class="btn btn--ghost btn--magnetic" href="#kontakt">Zakaži razgovor</a>
       </div>
       <ul class="microstats" data-hero="5">
         <li class="microstat">manje od <b><span data-count="2" data-count-delay="0.9" aria-hidden="true">2</span><span class="vh">2</span></b> s do javljanja</li>
@@ -1979,7 +2140,7 @@ html:not(.js) .faq-panel > div,
           <h3 tabindex="-1">Demo je gotov.</h3>
           <p>Za pun razgovor zakažite petnaest minuta sa nama.</p>
           <div class="talk-card-row">
-            <a class="btn btn--primary btn--magnetic" id="talk-book" href="#cta">Zakaži razgovor</a>
+            <a class="btn btn--primary btn--magnetic" id="talk-book" href="#kontakt">Zakaži razgovor</a>
             <span data-talk-tel></span>
           </div>
           <button class="talk-again" id="talk-again" type="button">Razgovaraj sa agentom</button>
@@ -2031,7 +2192,7 @@ html:not(.js) .faq-panel > div,
           <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.6 9.4 17.5 19.5 7"/></svg>Prebacivanje na čoveka</li>
           <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.6 9.4 17.5 19.5 7"/></svg>Osnovni izveštaji</li>
         </ul>
-        <a class="btn btn--ghost btn--magnetic" href="#cta">Započni</a>
+        <a class="btn btn--ghost btn--magnetic" href="#kontakt">Započni</a>
       </article>
 
       <article class="price price--hi" data-fx="plan">
@@ -2044,7 +2205,7 @@ html:not(.js) .faq-panel > div,
           <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.6 9.4 17.5 19.5 7"/></svg>Prilagođena skripta i ton</li>
           <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.6 9.4 17.5 19.5 7"/></svg>Prioritetna podrška</li>
         </ul>
-        <a class="btn btn--primary btn--magnetic" href="#cta">Zakaži demo</a>
+        <a class="btn btn--primary btn--magnetic" href="#kontakt">Zakaži demo</a>
       </article>
 
       <article class="price" data-fx="plan">
@@ -2056,7 +2217,7 @@ html:not(.js) .faq-panel > div,
           <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.6 9.4 17.5 19.5 7"/></svg>Integracije po meri</li>
           <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.6 9.4 17.5 19.5 7"/></svg>Ugovor o nivou usluge (SLA)</li>
         </ul>
-        <a class="btn btn--ghost btn--magnetic" href="#cta">Kontaktiraj nas</a>
+        <a class="btn btn--ghost btn--magnetic" href="#kontakt">Kontaktiraj nas</a>
       </article>
     </div>
 
@@ -2110,18 +2271,56 @@ html:not(.js) .faq-panel > div,
 </section>
 
 <!-- ══ 9 · FINALNI CTA ══════════════════════════════════════════════════ -->
-<section class="section cta" id="cta" data-freeze>
+<section class="section contact" id="kontakt" data-freeze>
   <div class="glow glow--a" aria-hidden="true"></div>
   <div class="glow glow--b" aria-hidden="true"></div>
-  <div class="container cta-inner">
-    <h2 data-reveal data-lines>Čujte ga uživo.</h2>
+  <div class="container contact-inner">
+    <div class="sec-head sec-head--center" data-reveal>
+      <p class="eyebrow">KONTAKT</p>
+      <h2 data-lines>Čujte ga uživo.</h2>
+    </div>
     <p class="lede" data-reveal data-lines>Zakažite razgovor od petnaest minuta — pokazaćemo vam kako zvuči vaš budući agent i koliko poziva mesečno propuštate.</p>
-    <div class="cta-row" data-reveal>
-      <a class="btn btn--primary btn--xl btn--magnetic btn--cta" id="cta-btn" href="#glas">
-        <span class="band band--btn" aria-hidden="true"><canvas data-band="btn"></canvas></span>
-        <span>Zakaži demo razgovor</span>
-      </a>
-      <span data-demo-slot="cta"></span>
+
+    <!-- ── the laptop ── -->
+    <div class="laptop-stage" id="laptop-stage">
+      <div class="laptop" id="laptop">
+        <div class="laptop-lid" id="laptop-lid">
+          <div class="laptop-front">
+            <span class="laptop-cam" aria-hidden="true"></span>
+            <div class="laptop-screen">
+              <div class="laptop-glare" id="laptop-glare" aria-hidden="true"></div>
+              <div class="band band--screen" aria-hidden="true"><canvas data-band="screen"></canvas></div>
+              <div class="lap-bar" aria-hidden="true">
+                <span class="lap-bar-brand"><i></i>GLAS AI</span>
+                <span class="num">21.40</span>
+              </div>
+              <div class="lap-ui" id="lap-ui">
+                <h3 class="lap-title">Pišite nam.</h3>
+                <a class="lap-mail" id="lap-mail" href="mailto:support@glasai.online">support@glasai.online</a>
+                <div class="lap-row">
+                  <button class="btn btn--primary btn--magnetic lap-copy" id="lap-copy" type="button">
+                    <span class="lap-copy-face is-on" id="lap-copy-idle"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>Kopiraj adresu</span>
+                    <span class="lap-copy-face" id="lap-copy-done"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.6 9.4 17.5 19.5 7"/></svg>Kopirano</span>
+                  </button>
+                  <span data-demo-slot="kontakt"></span>
+                </div>
+                <span class="vh" id="lap-status" aria-live="polite"></span>
+              </div>
+            </div>
+          </div>
+          <div class="laptop-back" aria-hidden="true"><span class="laptop-logo"></span></div>
+        </div>
+        <div class="laptop-base" aria-hidden="true">
+          <div class="laptop-deck">
+            <span class="laptop-hinge"></span>
+            <span class="laptop-keys"></span>
+            <span class="laptop-pad"></span>
+            <span class="laptop-lit" id="laptop-lit"></span>
+          </div>
+          <span class="laptop-edge"></span>
+        </div>
+      </div>
+      <span class="laptop-halo" id="laptop-halo" aria-hidden="true"></span>
     </div>
   </div>
 </section>
@@ -2137,7 +2336,7 @@ html:not(.js) .faq-panel > div,
         <li><a href="#mogucnosti">Mogućnosti</a></li>
         <li><a href="#glas">Glas</a></li>
         <li><a href="#cene">Cene</a></li>
-        <li><a href="#cta">Kontakt</a></li>
+        <li><a href="#kontakt">Kontakt</a></li>
       </ul>
       <a class="wordmark" href="#hero"><span class="wordmark-dot" aria-hidden="true"></span>GLAS AI</a>
     </div>
@@ -2153,12 +2352,12 @@ html:not(.js) .faq-panel > div,
 "use strict";
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   ——— PODESI OVDE ——— Jedina dva mesta koja menjaš kad budeš spreman. ———
+   ——— PODESI OVDE ——— Jedina tri mesta koja menjaš kad budeš spreman. ———
    ═══════════════════════════════════════════════════════════════════════ */
 const CONFIG = {
-  DEMO_TELEFON: "",   // npr. "+381 64 123 4567" — prazno = dugme je neaktivno
+  DEMO_TELEFON: "",   // npr. "+381 64 123 4567" — prazno = broj se nigde ne prikazuje
   DEMO_AUDIO:   "demo.mp3",   // prazno = plejer je u stanju „uskoro”
-  DEMO_LINK:    ""    // npr. "https://cal.com/glasai/15min" — gde vodi glavno dugme
+  DEMO_LINK:    ""    // npr. "https://cal.com/glasai/15min" — gde vodi „Zakaži razgovor” posle demoa; prazno = na kontakt
 };
 /* ═══════════════════════════════════════════════════════════════════════════
    Ispod ovoga nema podešavanja.
@@ -2273,7 +2472,6 @@ function safe(name, fn, rollback) {
      bar/gap : px     bar geometry
      base    : 0..1   resting level, the floor everything else rises from
      bloom   : bool   draw the elliptical glow under the passband
-     ink     : bool   draw dark-on-light (the amber CTA button fill)
    })
 
    Four inputs, all written from outside, all combined by level():
@@ -2334,7 +2532,6 @@ function Band(canvas, opts) {
   this.base   = opts.base   != null ? opts.base   : 0.14;
   this.bloom  = opts.bloom !== false;
   this.chassis = !!opts.chassis;        /* dead track drawn even before reveal */
-  this.ink    = !!opts.ink;             /* dark-on-light, for the amber button */
   this.drive = 0;
   this.pulse = 0;
   this.reveal = 1;
@@ -2409,9 +2606,7 @@ Band.prototype.layout = function () {
 
   /* The palette and the centre-line gradient depend on the width and nothing
      else. Built here instead of once a frame, per band. */
-  var LIT = this.ink ? "124,66,8" : "255,180,84";
-  var DIM = this.ink ? "124,66,8" : "255,190,120";
-  var CAP = this.ink ? "86,44,4"  : "255,217,160";
+  var LIT = "255,180,84", DIM = "255,190,120", CAP = "255,217,160";
   this.litFill = "rgb(" + LIT + ")";
   this.capFill = "rgb(" + CAP + ")";
   this.dimFill = "rgb(" + DIM + ")";
@@ -2622,7 +2817,7 @@ Band.prototype.draw = function () {
 
   /* ── the bloom under the passband: a fixed shape at a varying intensity, so
         it is prerendered once and blitted, not rebuilt every frame ── */
-  if (this.bloom && !this.ink) {
+  if (this.bloom) {
     var gx0 = X_LO * w, gx1 = X_HI * w;
     var vis = Math.min(gx1, edgeX);
     if (vis > gx0) {
@@ -2652,7 +2847,7 @@ Band.prototype.draw = function () {
      the roll-off shoulders come out khaki, and they sit on the one boundary the
      section's claim depends on. The height ramp carries the roll-off; the
      colour holds. */
-  var floorA = this.ink ? this.dim : 0.30;
+  var floorA = 0.30;
   var bar = this.bar;
 
 
@@ -2824,7 +3019,7 @@ function bandRefreshTicker() {                                   /* F8 */
 
 /* One canvas per placement on this page, so a single reference each is enough;
    `bands` holds them all and `kind` is what the divider group filters on. */
-var heroBand = null, voiceBand = null, btnBand = null;
+var heroBand = null, voiceBand = null;
 
 function setBandsMotion(on) {
   for (var i = 0; i < bands.length; i++) {
@@ -2843,12 +3038,11 @@ function initBands() {
     if (kind === "hero")         b = new Band(c, { amp: 0.60, speed: 0.075, dim: 0.11, bar: 4, gap: 4, base: 0.16 });
     else if (kind === "divider") b = new Band(c, { amp: 0.60, speed: 0.055, dim: 0.13, bar: 4, gap: 5, base: 0.42, bloom: false });
     else if (kind === "voice")   b = new Band(c, { amp: 0.72, speed: 0.165, dim: 0.10, bar: 5, gap: 4, base: 0.34, chassis: true });
-    else                         b = new Band(c, { amp: 0.42, speed: 0.240, dim: 0.34, bar: 2, gap: 2, base: 0.5, ink: true, bloom: false });
+    else /* the laptop's screen */ b = new Band(c, { amp: 0.50, speed: 0.060, dim: 0.13, bar: 3, gap: 3, base: 0.38, bloom: false });
     if (!b.ctx) return;                  /* no 2d context — leave the slot empty */
     b.kind = kind;
     if (kind === "hero")  heroBand = b;
     if (kind === "voice") voiceBand = b;
-    if (kind === "btn")   btnBand = b;
     b.measure();
     b.draw();
   });
@@ -2863,11 +3057,6 @@ function initBands() {
         b.visible = e.isIntersecting;
         if (e.isIntersecting && b.measure()) b.draw();   /* never leave the
            backing store cleared and unpainted */
-        /* An invisible canvas is not worth a frame: the CTA fill only shows on
-           hover or during its one arrival demo. `wanted` is null until the
-           module that drives it claims ownership — with GSAP blocked that never
-           happens, and the observer alone must decide. */
-        if (b.kind === "btn" && b.visible && b.wanted != null) b.visible = b.wanted === true;
       });
       bandRefreshTicker();
     }, { rootMargin: "60px 0px" });
@@ -2914,12 +3103,12 @@ function initTalk() {
   if (!widget) return;
   var proto = widget.cloneNode(false);           /* a clean engine for every run */
 
-  /* the card's button goes where the primary CTA goes: the booking link,
-     else the section where booking happens */
+  /* the card's button goes to the booking link if there is one, else to the
+     contact section — never nowhere */
   var link = String(CONFIG.DEMO_LINK || "").trim();
   if (book) {
     if (link) { book.href = link; if (/^https?:/i.test(link)) openElsewhere(book); }
-    else book.href = "#cta";
+    else book.href = "#kontakt";
   }
   /* the number — only if there is one. No placeholder, no dead link. */
   var num = String(CONFIG.DEMO_TELEFON || "").trim();
@@ -3192,34 +3381,24 @@ function initTalk() {
   if (again) on(again, "click", function () { ended = false; show("ctl", true); });
 }
 
-/* ═══ 2 · CONFIG-DRIVEN PLACEHOLDERS ═══════════════════════════════════════
-   Empty is a designed state, not a broken one. §7                          */
+/* ═══ 2 · THE DEMO NUMBER ══════════════════════════════════════════════════
+   A number only once there is one: in the nav, the menu and on the laptop's
+   screen, a live tel: link showing the number exactly as typed. Unset, the
+   slot is simply gone — no placeholder, no dead link, nothing that says
+   „soon” on a page that is live. §7                                        */
 function initDemoSlots() {
   var num = String(CONFIG.DEMO_TELEFON || "").trim();
   $$("[data-demo-slot]").forEach(function (slot) {
+    if (!num) { slot.parentNode.removeChild(slot); return; }
     var where = slot.getAttribute("data-demo-slot");
-    var el;
-    if (num) {
-      el = document.createElement("a");
-      el.className = "btn btn--ghost btn--magnetic"
-        + (where === "nav" ? " btn--nav" : "")
-        + (where === "cta" ? " btn--xl" : "");
-      el.href = "tel:" + num.replace(/[^\d+]/g, "");
-      el.textContent = num;
-    } else {
-      el = document.createElement("span");
-      el.className = "chip-off" + (where === "nav" ? " chip-off--nav" : "");
-      el.setAttribute("aria-disabled", "true");
-      el.textContent = "Demo broj — uskoro";
-    }
+    var el = document.createElement("a");
+    el.className = "btn btn--ghost btn--magnetic" + (where === "nav" ? " btn--nav" : "");
+    el.href = "tel:" + num.replace(/[^\d+]/g, "");
+    el.textContent = num;
     slot.parentNode.replaceChild(el, slot);
   });
 }
 
-/* The primary CTA points at the strongest destination the config offers, in
-   order: a booking link, the demo number, and — failing both — the voice
-   section, which is the one thing the page can deliver on day one. It is never
-   circular and never inert. */
 /* an absolute booking link opens elsewhere, and its name says so */
 function openElsewhere(a) {
   a.target = "_blank"; a.rel = "noopener";
@@ -3227,17 +3406,54 @@ function openElsewhere(a) {
   hint.className = "vh"; hint.textContent = " (otvara se u novom prozoru)";
   a.appendChild(hint);
 }
-function initPrimaryCta() {
-  var btn = $("#cta-btn");
-  if (!btn) return;
-  var link = String(CONFIG.DEMO_LINK || "").trim();
-  var num  = String(CONFIG.DEMO_TELEFON || "").trim();
-  if (link) {
-    btn.href = link;
-    if (/^https?:/i.test(link)) openElsewhere(btn);
-  } else if (num) {
-    btn.href = "tel:" + num.replace(/[^\d+]/g, "");
+
+/* ═══ 2b · KONTAKT — the address, copied ═══════════════════════════════════
+   One button, one job. The clipboard API where the page has it, the old
+   command where it does not, and when neither will — the address is
+   selected, so a plain ⌘C still works and nothing claims a success it did
+   not have. The label says what happened, and a live region says it once. */
+var COPY_HOLD_MS = 2200;
+function initContact() {
+  var btn = $("#lap-copy"), idle = $("#lap-copy-idle"), done = $("#lap-copy-done");
+  var status = $("#lap-status"), mail = $("#lap-mail");
+  if (!btn || !idle || !done || !mail) return;
+  var text = mail.textContent.trim();
+  if (!text) return;
+  var hold = 0;
+  function rest() {
+    btn.classList.remove("is-done");
+    done.classList.remove("is-on"); idle.classList.add("is-on");
+    if (status) status.textContent = "";
   }
+  function show(ok) {
+    if (!ok) { select(); return; }
+    clearTimeout(hold);
+    btn.classList.add("is-done");
+    idle.classList.remove("is-on"); done.classList.add("is-on");
+    if (status) status.textContent = "Adresa je kopirana.";
+    hold = setTimeout(rest, COPY_HOLD_MS);
+  }
+  function select() {
+    if (!window.getSelection || !document.createRange) return;
+    try {
+      var r = document.createRange(); r.selectNodeContents(mail);
+      var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    } catch (e) {}
+  }
+  function legacy() {
+    var ta = document.createElement("textarea"), ok = false;
+    ta.value = text; ta.setAttribute("readonly", ""); ta.setAttribute("aria-hidden", "true");
+    ta.className = "vh";
+    document.body.appendChild(ta);
+    try { ta.select(); ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+  on(btn, "click", function () {
+    if (!(navigator.clipboard && navigator.clipboard.writeText)) { show(legacy()); return; }
+    navigator.clipboard.writeText(text).then(function () { show(true); }, function () { show(legacy()); });
+  });
+  keep(function () { clearTimeout(hold); rest(); });
 }
 
 /* No src → no <audio> element at all. An <audio> with an empty src throws.
@@ -4042,63 +4258,6 @@ function initDrawIns(gsap, ScrollTrigger) {
     });
   });
 
-  var cta = $("#cta"), fill = $(".btn--cta .band--btn"), over = false;
-  if (cta && fill) {
-    var REST = 0.24, LOUD = 0.46;
-    /* The meter runs while the button is on screen and stops when it is not —
-       the observer alone cannot decide that, because a canvas inside a button
-       is always "intersecting" long before anyone can read it. */
-    var stC = ScrollTrigger.create({
-      trigger: $("#cta-btn") || cta, start: "top 92%", end: "bottom 8%",
-      onEnter:     function () { wantBtnBand(true); },
-      onEnterBack: function () { wantBtnBand(true); },
-      onLeave:     function () { if (!over) wantBtnBand(false); },
-      onLeaveBack: function () { if (!over) wantBtnBand(false); }
-    });
-    /* and once, on arrival, it swells — out of the resting level and back to
-       it, never to nothing */
-    var stD = ScrollTrigger.create({
-      trigger: cta, start: "top 62%", once: true,
-      onEnter: function () {
-        wantBtnBand(true);
-        if (btnBand) btnBand.pulse = 0.9;
-        gsap.timeline()
-          .to(fill, { opacity: LOUD, duration: 0.7, ease: EASE })
-          .to(fill, { opacity: REST, duration: 0.9, ease: EASE }, 1.1)
-          .to(btnBand || {}, { pulse: 0, duration: 0.9 }, 1.1);
-      }
-    });
-    /* and again whenever a pointer actually brings the fill on screen */
-    var btn = $("#cta-btn");
-    if (btn && matchMedia("(hover: hover) and (pointer: fine)").matches) {
-      /* The arrival timeline leaves an inline opacity on the fill, and an
-         inline style outranks the :hover rule — so the hover has to be driven
-         here too, or the meter never comes back after the first pass. */
-      var onIn = function () {
-        over = true;
-        wantBtnBand(true);
-        gsap.to(fill, { opacity: LOUD, duration: 0.32, ease: EASE, overwrite: true });
-      };
-      var onOut = function () {
-        over = false;
-        gsap.to(fill, { opacity: REST, duration: 0.5, ease: EASE, overwrite: true });
-      };
-      btn.addEventListener("pointerenter", onIn, { passive: true });
-      btn.addEventListener("pointerleave", onOut, { passive: true });
-      kills.push(function () { btn.removeEventListener("pointerenter", onIn); btn.removeEventListener("pointerleave", onOut); });
-    }
-    kills.push(function () {
-      stC.kill(); stD.kill();
-      gsap.killTweensOf(fill);
-      gsap.set(fill, { clearProps: "opacity" });
-      /* clearProps hands the fill back to the :hover rule; stopping the ticker
-         in the same breath under a resting pointer freezes it there. */
-      if (!over) wantBtnBand(false);
-      if (btnBand) btnBand.wanted = null;      /* released, not switched off */
-      if (btnBand) btnBand.pulse = 0;
-    });
-  }
-
   return function () { kills.forEach(function (f) { f(); }); };
 }
 
@@ -4205,6 +4364,39 @@ function initJourney(gsap, ScrollTrigger, tilt) {
   };
 }
 
+/* ═══ 9b · THE LAPTOP ═════════════════════════════════════════════════════
+   The contact section's device opens as the reader arrives: closed and turned
+   away below the fold, upright and square-on by the time the address can be
+   read. One scrubbed timeline owns every part — the lid, the turn, the light
+   the screen throws on the keys and the desk, the glare, the words. Initial
+   states are set here, never in CSS: with no GSAP the laptop simply stands
+   open, and at rest nothing on it is transformed. */
+function initLaptop(gsap, ScrollTrigger) {
+  var lap = $("#laptop"), lid = $("#laptop-lid"), base = $(".laptop-base");
+  if (!lap || !lid || !base) return null;
+  var ui = $$("#lap-ui > :not(.vh)");
+  var lit = [$("#laptop-lit"), $("#laptop-halo")].filter(Boolean);
+  var glare = $("#laptop-glare");
+  gsap.set(lap, { rotationX: -9, rotationY: -16, y: 24 });
+  gsap.set(lid, { rotationX: -90 });
+  gsap.set(ui, { opacity: 0, y: 14 });
+  gsap.set(lit, { opacity: 0 });
+  var tl = gsap.timeline({ defaults: { ease: "none" } });
+  tl.to(lid, { rotationX: 0, duration: 1, ease: "power1.inOut" }, 0)
+    .to(lap, { rotationX: 0, rotationY: 0, y: 0, duration: 1, ease: "power1.inOut" }, 0)
+    .to(lit, { opacity: 1, duration: 0.45, ease: "power1.in" }, 0.3)
+    .to(ui,  { opacity: 1, y: 0, duration: 0.3, stagger: 0.08, ease: "power2.out" }, 0.45);
+  if (glare) tl.fromTo(glare, { xPercent: -70 }, { xPercent: 25, duration: 0.85 }, 0.1);
+  /* measured from the hinge, which is where a closed laptop actually is: it
+     comes into view shut, sits shut for a beat, and is open by the time the
+     hinge reaches the lower third */
+  var st = ScrollTrigger.create({ trigger: base, start: "top 84%", end: "top 56%", scrub: 0.6, animation: tl });
+  return function () {
+    st.kill(); tl.kill();
+    gsap.set([lap, lid, glare].concat(ui, lit).filter(Boolean), { clearProps: "all" });
+  };
+}
+
 /* ═══ 10 · STEPS ═══════════════════════════════════════════════════════════ */
 function initSteps(gsap, ScrollTrigger) {
   var wrap = $("#steps"), draw = $("#steps-draw"), dot = $("#steps-dot");
@@ -4306,13 +4498,6 @@ function initScrollSignal(gsap, ScrollTrigger) {
     }
   });
   return function () { st.kill(); bandVel = 0; };
-}
-
-function wantBtnBand(on) {
-  if (!btnBand) return;
-  btnBand.wanted = !!on;
-  btnBand.visible = !!on;
-  bandRefreshTicker();
 }
 
 function initMarqueeMotion(gsap, ScrollTrigger) {
@@ -4667,6 +4852,10 @@ function initMotionSystem(gsap, ScrollTrigger) {
         }));
         push(safe("lines",    function () { return initLineReveals(gsap, ScrollTrigger); }));
         push(safe("cards",    function () { return initCardReveals(gsap, ScrollTrigger); }));
+        push(safe("laptop",   function () { return initLaptop(gsap, ScrollTrigger); },
+          /* it hides the screen's words before it builds its trigger; a throw
+             in between must not leave the address unreadable */
+          function () { gsap.set(["#laptop", "#laptop-lid", "#laptop-lit", "#laptop-halo", "#laptop-glare", "#lap-ui > *"], { clearProps: "all" }); }));
         push(safe("draw-ins", function () { return initDrawIns(gsap, ScrollTrigger); }));
         push(safe("steps",    function () { return initSteps(gsap, ScrollTrigger); }));
         push(safe("dividers", function () { return initDividerDraw(gsap, ScrollTrigger); }));
@@ -4716,7 +4905,7 @@ function boot() {
 
   safe("bands",       initBands);
   safe("demo-slots",  initDemoSlots);
-  safe("primary-cta", initPrimaryCta);
+  safe("contact",     initContact);
   safe("demo-audio",  initDemoAudio);
   safe("talk",        initTalk);
   safe("nav",         initNav);

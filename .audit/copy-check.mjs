@@ -106,8 +106,8 @@ const EXPECT = {
 
   ctaH2: 'Čujte ga uživo.',
   ctaSub: 'Zakažite razgovor od petnaest minuta — pokazaćemo vam kako zvuči vaš budući agent i koliko poziva mesečno propuštate.',
-  ctaPrimary: 'Zakaži demo razgovor',
-  ctaChip: 'Demo broj — uskoro',
+  /* the contact section: the client's address, and the words on the laptop's screen */
+  kontakt: { eyebrow: 'KONTAKT', h3: 'Pišite nam.', mail: 'support@glasai.online', copy: 'Kopiraj adresu', copied: 'Kopirano' },
 
   footerNav: ['Kako radi', 'Mogućnosti', 'Glas', 'Cene', 'Kontakt'],
   footerLegal: 'Agent na početku svakog poziva najavljuje da je veštačka inteligencija.',
@@ -239,11 +239,18 @@ eq('faq h2', await T1('#pitanja h2'), EXPECT.faqH2);
 eq('faq questions', (await T('.faq-q')).map(t => t.trim()).join('|'), EXPECT.faq.map(f => f[0]).join('|'));
 eq('faq answers', (await T('.faq-panel p')).join('|'), EXPECT.faq.map(f => f[1]).join('|'));
 
-/* cta + footer */
-eq('cta h2', await T1('#cta h2'), EXPECT.ctaH2);
-eq('cta sub', await T1('#cta .lede'), EXPECT.ctaSub);
-eq('cta primary', await T1('#cta-btn'), EXPECT.ctaPrimary);
-eq('cta demo chip', await T1('#cta .chip-off'), EXPECT.ctaChip);
+/* kontakt + footer */
+eq('kontakt eyebrow', await T1('#kontakt .eyebrow'), EXPECT.kontakt.eyebrow);
+eq('kontakt h2', await T1('#kontakt h2'), EXPECT.ctaH2);
+eq('kontakt sub', await T1('#kontakt .lede'), EXPECT.ctaSub);
+eq('kontakt: the screen\'s heading', await T1('.lap-title'), EXPECT.kontakt.h3);
+eq('kontakt: the address, as text', await T1('#lap-mail'), EXPECT.kontakt.mail);
+ok('kontakt: the address is a mailto link to itself', (await page.getAttribute('#lap-mail', 'href')) === 'mailto:' + EXPECT.kontakt.mail);
+eq('kontakt: the copy button', await T1('#lap-copy-idle'), EXPECT.kontakt.copy);
+eq('kontakt: the copied label', await T1('#lap-copy-done'), EXPECT.kontakt.copied);
+ok('kontakt: the copied label is out of the button\'s name until it is true', (await page.$eval('#lap-copy', e => e.textContent.replace(/\s+/g, ' ').trim())) === EXPECT.kontakt.copy + ' ' + EXPECT.kontakt.copied && (await page.$eval('#lap-copy-done', e => getComputedStyle(e).visibility)) === 'hidden');
+ok('no paygate: every booking link lands on #kontakt', await page.evaluate(`Array.from(document.querySelectorAll('.price .btn, .nav-actions .btn--primary, .menu-foot .btn, .hero-cta .btn--ghost, #talk-book')).every(a => a.getAttribute('href') === '#kontakt') && document.querySelectorAll('a[href="#cta"]').length === 0`));
+ok('no „uskoro” placeholder on a live page', !/uskoro/i.test(await page.evaluate('document.body.innerText')));
 eq('footer nav', (await T('.footer-nav a')).join('|'), EXPECT.footerNav.join('|'));
 eq('footer legal line', await T1('.footer-legal p'), EXPECT.footerLegal);
 eq('footer copyright', await T1('.footer-mark'), EXPECT.footerCopy);
@@ -314,7 +321,9 @@ const DECLARED_EXTRA = ['Preskoči na sadržaj', 'Meni', 'Zatvori', 'Pauziraj', 
   /* the live demo's own words, written once its copy was delegated: a stop name, an ending, a clock label, a failed attempt, a new-window hint */
   'Slušam — prekini demo', 'Završavam…', 'Preostalo', 'Povezivanje nije uspelo — pokušajte ponovo.', '(otvara se u novom prozoru)',
   /* the player's own name, once a recording exists: it plays the agent — „Poslušaj demo” is the hero link that scrolls here */
-  'Poslušaj agenta'];
+  'Poslušaj agenta',
+  /* the contact section, written for the client's address: an eyebrow, a heading, the address, a button and what it says once pressed */
+  'KONTAKT', 'Pišite nam.', 'support@glasai.online', 'Kopiraj adresu', 'Kopirano', 'Adresa je kopirana.'];
 console.log(`\n  \x1b[2mDeclared non-§8 UI strings (a11y names the brief does not supply): ${DECLARED_EXTRA.filter(x => /[a-zA-Zčćšžđ]/.test(x)).join(', ')}\x1b[0m`);
 
 console.log(`\n${'─'.repeat(72)}\n  ${checks - fails}/${checks} content checks passed${fails ? `   \x1b[31m${fails} FAILING\x1b[0m` : '   \x1b[32mall green\x1b[0m'}\n${'─'.repeat(72)}\n`);

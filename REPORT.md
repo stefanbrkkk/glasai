@@ -11,10 +11,10 @@ node audit.js                 # all rounds  (--quick skips the 74 s loop round)
 node .audit/copy-check.mjs    # every visible string, diffed against §8
 .audit/node_modules/.bin/html-validate --config .audit/.htmlvalidate.json index.html   # markup lint
 ```
-One note on the harness itself: the phone-loop round watches the page for
-74 s and is the one round sensitive to CPU starvation — run the suite alone,
-not beside other browsers, or it can report zero wraps for a loop that is
-fine.
+One note on the harness itself: the phone-loop round watches the page until
+it has seen three wraps (about 70 s, with a 200 s ceiling) and is the one
+round sensitive to CPU starvation — run the suite alone, not beside other
+browsers.
 
 ---
 
@@ -24,20 +24,23 @@ At the very top of the `<script>` in `index.html`:
 
 ```js
 const CONFIG = {
-  DEMO_TELEFON: "",   // npr. "+381 64 123 4567" — prazno = dugme je neaktivno
-  DEMO_AUDIO:   "",   // npr. "demo.mp3" — prazno = plejer je u stanju „uskoro”
-  DEMO_LINK:    ""    // npr. "https://cal.com/glasai/15min" — gde vodi glavno dugme
+  DEMO_TELEFON: "",   // npr. "+381 64 123 4567" — prazno = broj se nigde ne prikazuje
+  DEMO_AUDIO:   "demo.mp3",   // prazno = plejer je u stanju „uskoro”
+  DEMO_LINK:    ""    // npr. "https://cal.com/glasai/15min" — gde vodi „Zakaži razgovor” posle demoa; prazno = na kontakt
 };
 ```
 
-Nothing else needs touching. Every empty state is designed, not broken, and
-every filled state is exercised by the harness:
+The contact address, `support@glasai.online`, lives in the markup of the
+`#kontakt` section — once, as the text and the `mailto:` of the same link — and
+the copy button reads it from there. Nothing else needs touching. Every empty
+state is designed, not broken, and every filled state is exercised by the
+harness:
 
-| | empty (shipped) | filled |
+| | empty | filled |
 |---|---|---|
-| `DEMO_TELEFON` | inert chip `Demo broj — uskoro`, muted, dashed hairline, `cursor: default`, `aria-disabled="true"`. **No fake number and no dead `tel:` anywhere.** | live `tel:` link in the nav, the mobile menu and the final CTA, showing the number exactly as typed |
-| `DEMO_AUDIO` | **no `<audio>` element is constructed at all.** The player sits in a `uskoro` state — dashed ring, muted `Snimak uskoro`, `aria-disabled` — and pressing it runs the spectrum self-test instead of erroring | a real play/pause control; a Web Audio analyser drives the band's amplitude and it settles back on `ended` |
-| `DEMO_LINK` | the primary CTA falls back to the demo number, and failing that to the voice section — never circular, never dead | the CTA points at the booking page (`target="_blank"` for an absolute URL) |
+| `DEMO_TELEFON` (shipped empty) | **absent.** The three slots — nav, menu, the laptop's screen — are removed; no chip, no placeholder, no dead `tel:`, and nothing on the page says „uskoro” | a live `tel:` link in the nav, the mobile menu and beside the copy button on the laptop's screen, showing the number exactly as typed |
+| `DEMO_AUDIO` (shipped filled) | **no `<audio>` element is constructed at all.** The player sits in a `uskoro` state — dashed ring, muted `Snimak uskoro`, `aria-disabled` — and pressing it runs the spectrum self-test instead of erroring | a real play/pause control named `Poslušaj agenta`; a Web Audio analyser drives the band's amplitude, the playhead walks the passband, and it settles back on `ended` |
+| `DEMO_LINK` (shipped empty) | the live demo's end card sends „Zakaži razgovor” to `#kontakt` | it goes to the booking page (`target="_blank"` for an absolute URL) |
 
 `DEMO_LINK` is a departure from §7's two values; §9 of this report explains why.
 
@@ -390,6 +393,93 @@ is measured where the empty state exists (round 7), and round 12 now measures
 what ships — the recording playing, the meter answering it, and the playhead
 walking the passband without ever going blank.
 
+### 3d · No paygate: every plan leads to an address, on a laptop that opens
+
+The brief for this pass, in substance: *we won't be using any paygates — the
+buttons in the „Cene" section take people to a contact part, and the contact
+is `support@glasai.online`; make that part very nice, like a laptop opening as
+a person scrolls and slightly turning, with a contact-us and a copy-email
+button on its screen, and then the footer.*
+
+**What changed on the page**
+
+- The final section is `#kontakt`. Every booking link on the page lands on it:
+  the three plan buttons (their labels are the client's and are unchanged),
+  the nav's and the menu's „Zakaži demo", the hero's „Zakaži razgovor", the
+  end card's „Zakaži razgovor" when `DEMO_LINK` is unset, and the footer's
+  „Kontakt". Nothing points at the old `#cta`; both harnesses assert the set
+  and the absence.
+- The old primary button, the meter inside it, and the „Demo broj — uskoro"
+  chips are gone. The chips because, with a real contact channel on the page,
+  a dashed *coming soon* element in the nav is an admission rather than a
+  design: an unset number is now absent everywhere, which is the rule the end
+  card already followed. Filled, the number appears in the nav, the menu and
+  beside the copy button.
+- The client's copy stays: the eyebrow `KONTAKT`, `Čujte ga uživo.`, the
+  fifteen-minute lede. Six strings were written for the screen and are
+  declared in the content harness: `Pišite nam.`, the address, `Kopiraj
+  adresu`, `Kopirano`, the announcement `Adresa je kopirana.`, and `KONTAKT`.
+
+**The laptop**
+
+- A hinge, not a picture of one. In CSS 3D the lid pivots on its bottom edge
+  (`rotateX(-90deg)` shut, `0` open); the deck lies flat toward the reader
+  (`rotateX(90deg)`, one thickness below the hinge); the deck's front edge is
+  a third face; the lid has a front (bezel, camera, screen) and a back cover
+  (rotated 180°, backface hidden) with the amber dot. The eye sits level with
+  the top of the stage, so the deck is seen from a little above, and the
+  perspective is in em, so the object is the same drawing at every width.
+- One em is 1/46 of the width (container-query units, with a `vw` fallback
+  declared first), so the device scales as one drawing from 360 to 1920 px —
+  while the words on its screen use the page's clamp tokens, so they stay
+  readable on a phone, where the lid simply grows taller than 16:10.
+- The scrub is one GSAP timeline on one ScrollTrigger whose trigger is the
+  hinge line, `top 84%` → `top 56%`, `scrub: 0.6`. The laptop comes into view
+  shut — the reader sees the cover and the dot — sits shut for a beat, then
+  opens across 28 % of the viewport while the device turns from
+  `rotateY(-16deg) rotateX(-9deg)` to square-on. The screen's light on the
+  keys and the pool on the desk fade in from 30 %; the three lines on the
+  screen arrive staggered from 45 %; a glare sweeps the glass.
+- Initial states are set by the script, never by CSS. With GSAP absent
+  (round 4) or reduced motion (round 5) the laptop stands open. At rest every
+  transform is identity — round 15 asserts it — so the address and its button
+  are drawn flat and crisp.
+- The band's fourth placement is the foot of the screen, under the address
+  and never across it.
+
+**The button**
+
+- `navigator.clipboard.writeText`, then `execCommand("copy")` where the API is
+  missing, and when both refuse, the address is selected so a plain ⌘C still
+  works. Nothing claims a success it did not have.
+- Two faces in one grid cell — clipboard + „Kopiraj adresu", check +
+  „Kopirano" — so the button never changes width under the pointer. The face
+  that is off is `visibility: hidden`, which also keeps it out of the
+  accessible name. A visually hidden live region says „Adresa je kopirana."
+  once and is cleared when the label reverts, 2.2 s later.
+- The address itself is a `mailto:` link with a hairline underline; the
+  eyebrow and the heading above the laptop are the section's, not the
+  screen's, so the page's `h2 → h3` order holds.
+
+**Removed**: `initPrimaryCta`, `wantBtnBand`, the `btn` band kind and its
+dark-on-amber palette, `.band--btn`, `.btn--xl`, `.btn--cta`, `.chip-off`,
+and the CTA-fill triggers inside `initDrawIns`. The page is smaller in code
+than it was and has one fewer canvas ticking.
+
+**Verified** — round 15 is new, and rounds 4, 5, 7, 13 and 14 grew: a plan's
+button lands with the heading under the nav, focus on the section and the
+laptop still shut; shut below the fold the lid projects to under 30 % of its
+height with the words off and the deck unlit; half-way through the scroll the
+lid is half-way open; at rest progress is 1, every transform identity, the
+words on, the deck lit; the button writes the address to the clipboard, says
+„Kopirano" at the same width and announces it once, and is back two seconds
+later with the announcement cleared; the address is a `mailto:`; an instant
+jump to the bottom leaves the laptop open; on a Pixel 7 it stands open at the
+bottom, the button and the address are real tap targets, and a tap copies.
+And by eye: filmstrips at 1440 and 390 at progress 0 / 0.15 / 0.35 / 0.6 / 1
+and the page bottom, the reduced-motion and no-CDN bottoms, and the copied
+state.
+
 ### 4 · What could **not** be verified, and how the rest was
 
 - **No conversation was ever held.** ElevenLabs' API and WebSocket are blocked
@@ -439,14 +529,15 @@ headless Chromium against the real file.
 | 4 | **CDN blocked (F1)** — cdnjs, jsDelivr, unpkg and elevenlabs.io aborted at the network layer | GSAP genuinely absent; every `[data-reveal]` block visible; hero copy visible; the phone falls back to a readable booked state; page scrolls; ~4 900 characters of body text; the live-demo block folds away with no dead button and no empty box; zero console errors before and after the fold |
 | 5 | `prefers-reduced-motion: reduce` | marquee static, Lenis never constructed, no `js-motion`/`js-loop`, phone at rest in the booked state, the meter renders one settled frame |
 | 6 | Diacritics | `fonts.check` true, glyphs pixel-distinct from their bases, no `.notdef`, in all three families |
-| 7 | CONFIG placeholders, empty **and** filled | CONFIG is rewritten on the wire in both directions, so each state is tested for itself rather than whichever one ships; the empty state's self-test sweep is measured here; also asserts the primary CTA never points backwards |
+| 7 | CONFIG, empty **and** filled | CONFIG is rewritten on the wire in both directions, so each state is tested for itself rather than whichever one ships; empty: no number, no placeholder, nothing says „uskoro", the laptop's row holds the copy button alone, the self-test sweep is measured; filled: three live `tel:` links (nav, menu, screen) and the number beside the copy button; and every booking link on the page — seven of them — lands on `#kontakt` |
 | 8 | Phone loop — 3 cycles + a 30 s tab switch | never two states at once, typing never overlaps its own bubble, timer never runs backwards, 3 clean wraps, no flash across the seam |
 | 9 | Contrast | 15 token pairs computed + every text node measured in situ against its real composited background — 0 failures |
 | 10 | Accessibility & interaction | landmarks, one `h1`, heading order, skip link, real accordion semantics, 28 keyboard tab stops each with a visible ring, focus never inside a closed panel, menu lock/unlock across a breakpoint |
 | 11 | Motion QA | 1920 → 360 resize *while the hero is pinned*, portrait ↔ landscape mid-scroll, instant scroll to the bottom skips no reveal |
 | 12 | Throttle + motion system | the recording plays and the meter answers it, and the playhead walks the passband without ever going blank; boots and scrolls under 4× CPU throttle; every trigger measured against the pinned layout; all 12 `[data-lines]` hosts split with **zero** height change to any element and zero change to the document; line masks preserve the text exactly; the band fills its canvas without clipping and breathes rather than drones; the probe sweeps below, through and above the telephone band |
-| 13 | Touch (Pixel 7) | sway replaces cursor tilt, magnetism never engages, no pin, menu works by tap, the inert player answers a tap without erroring |
+| 13 | Touch (Pixel 7) | sway replaces cursor tilt, magnetism never engages, no pin, menu works by tap, the player answers a tap without erroring; the laptop stands open at the bottom, its button and address are real tap targets, a tap copies |
 | 14 | **The live demo** — the real widget bundle served locally, its config and avatar texture stubbed, the microphone granted, the session driven through the widget's own hook on a fake clock | ready only once the engine renders its button; engine never painted, never focusable; the page's button presses the engine's — one `elevenlabs-convai:call` carrying the four hooks; a change of mind while connecting leaves no timer; live → `00:30` at ten seconds with the rule at ¾; the wrap-up nudge at 31 s; at 40 s the mic is muted and the clock reads `00:00` but a speaking agent is not cut; half a second of silence ends it and the card takes the widget's place; zero timers, a frozen clock, one fresh engine; restart works; while live the control is named for what pressing it does, and past the cap it says it is finishing; an attempt that never connects comes back after 8 s with a notice that steps aside after 4 s; an early hang-up — which the widget never forwards — is noticed within a tick and ends on the card; an agent that never goes quiet is ended at 46 s; the card's number line only with `DEMO_TELEFON`, the booking link when `DEMO_LINK` is set; reduced motion still live; zero console errors in every state |
+| 15 | **Kontakt** — the laptop and the address | a plan's button lands under the nav with focus on the section and the laptop shut; shut → half → open sampled off the scrub, with the lid's projected height, the words, the deck's light and identity transforms asserted at each; the button copies, says „Kopirano" at the same width, announces once and reverts; the address is a `mailto:`; an instant jump to the bottom leaves it open; zero console errors |
 
 **Round 4 — content (`node .audit/copy-check.mjs`): 88 / 88 passed.** Every
 visible string diffed against §8/§6/§7 character for character (only NBSP is

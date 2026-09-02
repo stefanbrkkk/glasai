@@ -212,6 +212,24 @@ const PHONE_STATE = `(() => {
   };
 })()`;
 
+/* the laptop: how far its scrub has run, whether anything is still
+   transformed, whether the screen's words are on, and how tall the lid draws
+   against its own layout box (a shut lid projects to a sliver) */
+const LAPTOP_ST = `(() => {
+  const g = s => document.querySelector(s), cs = s => getComputedStyle(g(s));
+  const st = window.ScrollTrigger && ScrollTrigger.getAll().find(t => t.trigger && t.trigger.classList && t.trigger.classList.contains('laptop-base'));
+  const lid = g('#laptop-lid'), r = lid.getBoundingClientRect();
+  const ui = Array.from(document.querySelectorAll('#lap-ui > :not(.vh)'));
+  const id = m => m === 'none' || m === 'matrix(1, 0, 0, 1, 0, 0)';
+  return { progress: st ? +st.progress.toFixed(2) : null, lid: cs('#laptop-lid').transform, lap: cs('#laptop').transform,
+           identity: id(cs('#laptop-lid').transform) && id(cs('#laptop').transform) && ui.every(e => id(getComputedStyle(e).transform)),
+           lidRatio: +(r.height / lid.offsetHeight).toFixed(2),
+           uiShown: ui.length === 3 && ui.every(e => parseFloat(getComputedStyle(e).opacity) > 0.98),
+           uiHidden: ui.every(e => parseFloat(getComputedStyle(e).opacity) < 0.02),
+           lit: +parseFloat(cs('#laptop-lit').opacity).toFixed(2),
+           mail: g('#lap-mail').getAttribute('href'), copy: g('#lap-copy-idle').textContent.trim() };
+})()`;
+
 /* ══════════════════════════════════════════════════════════════════════════
    ROUNDS
    ══════════════════════════════════════════════════════════════════════ */
@@ -266,8 +284,11 @@ const PHONE_STATE = `(() => {
     const total = await page.evaluate(`document.body.scrollHeight`);
     const step = 900;
     let i = 0;
+    /* the last step is clamped to the page's real end: a scroll past it
+       leaves the compositor overscrolled for the frame, and the fixed nav
+       lands mid-frame in a picture of a page that never renders that way */
     for (let y = 0; y < total - 200 && i < 12; y += step, i++) {
-      await page.evaluate(SCROLL_TO + '(' + y + ')');
+      await page.evaluate(SCROLL_TO + '(Math.min(' + y + ', document.documentElement.scrollHeight - innerHeight))');
       await page.waitForTimeout(720);
       await page.screenshot({ path: path.join(SHOTS, `v${w}-${String(i).padStart(2, '0')}.png`) });
     }
@@ -307,6 +328,8 @@ const PHONE_STATE = `(() => {
     rec(4, 'phone falls back to the booked state (transcript + confirmation readable)', st.bubbles && st.confirmShown);
     rec(4, 'page scrolls', st.canScroll === true);
     rec(4, 'body text present', st.text > 2500, st.text + ' chars');
+    const lap = await page.evaluate(LAPTOP_ST);
+    rec(4, 'the laptop stands open, untransformed, with the address and its button in plain view', lap.lid === 'none' && lap.lap === 'none' && lap.uiShown && lap.mail === 'mailto:support@glasai.online', JSON.stringify(lap));
     await page.waitForTimeout(5000);                /* the engine gets 8 s before the block folds */
     const talk = await page.evaluate(`({ gone: document.querySelector('#talk').classList.contains('is-gone'), ready: document.querySelector('#talk').classList.contains('is-ready'),
       talkVisible: document.querySelector('#talk').offsetHeight > 0 })`);
@@ -347,6 +370,8 @@ const PHONE_STATE = `(() => {
     rec(5, 'Lenis never initialised', a.lenis === false && a.lenisCls === false);
     rec(5, 'no js-motion / js-loop class', a.motionCls === false && a.loopCls === false);
     rec(5, 'phone rests in the booked state', a.bubbles && a.confirm !== 'none' && parseFloat(a.confirmOp) > 0.9 && a.incoming === 'hidden');
+    const lap5 = await page.evaluate(LAPTOP_ST);
+    rec(5, 'the laptop is open and still — nothing scrubbed, nothing hidden', lap5.lid === 'none' && lap5.lap === 'none' && lap5.uiShown, JSON.stringify(lap5));
     rec(5, 'zero console errors', bag.length === 0, bag.slice(0, 3).join(' | '));
     await page.screenshot({ path: path.join(SHOTS, 'reduced-motion.png'), fullPage: true });
     await ctx.close();
@@ -447,9 +472,14 @@ const PHONE_STATE = `(() => {
     await page.waitForTimeout(900);
     const s = await page.evaluate(`(() => {
       const chips = Array.from(document.querySelectorAll('.chip-off')).map(e => e.textContent.trim());
-      const tels = Array.from(document.querySelectorAll('a[href^="tel:"]')).map(e => ({ id: e.id, href: e.getAttribute('href'), text: e.textContent.trim() }));
+      const tels = Array.from(document.querySelectorAll('a[href^="tel:"]')).map(e => ({ id: e.id, href: e.getAttribute('href'), text: e.textContent.trim(), where: e.closest('.nav-actions') ? 'nav' : e.closest('#menu') ? 'menu' : e.closest('.lap-row') ? 'kontakt' : e.closest('#talk-card') ? 'card' : '?' }));
       const play = document.querySelector('#play');
-      return { chips, tels, audioEls: document.querySelectorAll('audio').length,
+      const slots = document.querySelectorAll('[data-demo-slot]').length;
+      /* the recording's own empty state still says „Snimak uskoro” — that is
+         the player's, tested below; what must be gone is the number's chip */
+      const uskoro = /Demo broj/i.test(document.body.innerText);
+      const lapRow = Array.from(document.querySelector('.lap-row').children).map(e => e.tagName + (e.id ? '#' + e.id : ''));
+      return { chips, tels, slots, uskoro, lapRow, audioEls: document.querySelectorAll('audio').length,
                playDisabled: play.getAttribute('aria-disabled'),
                playLabel: document.querySelector('#play-label').textContent.trim(),
                playCursor: getComputedStyle(play).cursor,
@@ -457,7 +487,8 @@ const PHONE_STATE = `(() => {
                playBorder: getComputedStyle(play).borderStyle };
     })()`);
     if (!filled) {
-      rec(7, 'empty: inert chips rendered, no tel: link, no fake number', s.chips.length >= 2 && s.tels.length === 0 && s.chips.every(c => c === 'Demo broj — uskoro'), JSON.stringify(s.chips));
+      rec(7, 'empty: no number, no placeholder, no „Demo broj — uskoro” — the slots are simply gone', s.chips.length === 0 && s.tels.length === 0 && s.slots === 0 && !s.uskoro, JSON.stringify({ chips: s.chips, tels: s.tels, slots: s.slots, chipText: s.uskoro }));
+      rec(7, 'empty: the laptop\'s screen carries the copy button alone', s.lapRow.length === 1 && s.lapRow[0] === 'BUTTON#lap-copy', JSON.stringify(s.lapRow));
       rec(7, 'empty: no <audio> element created at all', s.audioEls === 0);
       /* The *recording* is what is unavailable — the label says so. The control
          itself is live: pressing it runs the line self-test. So it wears the
@@ -484,21 +515,18 @@ const PHONE_STATE = `(() => {
       })()`);
       rec(7, 'empty: the self-test runs a visible sweep across the band', sweep.scanning === true && sweep.swing > 1.35 && sweep.vsRest < 0.85, JSON.stringify(sweep));
       rec(7, 'empty: clicking the inert player throws nothing', bag.length === 0, bag.slice(0, 3).join(' | '));
-      const cta = await page.evaluate(`(() => { const a = document.querySelector('#cta-btn'); return { href: a.getAttribute('href'), text: a.textContent.trim() }; })()`);
-      rec(7, 'empty: the primary CTA still points forward, never back at #cene',
-          cta.href === '#glas' && /Zaka(ž|z)i demo razgovor/.test(cta.text), JSON.stringify(cta));
+      /* no paygate: every button that once led to a booking leads to the address */
+      const links = await page.evaluate(`(() => {
+        const q = s => Array.from(document.querySelectorAll(s)).map(a => a.getAttribute('href'));
+        return { prices: q('.price .btn'), nav: q('.nav-actions .btn--primary'), menu: q('.menu-foot .btn'), hero: q('.hero-cta .btn--ghost'), book: q('#talk-book'), footer: q('.footer-nav a[href="#kontakt"]'),
+                 stale: document.querySelectorAll('a[href="#cta"]').length, target: !!document.querySelector('section#kontakt') }; })()`);
+      const all = links.prices.concat(links.nav, links.menu, links.hero, links.book);
+      rec(7, 'every booking link on the page — three plans, nav, menu, hero, end card — lands on #kontakt', all.length === 7 && all.every(h => h === '#kontakt') && links.footer.length === 1 && links.stale === 0 && links.target, JSON.stringify(links));
     } else {
-      const chips = s.tels.filter(t => t.id !== 'cta-btn');
-      const primary = s.tels.filter(t => t.id === 'cta-btn')[0];
-      rec(7, 'filled: the demo number renders as live tel: chips',
-          chips.length >= 2 && chips.every(t => t.href === 'tel:+381641234567' && t.text === '+381 64 123 4567'),
-          JSON.stringify(chips[0] || {}));
-      /* with DEMO_LINK empty the primary CTA falls back to the demo number —
-         never back to the price list it came from */
-      rec(7, 'filled: the primary CTA resolves to the demo number, not a loop',
-          !!primary && primary.href === 'tel:+381641234567' && primary.text === 'Zakaži demo razgovor',
-          JSON.stringify(primary || {}));
-      rec(7, 'filled: no inert chips remain', s.chips.length === 0);
+      rec(7, 'filled: the demo number renders as live tel: links in the nav, the menu, the end card and on the laptop\'s screen',
+          s.tels.length === 4 && s.tels.every(t => t.href === 'tel:+381641234567' && t.text === '+381 64 123 4567') && ['nav', 'menu', 'card', 'kontakt'].every(w => s.tels.some(t => t.where === w)),
+          JSON.stringify(s.tels.map(t => t.where)));
+      rec(7, 'filled: the number joins the copy button, and no empty slot remains', s.lapRow.length === 2 && s.lapRow[0] === 'BUTTON#lap-copy' && s.lapRow[1] === 'A' && s.slots === 0 && s.chips.length === 0, JSON.stringify(s.lapRow));
       rec(7, 'filled: real player, enabled, named for what it plays', s.playDisabled === null && s.playBorder === 'solid' && s.playLabel === 'Poslušaj agenta', `${s.playLabel} / ${s.playBorder}`);
       rec(7, 'filled: zero console errors', bag.length === 0, bag.slice(0, 3).join(' | '));
       await page.screenshot({ path: path.join(SHOTS, 'config-filled.png'), fullPage: false });
@@ -943,6 +971,59 @@ const PHONE_STATE = `(() => {
     await ctx.close();
   }
 
+  /* ── 15 · the contact section: the laptop and the address ─────────────── */
+  head('15 · Kontakt — the laptop opens with the scroll, and the address copies');
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    await wire(ctx);
+    await ctx.grantPermissions(['clipboard-read', 'clipboard-write']);
+    const page = await ctx.newPage(); const bag = [];
+    watch(page, bag);
+    await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(2000);
+    /* a pricing button: the section arrives under the nav, focus lands on it,
+       and the laptop waits shut at the foot of the viewport */
+    await page.evaluate(SCROLL_TO + `(document.querySelector('#cene').getBoundingClientRect().top + window.scrollY)`);
+    await page.waitForTimeout(700);
+    await page.click('.price:nth-of-type(2) .btn');
+    await page.waitForTimeout(1900);
+    const land = await page.evaluate(`(() => { const r = document.querySelector('#kontakt').getBoundingClientRect(); const h = document.querySelector('.laptop-base').getBoundingClientRect();
+      return { hash: location.hash, top: Math.round(r.top), hinge: +(h.top / innerHeight).toFixed(2), focus: document.activeElement.id }; })()`);
+    let lp = await page.evaluate(LAPTOP_ST);
+    rec(15, 'a plan\'s button lands on the contact section: heading under the nav, focus on the section, laptop still shut', land.hash === '#kontakt' && land.top >= 60 && land.top <= 130 && land.focus === 'kontakt' && lp.progress === 0 && lp.lidRatio < 0.55 && lp.uiHidden, JSON.stringify({ land, progress: lp.progress, lidRatio: lp.lidRatio }));
+    /* the scrub, sampled: shut, half, open. A shut lid lies flat and, seen
+       from a little above and tilted toward the eye, still projects to
+       roughly half its height — so the three are compared with each other */
+    const st = await page.evaluate(`(() => { const t = ScrollTrigger.getAll().find(t => t.trigger && t.trigger.classList && t.trigger.classList.contains('laptop-base')); return { start: t.start, end: t.end }; })()`);
+    const at = async f => { await page.evaluate(SCROLL_TO + `(${st.start + (st.end - st.start) * f})`); await page.waitForTimeout(1100); return page.evaluate(LAPTOP_ST); };
+    const shut = await at(0), half = await at(0.5), open = await at(1.15);
+    rec(15, 'shut below the fold: the lid lies flat, the screen dark, the words off', shut.progress === 0 && shut.lidRatio < 0.55 && shut.uiHidden && shut.lit === 0, JSON.stringify({ lidRatio: shut.lidRatio, lit: shut.lit, progress: shut.progress }));
+    rec(15, 'half-way through the scroll the lid is between shut and open', half.progress > 0.4 && half.progress < 0.6 && half.lidRatio > shut.lidRatio + 0.12 && half.lidRatio < 0.96, JSON.stringify({ shut: shut.lidRatio, half: half.lidRatio, progress: half.progress }));
+    rec(15, 'open at rest: every part back at identity, the words on, the deck lit', open.progress === 1 && open.identity && open.lidRatio >= 0.99 && open.uiShown && open.lit === 1, JSON.stringify({ lidRatio: open.lidRatio, identity: open.identity, lit: open.lit }));
+    /* the copy button, and what it says */
+    const before = await page.evaluate(`({ w: document.querySelector('#lap-copy').getBoundingClientRect().width, name: getComputedStyle(document.querySelector('#lap-copy-done')).visibility })`);
+    await page.click('#lap-copy');
+    await page.waitForTimeout(350);
+    const after = await page.evaluate(`(async () => ({ clip: await navigator.clipboard.readText(), done: document.querySelector('#lap-copy').classList.contains('is-done'),
+      label: getComputedStyle(document.querySelector('#lap-copy-done')).visibility + '/' + getComputedStyle(document.querySelector('#lap-copy-idle')).visibility,
+      status: document.querySelector('#lap-status').textContent, w: document.querySelector('#lap-copy').getBoundingClientRect().width }))()`);
+    await page.waitForTimeout(2500);
+    const later = await page.evaluate(`({ done: document.querySelector('#lap-copy').classList.contains('is-done'), idle: getComputedStyle(document.querySelector('#lap-copy-idle')).visibility, status: document.querySelector('#lap-status').textContent })`);
+    rec(15, 'the button copies the address to the clipboard', after.clip === 'support@glasai.online', JSON.stringify(after.clip));
+    rec(15, 'it says „Kopirano” and announces it once, at the same width', after.done && after.label === 'visible/hidden' && after.status === 'Adresa je kopirana.' && before.name === 'hidden' && Math.abs(after.w - before.w) < 0.5, JSON.stringify(after));
+    rec(15, 'and is back to „Kopiraj adresu” two seconds later, the announcement cleared', !later.done && later.idle === 'visible' && later.status === '', JSON.stringify(later));
+    rec(15, 'the address itself is a mailto link', open.mail === 'mailto:support@glasai.online' && open.copy === 'Kopiraj adresu');
+    /* an instant jump to the bottom — a hash link, a dragged scrollbar —
+       leaves the laptop open, not caught mid-hinge */
+    await page.evaluate(SCROLL_TO + `(0)`); await page.waitForTimeout(600);
+    await page.evaluate(SCROLL_TO + `(document.body.scrollHeight)`); await page.waitForTimeout(1500);
+    const jump = await page.evaluate(LAPTOP_ST);
+    rec(15, 'an instant jump to the bottom leaves the laptop open', jump.progress === 1 && jump.identity && jump.uiShown, JSON.stringify({ progress: jump.progress, identity: jump.identity }));
+    rec(15, 'zero console errors', bag.length === 0, bag.slice(0, 3).join(' | '));
+    await page.screenshot({ path: path.join(SHOTS, 'kontakt-open.png') });
+    await ctx.close();
+  }
+
   /* ── 13 · touch device — F10, every pointer effect needs a real alternative ─ */
   head('14 · The live demo — the widget driven through its own hook, on a fake clock');
   {
@@ -978,7 +1059,7 @@ const PHONE_STATE = `(() => {
       const tag = filled ? 'filled' : 'empty';
       rec(14, `${tag}: block becomes ready only once the engine renders its button`, st.ready && !st.gone && st.ctl && !st.card && st.engineBtn, JSON.stringify(st));
       rec(14, `${tag}: the engine is never painted and never in the tab order`, st.engineHidden === true);
-      rec(14, `${tag}: end card — booking button and the number line`, filled ? (st.tel && st.book === 'https://cal.example/glasai') : (!st.tel && !st.telSlot && st.book === '#cta'), JSON.stringify({ tel: st.tel, slot: st.telSlot, book: st.book }));
+      rec(14, `${tag}: end card — booking button and the number line`, filled ? (st.tel && st.book === 'https://cal.example/glasai') : (!st.tel && !st.telSlot && st.book === '#kontakt'), JSON.stringify({ tel: st.tel, slot: st.telSlot, book: st.book }));
       if (filled) { rec(14, 'filled: zero console errors', bag.length === 0, bag.slice(0, 3).join(' | ')); await ctx.close(); continue; }
 
       await page.evaluate(SCROLL_TO + `(document.querySelector('#glas').getBoundingClientRect().top + window.scrollY)`);
@@ -1075,6 +1156,7 @@ const PHONE_STATE = `(() => {
   {
     const ctx = await browser.newContext({ ...devices['Pixel 7'] });
     await wire(ctx);
+    await ctx.grantPermissions(['clipboard-read', 'clipboard-write']);
     const page = await ctx.newPage(); const bag = [];
     watch(page, bag);
     await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
@@ -1107,12 +1189,26 @@ const PHONE_STATE = `(() => {
 
     await page.evaluate(`(() => { const el = document.querySelector('#glas'); window.__glasLenis ? window.__glasLenis.scrollTo(el, {immediate:true}) : el.scrollIntoView(); })()`);
     await page.waitForTimeout(1200);
-    /* the empty-state control is live and focusable; force the tap anyway so
-       the check does not depend on Playwright's actionability heuristics */
+    /* the control is live and focusable; force the tap anyway so the check
+       does not depend on Playwright's actionability heuristics */
     await page.locator('#play').tap({ force: true });
     await page.waitForTimeout(900);
     const stillFocusable = await page.evaluate(`(() => { const b = document.querySelector('#play'); b.focus(); return document.activeElement === b; })()`);
-    rec(13, 'the „uskoro” player answers a tap without erroring and stays focusable', stillFocusable && bag.length === 0, bag.slice(0, 3).join(' | '));
+    rec(13, 'the player answers a tap without erroring and stays focusable', stillFocusable && bag.length === 0, bag.slice(0, 3).join(' | '));
+    await page.locator('#play').tap({ force: true });   /* and pauses again */
+    /* the laptop on a phone: it opens with the scroll, stands open at the
+       bottom, and its button is a real tap target that copies */
+    await page.evaluate(SCROLL_TO + `(document.body.scrollHeight)`);
+    await page.waitForTimeout(1600);
+    const lapT = await page.evaluate(LAPTOP_ST);
+    const tap = await page.evaluate(`(() => { const r = document.querySelector('#lap-copy').getBoundingClientRect(); const m = document.querySelector('#lap-mail').getBoundingClientRect(); return { btnH: Math.round(r.height), btnW: Math.round(r.width), mailH: Math.round(m.height), inView: r.top >= 0 && r.bottom <= innerHeight }; })()`);
+    rec(13, 'the laptop stands open at the bottom of a phone', lapT.progress === 1 && lapT.identity && lapT.uiShown, JSON.stringify(lapT));
+    rec(13, 'the copy button and the address are real tap targets on the screen', tap.btnH >= 44 && tap.btnW >= 44 && tap.mailH >= 22 && tap.inView, JSON.stringify(tap));
+    await page.locator('#lap-copy').tap();
+    await page.waitForTimeout(400);
+    const tapped = await page.evaluate(`(async () => ({ clip: await navigator.clipboard.readText().catch(() => 'unreadable'), done: document.querySelector('#lap-copy').classList.contains('is-done') }))()`);
+    rec(13, 'a tap on the button copies the address', tapped.done && tapped.clip === 'support@glasai.online', JSON.stringify(tapped));
+    rec(13, 'zero console errors on touch', bag.length === 0, bag.slice(0, 3).join(' | '));
     await page.screenshot({ path: path.join(SHOTS, 'touch-pixel7.png') });
     await ctx.close();
   }
