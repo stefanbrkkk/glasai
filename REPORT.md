@@ -556,8 +556,8 @@ it), and a four-second guard compares its state with what it should be and
 puts it right — which only ever does anything when something was already
 wrong. Round 8 records the page's visibility, the loop's flags and the first
 and last sampled states whenever it sees no wraps, so the next such run would
-explain itself. The full run since — 151 / 151 — wrapped three times in
-70 s, as every green run before.
+explain itself. The two full runs since — 151 / 151 each — wrapped three
+times in 70 and 71 s, as every green run before.
 
 ### 4 · What could **not** be verified, and how the rest was
 
@@ -597,7 +597,7 @@ decide there.
 
 ## 3 · Round 1 — final automated audit (`node audit.js`)
 
-**151 / 151 passed, all green.** Everything below was actually executed in
+**151 / 151 passed, all green — on the last two consecutive full runs.** Everything below was actually executed in
 headless Chromium against the real file.
 
 | # | round | result |
