@@ -559,7 +559,7 @@ the first real conversation still needs a person with a microphone.
   nobody can see, and the page would return to its start after 15 s.
 - The widget fetches its avatar texture from `storage.googleapis.com`; the
   harness stubs it. In production that host is one more the page touches.
-- Everything else is run, not reasoned: **133 / 133 harness checks** (fourteen rounds — round 14 is the demo, see the table) and **84 / 84 content checks**.
+- Everything else is run, not reasoned: **151 / 151 harness checks** (fifteen rounds — round 14 is the demo, round 15 the contact section, see the table) and **95 / 95 content checks**.
 
 ### 5 · The calendar claim, and the percentages
 
@@ -579,7 +579,7 @@ decide there.
 
 ## 3 · Round 1 — final automated audit (`node audit.js`)
 
-**133 / 133 passed, all green.** Everything below was actually executed in
+**151 / 151 passed, all green.** Everything below was actually executed in
 headless Chromium against the real file.
 
 | # | round | result |
@@ -600,7 +600,7 @@ headless Chromium against the real file.
 | 14 | **The live demo** — the real widget bundle served locally, its config and avatar texture stubbed, the microphone granted, the session driven through the widget's own hook on a fake clock | ready only once the engine renders its button; engine never painted, never focusable; the page's button presses the engine's — one `elevenlabs-convai:call` carrying the four hooks; a change of mind while connecting leaves no timer; live → `00:30` at ten seconds with the rule at ¾; the wrap-up nudge at 31 s; at 40 s the mic is muted and the clock reads `00:00` but a speaking agent is not cut; half a second of silence ends it and the card takes the widget's place; zero timers, a frozen clock, one fresh engine; restart works; while live the control is named for what pressing it does, and past the cap it says it is finishing; an attempt that never connects comes back after 8 s with a notice that steps aside after 4 s; an early hang-up — which the widget never forwards — is noticed within a tick and ends on the card; an agent that never goes quiet is ended at 46 s; the card's number line only with `DEMO_TELEFON`, the booking link when `DEMO_LINK` is set; reduced motion still live; zero console errors in every state |
 | 15 | **Kontakt** — the laptop and the address | a plan's button lands under the nav with focus on the section, the laptop open and the copy button in view; shut → half → open sampled off the scrub, with the lid's projected height, the words, the deck's light and identity transforms asserted at each; the button copies, says „Kopirano" at the same width, announces once and reverts; the address is a `mailto:`; an instant jump to the bottom leaves it open; zero console errors |
 
-**Round 4 — content (`node .audit/copy-check.mjs`): 88 / 88 passed.** Every
+**Round 4 — content (`node .audit/copy-check.mjs`): 95 / 95 passed.** Every
 visible string diffed against §8/§6/§7 character for character (only NBSP is
 normalised, since §8 requires it before `€`), plus: no Cyrillic anywhere, no
 `30 %`/`85 %` published, meta/OG built only from §8 sentences, no generated
