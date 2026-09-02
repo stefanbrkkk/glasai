@@ -3,6 +3,7 @@
     "@elevenlabs/client": "^1.23.0",
     "@elevenlabs/convai-widget-embed": "^0.17.1",
     "gsap": "^3.12.5",
+    "html-validate": "^11.12.0",
     "lenis": "^1.1.18"
   }
 }

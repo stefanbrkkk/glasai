@@ -183,6 +183,8 @@ eq('step bodies', (await T('.step p')).join('|'), EXPECT.steps.map(s => s[2]).jo
 eq('features h2', await T1('#mogucnosti h2'), EXPECT.featH2);
 eq('talk: button', await T1('#talk-label'), EXPECT.talk.start);
 eq('talk: note', await T1('#talk-note'), EXPECT.talk.note);
+eq('talk: failed-attempt notice (owner copy)', await T1('#talk-fail'), 'Povezivanje nije uspelo — pokušajte ponovo.');
+ok('talk: the clock has a name for AT and none for the eye', (await page.$eval('#talk-live', e => e.textContent)).trim().startsWith('Preostalo') && (await T1('#talk-live')).trim().startsWith('00:'));
 eq('talk: card heading', await T1('#talk-card h3'), EXPECT.talk.cardH);
 eq('talk: card body', await T1('#talk-card p'), EXPECT.talk.cardP);
 eq('talk: card button', await T1('#talk-book'), EXPECT.talk.cardBtn);
@@ -274,18 +276,23 @@ ok('the AI disclosure is stated in the FAQ', /Da, na po(č|c)etku svakog poziva\
 ok('the AI disclosure is stated in the footer', /Agent na po(č|c)etku svakog poziva najavljuje da je ve(š|s)ta(č|c)ka inteligencija\./.test(html));
 ok('talk: the state labels exist only in the script, verbatim', /"Povezujem…"/.test(html) && /"Slušam"/.test(html));
 ok('talk: no SMS anywhere in the file — markup, comments, meta, script', !/sms/i.test(html));
-ok('talk: the widget snippet is present verbatim', html.includes('<elevenlabs-convai agent-id="agent_5701m14n57q9e25ryes2tg8tdjhd"></elevenlabs-convai><script src="https://unpkg.com/@elevenlabs/convai-widget-embed" async type="text/javascript"></script>'));
+/* the snippet as supplied, with one deliberate change: the bundle is pinned to
+   the version the forty-second cap was verified against */
+ok('talk: the widget snippet is present, pinned to 0.17.1', html.includes('<elevenlabs-convai agent-id="agent_5701m14n57q9e25ryes2tg8tdjhd"></elevenlabs-convai><script src="https://unpkg.com/@elevenlabs/convai-widget-embed@0.17.1" async type="text/javascript"></script>'));
+ok('talk: the ending and stop words exist only in the script, verbatim', /"Završavam…"/.test(html) && /"Slušam — prekini demo"/.test(html));
 ok('the AI disclosure is the first line of the transcript', /Ja sam ve(š|s)ta(č|c)ka inteligencija, poziv se snima/.test(html));
 ok('a human is always reachable — stated in copy', /Dovoljno je re(ć|c)i „operater” i poziv ide na va(š|s) broj\./.test(html));
 
 /* aria-label / title / alt must not contain generated Serbian beyond the declared set */
 const ARIA = await page.evaluate(`Array.from(document.querySelectorAll('[aria-label],[title],[alt]')).map(e => e.getAttribute('aria-label') || e.getAttribute('title') || e.getAttribute('alt'))`);
-const ALLOWED_ARIA = new Set(['GLAS AI', 'Meni']);
+const ALLOWED_ARIA = new Set(['GLAS AI', 'Meni', 'Slušam — prekini demo']);
 const strayAria = ARIA.filter(a => a && !ALLOWED_ARIA.has(a.trim()));
 ok('no generated Serbian in aria-label / title / alt', strayAria.length === 0, JSON.stringify(strayAria));
 
 /* every string that is NOT in §8 must be one of the declared exceptions */
-const DECLARED_EXTRA = ['Preskoči na sadržaj', 'Meni', 'Zatvori', 'Pauziraj', '21.40', '+381 6• ••• •••', '00:22', 'Agent', 'Pozivalac'];
+const DECLARED_EXTRA = ['Preskoči na sadržaj', 'Meni', 'Zatvori', 'Pauziraj', '21.40', '+381 6• ••• •••', '00:22', 'Agent', 'Pozivalac',
+  /* the live demo's own words, written once its copy was delegated: a stop name, an ending, a clock label, a failed attempt, a new-window hint */
+  'Slušam — prekini demo', 'Završavam…', 'Preostalo', 'Povezivanje nije uspelo — pokušajte ponovo.', '(otvara se u novom prozoru)'];
 console.log(`\n  \x1b[2mDeclared non-§8 UI strings (a11y names the brief does not supply): ${DECLARED_EXTRA.filter(x => /[a-zA-Zčćšžđ]/.test(x)).join(', ')}\x1b[0m`);
 
 console.log(`\n${'─'.repeat(72)}\n  ${checks - fails}/${checks} content checks passed${fails ? `   \x1b[31m${fails} FAILING\x1b[0m` : '   \x1b[32mall green\x1b[0m'}\n${'─'.repeat(72)}\n`);

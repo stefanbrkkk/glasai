@@ -905,6 +905,7 @@ const PHONE_STATE = `(() => {
     for (const filled of [false, true]) {
       const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
       await wire(ctx);
+    await ctx.grantPermissions(['microphone']);   /* the connect clock starts once the permission is known */
       if (filled) await ctx.route('**/index.html', async r => {
         const body = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8').replace('DEMO_TELEFON: ""', 'DEMO_TELEFON: "+381 64 123 4567"').replace('DEMO_LINK:    ""', 'DEMO_LINK:    "https://cal.example/glasai"');
         r.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body });
@@ -937,6 +938,7 @@ const PHONE_STATE = `(() => {
       const hooks = await page.evaluate(FAKE); await page.clock.runFor(100);
       st = await page.evaluate(TALK_ST);
       rec(14, 'a connected session goes live: „Slušam”, the clock at 00:40, the rule full', hooks && st.live && st.label === 'Slušam' && st.clock === '00:40' && st.rule === 'scaleX(1)' && st.liveOn && !st.noteOn, JSON.stringify(st));
+      rec(14, 'while live the control is named for what pressing it does', (await page.getAttribute('#talk-btn', 'aria-label')) === 'Slušam — prekini demo');
       await page.clock.runFor(10000); st = await page.evaluate(TALK_ST);
       rec(14, 'ten seconds in: 00:30, the rule three-quarters', st.clock === '00:30' && /scaleX\(0\.7[45]/.test(st.rule), JSON.stringify({ clock: st.clock, rule: st.rule }));
       await page.clock.runFor(21500);
@@ -945,6 +947,7 @@ const PHONE_STATE = `(() => {
       await page.clock.runFor(8600); st = await page.evaluate(TALK_ST);
       const cap = await page.evaluate(`({ muted: window.__fake.muted, ended: window.__fake.ended })`);
       rec(14, 'at forty seconds the visitor\'s line is muted and the clock reads 00:00 — but a speaking agent is not cut off', st.clock === '00:00' && st.rule === 'scaleX(0)' && cap.muted === true && cap.ended === 0, JSON.stringify(cap));
+      rec(14, 'past the cap the control says it is finishing, not listening', st.label === 'Završavam…' && (await page.getAttribute('#talk-btn', 'aria-label')) === null, st.label);
       await page.clock.runFor(1500);
       rec(14, 'still speaking 1.5 s past the cap: still not cut', (await page.evaluate(`window.__fake.ended`)) === 0);
       await page.evaluate(`window.__fake.vol = 0`); await page.clock.runFor(800);
@@ -958,6 +961,17 @@ const PHONE_STATE = `(() => {
       rec(14, 'a fresh engine is in place for the next run, and only one', replaced === true);
       await page.click('#talk-again'); await page.clock.runFor(300); st = await page.evaluate(TALK_ST);
       rec(14, 'the demo can be started again', st.ctl && !st.card && st.label === 'Razgovaraj sa agentom', JSON.stringify(st));
+
+      /* an attempt that goes nowhere: eight seconds after the microphone is
+         known, the control comes back with a notice that steps aside itself */
+      await page.click('#talk-btn'); await page.clock.runFor(200);
+      const midWait = await page.evaluate(TALK_ST);
+      await page.clock.runFor(8200); st = await page.evaluate(TALK_ST);
+      const failShown = await page.evaluate(`document.querySelector('#talk-fail').classList.contains('is-on')`);
+      await page.clock.runFor(4200);
+      const failGone = await page.evaluate(`!document.querySelector('#talk-fail').classList.contains('is-on') && document.querySelector('#talk-note').classList.contains('is-on')`);
+      rec(14, 'an attempt that never connects comes back after 8 s with a notice, and the notice steps aside after 4 s',
+          midWait.label === 'Povezujem…' && st.label === 'Razgovaraj sa agentom' && failShown && failGone, JSON.stringify({ mid: midWait.label, after: st.label, failShown, failGone }));
 
       /* the agent hangs up early — the widget keeps onDisconnect for itself,
          so the page has to notice on its own */

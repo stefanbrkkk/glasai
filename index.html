@@ -1,4 +1,4 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="sr-Latn" class="no-js">
 <head>
 <meta charset="utf-8">
@@ -371,6 +371,10 @@ h3 {
   position: absolute; top: 0; bottom: 0;
   border-left: 1px dashed var(--line-hard);
 }
+/* where 300 and 3400 Hz fall on the meter's log axis (60 Hz – 12 kHz) —
+   the same X_LO / X_HI the canvas draws with */
+.band-mark[data-mark="lo"] { left: 30.38%; }
+.band-mark[data-mark="hi"] { left: 76.2%; }
 .band-mark span {
   position: absolute; top: 100%; left: 0;
   transform: translate(-50%, 0.55rem);
@@ -1234,6 +1238,7 @@ h3 {
   font-size: var(--t-sm); line-height: 1.55; color: var(--muted);
   max-width: 38ch; text-wrap: balance;
 }
+.talk-fail { color: var(--muted-hi); }      /* a notice, in the same voice, a shade up */
 .talk-live { display: flex; flex-direction: column; align-items: center; gap: 0.6rem; width: min(100%, 22rem); }
 .talk-clock {
   font-family: var(--f-mono); font-size: var(--t-sm); font-weight: 600;
@@ -1938,8 +1943,8 @@ html:not(.js) .faq-panel > div,
           <span class="band-cursor-read" id="band-read"></span>
         </div>
         <div class="band-marks" aria-hidden="true">
-          <span class="band-mark" data-mark="lo" style="left:30.4%"><span>300 Hz</span></span>
-          <span class="band-mark" data-mark="hi" style="left:76.2%"><span>3400 Hz</span></span>
+          <span class="band-mark" data-mark="lo"><span>300 Hz</span></span>
+          <span class="band-mark" data-mark="hi"><span>3400 Hz</span></span>
         </div>
       </div>
 
@@ -1961,8 +1966,9 @@ html:not(.js) .faq-panel > div,
           </button>
           <div class="talk-sub">
             <p class="talk-note is-on" id="talk-note">Govorite naglas — agent odgovara na srpskom. Traje četrdeset sekundi.</p>
+            <p class="talk-note talk-fail" id="talk-fail">Povezivanje nije uspelo — pokušajte ponovo.</p>
             <div class="talk-live" id="talk-live" aria-hidden="true">
-              <span class="talk-clock num" id="talk-clock">00:40</span>
+              <span class="vh">Preostalo </span><span class="talk-clock num" id="talk-clock">00:40</span>
               <span class="talk-rule"><i id="talk-rule"></i></span>
             </div>
           </div>
@@ -1977,7 +1983,7 @@ html:not(.js) .faq-panel > div,
           <button class="talk-again" id="talk-again" type="button">Razgovaraj sa agentom</button>
         </div>
         <div class="talk-engine" id="talk-engine" aria-hidden="true" inert>
-          <elevenlabs-convai agent-id="agent_5701m14n57q9e25ryes2tg8tdjhd"></elevenlabs-convai><script src="https://unpkg.com/@elevenlabs/convai-widget-embed" async type="text/javascript"></script>
+          <elevenlabs-convai agent-id="agent_5701m14n57q9e25ryes2tg8tdjhd"></elevenlabs-convai><script src="https://unpkg.com/@elevenlabs/convai-widget-embed@0.17.1" async type="text/javascript"></script>
         </div>
       </div>
     </div>
@@ -2063,35 +2069,35 @@ html:not(.js) .faq-panel > div,
     <div class="faq-list" id="faq" data-reveal>
       <div class="faq-item">
         <h3><button class="faq-q" type="button" id="faq-q1" aria-expanded="true" aria-controls="faq-p1">Da li agent kaže da je veštačka inteligencija?<svg class="faq-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9.5 6 6 6-6"/></svg></button></h3>
-        <div class="faq-panel" id="faq-p1" role="region" aria-labelledby="faq-q1" data-open="true"><div><p>Da, na početku svakog poziva. To je zakonska obaveza i mi je ne zaobilazimo. U praksi ne smeta — ljudi žele brz odgovor i termin, a ne da pogađaju s kim razgovaraju.</p></div></div>
+        <section class="faq-panel" id="faq-p1" aria-labelledby="faq-q1" data-open="true"><div><p>Da, na početku svakog poziva. To je zakonska obaveza i mi je ne zaobilazimo. U praksi ne smeta — ljudi žele brz odgovor i termin, a ne da pogađaju s kim razgovaraju.</p></div></section>
       </div>
       <div class="faq-item">
         <h3><button class="faq-q" type="button" id="faq-q2" aria-expanded="false" aria-controls="faq-p2">Da li agent zvuči robotski?<svg class="faq-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9.5 6 6 6-6"/></svg></button></h3>
-        <div class="faq-panel" id="faq-p2" role="region" aria-labelledby="faq-q2"><div><p>Koristi najnoviju generaciju glasovne sinteze za srpski jezik — prirodne pauze, intonaciju i naglasak. Poslušajte demo i procenite sami.</p></div></div>
+        <section class="faq-panel" id="faq-p2" aria-labelledby="faq-q2"><div><p>Koristi najnoviju generaciju glasovne sinteze za srpski jezik — prirodne pauze, intonaciju i naglasak. Poslušajte demo i procenite sami.</p></div></section>
       </div>
       <div class="faq-item">
         <h3><button class="faq-q" type="button" id="faq-q3" aria-expanded="false" aria-controls="faq-p3">Šta ako agent ne zna odgovor?<svg class="faq-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9.5 6 6 6-6"/></svg></button></h3>
-        <div class="faq-panel" id="faq-p3" role="region" aria-labelledby="faq-q3"><div><p>Iskreno kaže da će proveriti, zapiše poruku ili odmah prebaci poziv na vas — nikada ne izmišlja.</p></div></div>
+        <section class="faq-panel" id="faq-p3" aria-labelledby="faq-q3"><div><p>Iskreno kaže da će proveriti, zapiše poruku ili odmah prebaci poziv na vas — nikada ne izmišlja.</p></div></section>
       </div>
       <div class="faq-item">
         <h3><button class="faq-q" type="button" id="faq-q4" aria-expanded="false" aria-controls="faq-p4">Mogu li da tražim da razgovaram sa čovekom?<svg class="faq-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9.5 6 6 6-6"/></svg></button></h3>
-        <div class="faq-panel" id="faq-p4" role="region" aria-labelledby="faq-q4"><div><p>U svakom trenutku. Dovoljno je reći „operater” i poziv ide na vaš broj.</p></div></div>
+        <section class="faq-panel" id="faq-p4" aria-labelledby="faq-q4"><div><p>U svakom trenutku. Dovoljno je reći „operater” i poziv ide na vaš broj.</p></div></section>
       </div>
       <div class="faq-item">
         <h3><button class="faq-q" type="button" id="faq-q5" aria-expanded="false" aria-controls="faq-p5">Kako se povezuje sa mojim kalendarom?<svg class="faq-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9.5 6 6 6-6"/></svg></button></h3>
-        <div class="faq-panel" id="faq-p5" role="region" aria-labelledby="faq-q5"><div><p>Radi sa Google kalendarom. Celo podešavanje radimo mi.</p></div></div>
+        <section class="faq-panel" id="faq-p5" aria-labelledby="faq-q5"><div><p>Radi sa Google kalendarom. Celo podešavanje radimo mi.</p></div></section>
       </div>
       <div class="faq-item">
         <h3><button class="faq-q" type="button" id="faq-q6" aria-expanded="false" aria-controls="faq-p6">Da li radi na hrvatskom i bosanskom?<svg class="faq-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9.5 6 6 6-6"/></svg></button></h3>
-        <div class="faq-panel" id="faq-p6" role="region" aria-labelledby="faq-q6"><div><p>Da. Razume i odgovara na sva tri jezika i prilagođava se sagovorniku.</p></div></div>
+        <section class="faq-panel" id="faq-p6" aria-labelledby="faq-q6"><div><p>Da. Razume i odgovara na sva tri jezika i prilagođava se sagovorniku.</p></div></section>
       </div>
       <div class="faq-item">
         <h3><button class="faq-q" type="button" id="faq-q7" aria-expanded="false" aria-controls="faq-p7">Koliko traje podešavanje?<svg class="faq-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9.5 6 6 6-6"/></svg></button></h3>
-        <div class="faq-panel" id="faq-p7" role="region" aria-labelledby="faq-q7"><div><p>Obično pet do sedam dana od prvog razgovora do prvog primljenog poziva.</p></div></div>
+        <section class="faq-panel" id="faq-p7" aria-labelledby="faq-q7"><div><p>Obično pet do sedam dana od prvog razgovora do prvog primljenog poziva.</p></div></section>
       </div>
       <div class="faq-item">
         <h3><button class="faq-q" type="button" id="faq-q8" aria-expanded="false" aria-controls="faq-p8">Šta se dešava sa snimcima razgovora?<svg class="faq-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9.5 6 6 6-6"/></svg></button></h3>
-        <div class="faq-panel" id="faq-p8" role="region" aria-labelledby="faq-q8"><div><p>Čuvaju se bezbedno i dostupni su samo vama, u skladu sa propisima o zaštiti podataka o ličnosti.</p></div></div>
+        <section class="faq-panel" id="faq-p8" aria-labelledby="faq-q8"><div><p>Čuvaju se bezbedno i dostupni su samo vama, u skladu sa propisima o zaštiti podataka o ličnosti.</p></div></section>
       </div>
     </div>
   </div>
@@ -2873,7 +2879,10 @@ var TALK_CAP = 40;              /* seconds — the hard cap, not a suggestion */
 var TALK_GRACE = 6;             /* how long after the cap a sentence may finish */
 var TALK_NUDGE = 31;            /* when the agent is told to wrap up */
 var TALK_READY_MS = 8000;       /* how long to wait for the engine before folding */
-var TALK_CONNECT_MS = 8000;     /* how long „Povezujem…” may last */
+var TALK_CONNECT_MS = 8000;     /* how long „Povezujem…” may last once the mic is settled */
+var TALK_CONNECT_BLIND_MS = 20000; /* …when the browser cannot say whether a prompt is open */
+var TALK_CONNECT_MAX_MS = 45000;   /* …while the browser's own microphone prompt is open */
+var TALK_FAIL_MS = 4000;        /* how long the failure notice stays */
 var TALK_ENGINE_MS = 5000;      /* a fresh engine that never renders, after a run */
 function hangUp(c) {
   /* endSession() can reject (an already-closed AudioContext); nobody is
@@ -2894,7 +2903,7 @@ function initTalk() {
      else the section where booking happens */
   var link = String(CONFIG.DEMO_LINK || "").trim();
   if (book) {
-    if (link) { book.href = link; if (/^https?:/i.test(link)) { book.target = "_blank"; book.rel = "noopener"; } }
+    if (link) { book.href = link; if (/^https?:/i.test(link)) openElsewhere(book); }
     else book.href = "#cta";
   }
   /* the number — only if there is one. No placeholder, no dead link. */
@@ -2961,11 +2970,17 @@ function initTalk() {
     btn.style.minWidth = Math.ceil(btn.getBoundingClientRect().width) + "px";
   }
   on(window, "resize", debounce(sizePill, 200), { passive: true });
+  var fail = $("#talk-fail");
   function sub(which) {
     note.classList.toggle("is-on", which === "note");
     live.classList.toggle("is-on", which === "live");
+    if (fail) fail.classList.toggle("is-on", which === "fail");
     if (which === "live") live.removeAttribute("aria-hidden"); else live.setAttribute("aria-hidden", "true");
   }
+  /* the words the control needs and the brief did not supply: a stop name for
+     the live control, an ending that is not „listening”, a failed attempt */
+  var STOP_NAME = "Slušam — prekini demo", ENDING = "Završavam…", FAILED = "Povezivanje nije uspelo — pokušajte ponovo.";
+  var permWatch = null, failT = 0;
   function paint(left) {
     var s = Math.max(0, Math.ceil(left - 0.0005));   /* a hair under a whole second is that second */
     clock.textContent = "00:" + (s < 10 ? "0" : "") + s;
@@ -3034,6 +3049,7 @@ function initTalk() {
   function start() {
     if (state !== "idle") return;
     state = "connecting"; ended = false; conv = null; run++;
+    cancel(failT); sub("note");
     label.textContent = "Povezujem…"; say("Povezujem…");
     btn.setAttribute("aria-busy", "true");        /* after the text, so nothing defers it */
     paint(TALK_CAP);                              /* the clock is reset while unseen */
@@ -3051,13 +3067,40 @@ function initTalk() {
       }, 120);
       later(function () { if (!pressed) { reset(); fold(); } }, TALK_ENGINE_MS);
     }
-    later(function () { if (state === "connecting") reset(); }, TALK_CONNECT_MS);
+    armConnect();
+  }
+  /* „Povezujem…” may last eight seconds once the microphone is settled — but
+     the first thing the browser does is ask for the microphone, and a visitor
+     reading that prompt must not have the rug pulled from under them. So the
+     clock starts when the permission is known, or, where the browser cannot
+     say, runs longer; a denied microphone ends the attempt at once. */
+  function armConnect() {
+    var myRun = run;
+    function still() { return state === "connecting" && myRun === run; }
+    function clockFor(ms) { later(function () { if (still()) reset(true); }, ms); }
+    later(function () { if (still()) reset(true); }, TALK_CONNECT_MAX_MS);   /* the ceiling, whatever happens */
+    var q = null;
+    try { q = navigator.permissions && navigator.permissions.query ? navigator.permissions.query({ name: "microphone" }) : null; } catch (err) { q = null; }
+    if (!q || !q.then) { clockFor(TALK_CONNECT_BLIND_MS); return; }
+    q.then(function (p) {
+      if (!still()) return;
+      if (p.state === "denied") { reset(true); return; }
+      if (p.state === "granted") { clockFor(TALK_CONNECT_MS); return; }
+      permWatch = p;                               /* a prompt is open: wait for its answer */
+      p.onchange = function () {
+        if (permWatch === p) { p.onchange = null; permWatch = null; }
+        if (!still()) return;
+        if (p.state === "denied") reset(true); else clockFor(TALK_CONNECT_MS);
+      };
+    }, function () { if (still()) clockFor(TALK_CONNECT_BLIND_MS); });
   }
   function goLive() {
     if (state !== "connecting") return;
     state = "live"; startedAt = performance.now();
+    if (permWatch) { permWatch.onchange = null; permWatch = null; }
     btn.removeAttribute("aria-busy");
     label.textContent = "Slušam"; say("Slušam");
+    btn.setAttribute("aria-label", STOP_NAME);      /* the visible word, and what pressing it does */
     root.classList.add("is-live");
     paint(TALK_CAP); sub("live");
     every(tick, 250);
@@ -3076,6 +3119,8 @@ function initTalk() {
     if (state !== "live") return;
     state = "ending"; paint(0);
     root.classList.add("is-ending");              /* the line is closed; the agent finishes */
+    label.textContent = ENDING; say(ENDING);      /* not „listening” — the visitor is not heard now */
+    btn.removeAttribute("aria-label");
     /* the line closes to the visitor first; the agent may finish its sentence */
     try { if (conv && conv.setMicMuted) conv.setMicMuted(true); } catch (err) {}
     var quiet = 0;
@@ -3098,16 +3143,21 @@ function initTalk() {
     root.classList.remove("is-ready");
     settle(0, function () { root.classList.add("is-gone"); });
   }
-  function reset() {
+  function reset(failed) {
     ended = true; stopTimers();
+    if (permWatch) { permWatch.onchange = null; permWatch = null; }
     /* a change of mind mid-connect ends a session that is still open; one
        already ended by end() or by the agent is left alone */
     if (conv && (!conv.isOpen || conv.isOpen())) hangUp(conv);
-    state = "idle"; conv = null; say("");
+    state = "idle"; conv = null;
     root.classList.remove("is-live"); root.classList.remove("is-ending");
-    btn.removeAttribute("aria-busy");
+    btn.removeAttribute("aria-busy"); btn.removeAttribute("aria-label");
     label.textContent = "Razgovaraj sa agentom";
-    sub("note");
+    if (failed) {
+      /* an attempt that went nowhere says so, briefly, and steps aside */
+      sub("fail"); say(FAILED);
+      failT = later(function () { sub("note"); }, TALK_FAIL_MS);
+    } else { sub("note"); say(""); }
     freshEngine();
   }
   function finish() {
@@ -3155,6 +3205,13 @@ function initDemoSlots() {
    order: a booking link, the demo number, and — failing both — the voice
    section, which is the one thing the page can deliver on day one. It is never
    circular and never inert. */
+/* an absolute booking link opens elsewhere, and its name says so */
+function openElsewhere(a) {
+  a.target = "_blank"; a.rel = "noopener";
+  var hint = document.createElement("span");
+  hint.className = "vh"; hint.textContent = " (otvara se u novom prozoru)";
+  a.appendChild(hint);
+}
 function initPrimaryCta() {
   var btn = $("#cta-btn");
   if (!btn) return;
@@ -3162,7 +3219,7 @@ function initPrimaryCta() {
   var num  = String(CONFIG.DEMO_TELEFON || "").trim();
   if (link) {
     btn.href = link;
-    if (/^https?:/i.test(link)) { btn.target = "_blank"; btn.rel = "noopener"; }
+    if (/^https?:/i.test(link)) openElsewhere(btn);
   } else if (num) {
     btn.href = "tel:" + num.replace(/[^\d+]/g, "");
   }

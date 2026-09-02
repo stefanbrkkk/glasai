@@ -6,10 +6,15 @@ Deliverables: **`index.html`** (the complete site, one self-contained file),
 `.audit/shots/`.
 
 ```
-cd .audit && npm install      # gsap + lenis, served to the browser locally
+cd .audit && npm install      # gsap, lenis and the ElevenLabs widget, served to the browser locally
 node audit.js                 # all rounds  (--quick skips the 74 s loop round)
 node .audit/copy-check.mjs    # every visible string, diffed against §8
+.audit/node_modules/.bin/html-validate --config .audit/.htmlvalidate.json index.html   # markup lint
 ```
+One note on the harness itself: the phone-loop round watches the page for
+74 s and is the one round sensitive to CPU starvation — run the suite alone,
+not beside other browsers, or it can report zero wraps for a loop that is
+fine.
 
 ---
 
@@ -286,6 +291,34 @@ microphone and up to 46 s of the agent's audio — the reviewers were right to
 call that a compromise, and it is the one the requirement's own words ("no
 abrupt cut mid-sentence") asked for.
 
+### 3b · The calls that were handed back, decided as the owner would
+
+The client delegated the open decisions ("imagine yourself as the CEO").
+Each one, and the reasoning:
+
+| decision | what was done | why |
+|---|---|---|
+| a stop name for the live control | while live the button's accessible name is `Slušam — prekini demo`; the visible word stays `Slušam` as specified | a visitor tabbing back to the only control must hear what pressing it does; the visible text is inside the name, so 2.5.3 Label in Name holds |
+| an honest ending | after the cap the label reads `Završavam…` — same shape as `Povezujem…` — instead of `Slušam` while the visitor's line is already muted | `Slušam` ("I'm listening") was literally false for up to six seconds; the ellipsis form the client chose for connecting was the obvious sibling |
+| a name for the clock | a visually hidden `Preostalo` precedes `00:40` | a screen reader reads "Preostalo 00:35" on demand; nothing changes for the eye |
+| a failed attempt | if an attempt never connects, the note slot shows `Povezivanje nije uspelo — pokušajte ponovo.` for four seconds and steps aside; it is announced once | a visitor who denied the microphone, or whose network dropped, was seeing the button silently revert and could only assume the demo was broken. This is not an error *state*: nothing is left on screen, and the widget-failed-to-load path still folds quietly as required |
+| the microphone prompt | the eight-second connect timeout starts only once the browser's microphone permission is known; while the prompt is open the page waits (ceiling 45 s); a denied microphone ends the attempt at once; a browser that cannot say gets 20 s | the first thing the browser does after the press is ask for the microphone, and a visitor reading that prompt was about to have the rug pulled at eight seconds — a real bug found while thinking the decision through |
+| external booking links | when `DEMO_LINK` is an absolute URL, both booking buttons carry a hidden `(otvara se u novom prozoru)` | the new-window warning WCAG asks for; the same helper serves the CTA and the end card |
+| pin the widget | the snippet's script is `…/convai-widget-embed@0.17.1` — the one deliberate change to the snippet as supplied | the forty-second cap rests on an undocumented spread order verified against this version; an unpinned URL would let a future release silently break the product's only interactive proof. The content harness asserts the pinned form |
+| the calendar claim on the first feature card | stays trimmed to `Direktna sinhronizacija sa Google kalendarom.` | the client said the integration does not exist; a claim that is false in the FAQ is equally false on a card |
+| the grace after the cap | kept: the visitor's line closes at 40 s, the agent may finish one sentence, 46 s regardless | six seconds of agent audio costs cents; a sentence cut in half in front of a prospect costs the impression the demo exists to make |
+
+Five Serbian phrases were written for this — the first time any were — and
+every one is declared in the content harness's list of non-brief strings and
+asserted verbatim, so nothing else can slip in under the same door.
+
+Two lint-level cleanups from the same pass: the FAQ panels are real
+`<section>` elements rather than `div[role=region]`, and the two frequency
+rails are positioned from a stylesheet rule instead of inline styles. An HTML
+validator (`html-validate`, recommended ruleset) now passes with one rule
+switched off and the reason recorded: the client's snippet carries
+`type="text/javascript"`, and it is kept as supplied.
+
 ### 4 · What could **not** be verified, and how the rest was
 
 - **No conversation was ever held.** ElevenLabs' API and WebSocket are blocked
@@ -304,7 +337,7 @@ abrupt cut mid-sentence") asked for.
   nobody can see, and the page would return to its start after 15 s.
 - The widget fetches its avatar texture from `storage.googleapis.com`; the
   harness stubs it. In production that host is one more the page touches.
-- Everything else is run, not reasoned: **128 / 128 harness checks** (fourteen rounds — round 14 is the demo, see the table) and **84 / 84 content checks**.
+- Everything else is run, not reasoned: **131 / 131 harness checks** (fourteen rounds — round 14 is the demo, see the table) and **84 / 84 content checks**.
 
 ### 5 · The calendar claim, and the percentages
 
@@ -324,7 +357,7 @@ decide there.
 
 ## 3 · Round 1 — final automated audit (`node audit.js`)
 
-**128 / 128 passed, all green.** Everything below was actually executed in
+**131 / 131 passed, all green.** Everything below was actually executed in
 headless Chromium against the real file.
 
 | # | round | result |
@@ -342,9 +375,9 @@ headless Chromium against the real file.
 | 11 | Motion QA | 1920 → 360 resize *while the hero is pinned*, portrait ↔ landscape mid-scroll, instant scroll to the bottom skips no reveal |
 | 12 | Throttle + motion system | boots and scrolls under 4× CPU throttle; every trigger measured against the pinned layout; all 12 `[data-lines]` hosts split with **zero** height change to any element and zero change to the document; line masks preserve the text exactly; the band fills its canvas without clipping and breathes rather than drones; the probe sweeps below, through and above the telephone band |
 | 13 | Touch (Pixel 7) | sway replaces cursor tilt, magnetism never engages, no pin, menu works by tap, the inert player answers a tap without erroring |
-| 14 | **The live demo** — the real widget bundle served locally, its config and avatar texture stubbed, the session driven through the widget's own hook on a fake clock | ready only once the engine renders its button; engine never painted, never focusable; the page's button presses the engine's — one `elevenlabs-convai:call` carrying the four hooks; a change of mind while connecting leaves no timer; live → `00:30` at ten seconds with the rule at ¾; the wrap-up nudge at 31 s; at 40 s the mic is muted and the clock reads `00:00` but a speaking agent is not cut; half a second of silence ends it and the card takes the widget's place; zero timers, a frozen clock, one fresh engine; restart works; an early hang-up — which the widget never forwards — is noticed within a tick and ends on the card; an agent that never goes quiet is ended at 46 s; the card's number line only with `DEMO_TELEFON`, the booking link when `DEMO_LINK` is set; reduced motion still live; zero console errors in every state |
+| 14 | **The live demo** — the real widget bundle served locally, its config and avatar texture stubbed, the microphone granted, the session driven through the widget's own hook on a fake clock | ready only once the engine renders its button; engine never painted, never focusable; the page's button presses the engine's — one `elevenlabs-convai:call` carrying the four hooks; a change of mind while connecting leaves no timer; live → `00:30` at ten seconds with the rule at ¾; the wrap-up nudge at 31 s; at 40 s the mic is muted and the clock reads `00:00` but a speaking agent is not cut; half a second of silence ends it and the card takes the widget's place; zero timers, a frozen clock, one fresh engine; restart works; while live the control is named for what pressing it does, and past the cap it says it is finishing; an attempt that never connects comes back after 8 s with a notice that steps aside after 4 s; an early hang-up — which the widget never forwards — is noticed within a tick and ends on the card; an agent that never goes quiet is ended at 46 s; the card's number line only with `DEMO_TELEFON`, the booking link when `DEMO_LINK` is set; reduced motion still live; zero console errors in every state |
 
-**Round 4 — content (`node .audit/copy-check.mjs`): 84 / 84 passed.** Every
+**Round 4 — content (`node .audit/copy-check.mjs`): 87 / 87 passed.** Every
 visible string diffed against §8/§6/§7 character for character (only NBSP is
 normalised, since §8 requires it before `€`), plus: no Cyrillic anywhere, no
 `30 %`/`85 %` published, meta/OG built only from §8 sentences, no generated
