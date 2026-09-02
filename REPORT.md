@@ -541,6 +541,24 @@ credits; the agent's *Allowlist* under its widget settings must contain the
 site's domain or be empty; *Require terms* must be off. With those in place
 the first real conversation still needs a person with a microphone.
 
+### 3f · The phone loop, made to start on its own word
+
+One audit run in five found the phone on „Dolazni poziv" at 00:00 for the
+whole of the loop round — 1086 samples over 200 s at the normal rate, so the
+machine was not starved: the loop had never started. Its start was in the
+hands of two browser callbacks, the intersection observer's first report and
+the visibility change, and a report that never comes — or comes while the
+page cannot render — was a start that never came. Eight fresh loads in a row
+could not reproduce it, so the cause is not established; the loop simply no
+longer depends on it. It now plays the moment it is built, on the page's own
+word that the phone is in view (the observer's first report only ever pauses
+it), and a four-second guard compares its state with what it should be and
+puts it right — which only ever does anything when something was already
+wrong. Round 8 records the page's visibility, the loop's flags and the first
+and last sampled states whenever it sees no wraps, so the next such run would
+explain itself. The full run since — 151 / 151 — wrapped three times in
+70 s, as every green run before.
+
 ### 4 · What could **not** be verified, and how the rest was
 
 - **No conversation was ever held.** ElevenLabs' API and WebSocket are blocked
