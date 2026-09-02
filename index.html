@@ -344,6 +344,8 @@ h3 {
   will-change: transform;
 }
 .js-probe .band-cursor { display: block; }
+/* while a recording plays, its own playhead is the only one on the axis */
+.js-probe.js-audio .band-cursor { opacity: 0; transition: opacity var(--d-mid) var(--ease); }
 .band-cursor::before {
   content: ""; position: absolute; left: 50%; top: 50%;
   width: 0.4rem; height: 0.4rem; margin: -0.2rem 0 0 -0.2rem;
@@ -1983,7 +1985,11 @@ html:not(.js) .faq-panel > div,
           <button class="talk-again" id="talk-again" type="button">Razgovaraj sa agentom</button>
         </div>
         <div class="talk-engine" id="talk-engine" aria-hidden="true" inert>
-          <elevenlabs-convai agent-id="agent_5701m14n57q9e25ryes2tg8tdjhd"></elevenlabs-convai><script src="https://unpkg.com/@elevenlabs/convai-widget-embed@0.17.1" async type="text/javascript"></script>
+          <!-- The ElevenLabs snippet, exactly as supplied. The forty-second cap
+               drives this widget through its `elevenlabs-convai:call` event and
+               was verified against version 0.17.1; if a future release changes
+               that, pin the URL to @0.17.1 and the cap is safe again. -->
+          <elevenlabs-convai agent-id="agent_5701m14n57q9e25ryes2tg8tdjhd"></elevenlabs-convai><script src="https://unpkg.com/@elevenlabs/convai-widget-embed" async type="text/javascript"></script>
         </div>
       </div>
     </div>
@@ -2151,7 +2157,7 @@ html:not(.js) .faq-panel > div,
    ═══════════════════════════════════════════════════════════════════════ */
 const CONFIG = {
   DEMO_TELEFON: "",   // npr. "+381 64 123 4567" — prazno = dugme je neaktivno
-  DEMO_AUDIO:   "",   // npr. "demo.mp3" — prazno = plejer je u stanju „uskoro”
+  DEMO_AUDIO:   "demo.mp3",   // prazno = plejer je u stanju „uskoro”
   DEMO_LINK:    ""    // npr. "https://cal.com/glasai/15min" — gde vodi glavno dugme
 };
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -2660,6 +2666,10 @@ Band.prototype.draw = function () {
   ctx.beginPath();
 
   var i, x, inBand, bh, sc, a, ph, px, top, d;
+  /* While a recording owns the band the scroll's highlight is frozen wherever
+     the reader left it — a static smudge on the dead track, in two places at
+     once. It stands down with the cursor. */
+  var mute = this.audioOwned && this.sweepT < 0;
   for (i = 0; i < this.n; i++) {
     px = i * this.stepPx;
     x = (px + bar / 2) / w;
@@ -2669,19 +2679,24 @@ Band.prototype.draw = function () {
        without them a half-revealed meter is a stump of bars alone on black. A
        divider has almost nothing but dead track, so there the whole strip
        still draws itself in. */
+    var waiting = false;
     if (px > edgeX) {
       if (!this.chassis) break;            /* the whole strip draws in */
-      if (inBand > 0.03) continue;         /* only the signal waits */
+      /* Ahead of the reveal the passband has not been measured yet. It is
+         drawn as the same dead track that runs outside 300–3400, so the meter
+         is a whole instrument filling with signal rather than a graphic that
+         is half there. */
+      if (inBand > 0.03) waiting = true;
     }
 
-    /* the walking highlight, and the sweep tone riding on top of it */
+    /* The walking highlight, and the sweep tone riding on top of it. */
     d = Math.abs(x - this.scan);
-    sc = d < 0.075 ? (1 - d / 0.075) * (this.sweepT >= 0 ? 1 : 0.42) : 0;
+    sc = mute || d >= 0.075 ? 0 : (1 - d / 0.075) * (this.sweepT >= 0 ? 1 : 0.42);
 
     bh = this.v[i] * half;
     if (bh < 0.6) bh = 0.6;
 
-    if (inBand > 0.03) {
+    if (inBand > 0.03 && !waiting) {
       a = (floorA + (0.90 - floorA) * inBand) * (1 + sc * 0.55);
       if (a > 1) a = 1;
       top = cy - bh;
@@ -2709,7 +2724,7 @@ Band.prototype.draw = function () {
          has no before and after. So the tone reads here as a bright tick and
          not as signal. */
       bh = Math.min(bh, half * 0.11) + 0.4;
-      var st1 = d < 0.014 ? (1 - d / 0.014) * (this.sweepT >= 0 ? 1 : 0.42) : 0;
+      var st1 = mute || d >= 0.014 ? 0 : (1 - d / 0.014) * (this.sweepT >= 0 ? 1 : 0.42);
       if (st1 > 0.01) bh += st1 * half * 0.05;
       stubs[stubN++] = px; stubs[stubN++] = cy - bh; stubs[stubN++] = bh * 2;
       stubs[stubN++] = st1 > 0.01 ? Math.min(0.92, this.dim + st1 * 0.78) : -1;
@@ -3225,7 +3240,11 @@ function initPrimaryCta() {
   }
 }
 
-/* No src → no <audio> element at all. An <audio> with an empty src throws. */
+/* No src → no <audio> element at all. An <audio> with an empty src throws.
+   With a recording, the control is named for what it plays: the agent. The
+   hero's „Poslušaj demo” is a different thing — a link that scrolls here. */
+var PLAY_NAME = "Poslušaj agenta";
+var AUDIO_FLOOR = 28, AUDIO_SPAN = 92;   /* the analyser's silence and its ceiling */
 var audioEl = null;
 var demoSweep = null;          /* set by whichever player state is in force */
 function initDemoAudio() {
@@ -3265,8 +3284,8 @@ function initDemoAudio() {
   audioEl.src = src;
   btn.removeAttribute("aria-disabled");
   btn.classList.remove("is-empty");
-  label.textContent = "Poslušaj demo";
-  vh.textContent = "Poslušaj demo";
+  label.textContent = PLAY_NAME;
+  vh.textContent = PLAY_NAME;
 
   var actx = null, analyser = null, data = null, sampling = 0;
   function connect() {
@@ -3287,13 +3306,28 @@ function initDemoAudio() {
       analyser.getByteFrequencyData(data);
       var sum = 0;
       for (var i = 0; i < data.length; i++) sum += data[i];
-      voiceBand.drive = Math.min(1, (sum / data.length) / 110);
+      /* The analyser's bins are already dB-scaled, and a normally levelled
+         voice runs this mean from about 28 (a pause between words) to about
+         120 (a stressed vowel). Measured against the shipped recording: the
+         median lands at 0.70 and the loudest hundredth at 0.98 — a meter
+         working in its middle with headroom left, rather than one pinned at
+         full deflection for the whole clip, which is what a plain divisor of
+         110 gave. */
+      var lvl = (sum / data.length - AUDIO_FLOOR) / AUDIO_SPAN;
+      voiceBand.drive = lvl < 0 ? 0 : lvl > 1 ? 1 : lvl;
     } else {
-      voiceBand.drive = 0.72 + 0.24 * Math.sin(performance.now() / 240);
+      /* no Web Audio: a plausible wobble in the same range as the real thing */
+      voiceBand.drive = 0.52 + 0.26 * Math.sin(performance.now() / 240);
     }
-    /* the band draws itself in as the recording plays: reveal is the playhead */
+    /* The band draws itself in as the recording plays: reveal is the playhead.
+       Mapped across the passband, not the whole axis — everything left of
+       300 Hz is dead track, so a playhead starting at zero would leave the
+       meter blank for the first third of the clip while a voice is speaking. */
     var d = audioEl.duration;
-    if (d && isFinite(d) && d > 0) voiceBand.reveal = Math.min(1, audioEl.currentTime / d);
+    if (d && isFinite(d) && d > 0) {
+      var q = Math.min(1, Math.max(0, audioEl.currentTime / d));
+      voiceBand.reveal = X_LO + (1 - X_LO) * q;
+    }
     /* Under reduced motion the band ticker skips this canvas, so nothing the
        loop writes would ever reach the screen — paint it here instead of
        running an FFT sixty times a second for nobody. */
@@ -3302,6 +3336,7 @@ function initDemoAudio() {
   }
   function stopSampling() {
     if (sampling) { cancelAnimationFrame(sampling); sampling = 0; }
+    root.classList.remove("js-audio");
     if (voiceBand) { voiceBand.drive = 0; voiceBand.reveal = 1; voiceBand.audioOwned = false; }
   }
 
@@ -3316,18 +3351,21 @@ function initDemoAudio() {
   });
   on(audioEl, "play", function () {
     if (voiceBand) voiceBand.audioOwned = true;
+    /* the scroll probe's cursor is a second, unrelated playhead while a
+       recording is running — it stands down until the clip is over */
+    root.classList.add("js-audio");
     btn.classList.add("is-playing");
     label.textContent = "Pauziraj"; vh.textContent = "Pauziraj";
     if (!sampling) sample();
   });
   on(audioEl, "pause", function () {
     btn.classList.remove("is-playing");
-    label.textContent = "Poslušaj demo"; vh.textContent = "Poslušaj demo";
+    label.textContent = PLAY_NAME; vh.textContent = PLAY_NAME;
     stopSampling();
   });
   on(audioEl, "ended", function () {
     btn.classList.remove("is-playing");
-    label.textContent = "Poslušaj demo"; vh.textContent = "Poslušaj demo";
+    label.textContent = PLAY_NAME; vh.textContent = PLAY_NAME;
     stopSampling();
   });
   on(audioEl, "error", function () { stopSampling(); });

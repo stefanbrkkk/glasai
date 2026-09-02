@@ -319,6 +319,77 @@ validator (`html-validate`, recommended ruleset) now passes with one rule
 switched off and the reason recorded: the client's snippet carries
 `type="text/javascript"`, and it is kept as supplied.
 
+### 3c · The recording, and the snippet put back exactly as supplied
+
+**The snippet was not byte-identical, and now is.** It had been pinned to
+`@0.17.1` — my call, recorded in §3b, because the forty-second cap drives the
+widget through an order that version does not document. Asked to verify the
+snippet was exactly as pasted, the honest answer was no. It is restored
+character for character, and the version it was verified against is written in
+a comment beside it instead of into the URL, so nothing is lost and nothing is
+hidden. The content harness now asserts the snippet as a literal. **This was
+never the reason a conversation would not connect** — with the widget's own
+script and config reachable, an agent out of credit fails at `startSession`,
+which is the path that ends in „Povezivanje nije uspelo — pokušajte ponovo.”
+
+**The player is live.** `CONFIG.DEMO_AUDIO` is `"demo.mp3"`, the supplied
+recording sits at the repository root, and the control is named for what it
+plays: **`Poslušaj agenta`**. The hero's `Poslušaj demo` is a different thing —
+a link that scrolls to the section — and now that both exist the two read as a
+pair rather than a repetition. Pressing play still fires from the hero button
+too: arriving at the section from it starts the recording.
+
+What the recording is, measured rather than assumed: 7.56 s, 192 kbps, decoded
+peak 0.907 and RMS 0.131 — a healthy level, not silence. Its energy sits
+between 200 and 1000 Hz and falls away above 1 kHz, which is the profile of a
+human voice and not of music. Its two channels are bit-identical, so it is a
+mono take stored as stereo; at 180 KB, fetched only when someone presses play,
+that is not worth re-encoding for, but it is why the file is twice the size it
+needs to be.
+
+**Four defects the recording exposed, all fixed.**
+
+1. **`duration` came back `Infinity`,** so the line "the band draws itself in as
+   the recording plays" — a designed feature — was silently dead. The file had
+   no Xing/Info header, which is how a CBR MP3 declares its length. One was
+   written into it (a single 576-byte frame declaring 315 frames and 182 016
+   bytes; the audio is untouched), and duration is now exactly 7.56 s on any
+   host, whether or not it sends `content-length`.
+2. **The playhead left the meter blank for the first third of the clip.** It
+   mapped playback progress across the whole axis, and everything left of
+   300 Hz is dead track — so a voice was speaking over an empty graphic for
+   2.3 seconds. It is mapped across the passband now: the first syllable lights
+   the first bar.
+3. **Ahead of the playhead the passband was a hole.** The dead track ran
+   outside 300–3400 but not inside it, so a half-played meter read as
+   half-loaded. Unmeasured passband is now drawn as the same dead track, and
+   the instrument is always whole — signal arriving on it, rather than the
+   thing itself appearing.
+4. **Two playheads at once.** The scroll probe's cursor stayed on the axis at
+   the position the reader left it, and its walking highlight brightened two
+   stubs through a second code path. Both stand down while a recording owns
+   the band.
+
+**And the constant this report said would need tuning.** §10 predicted that
+`sum / data.length / 110` was "a reasoned constant, not a tuned one". Measured
+against the real recording, that divisor put the median of the clip at 0.85 and
+clipped its loudest 15 % — a meter pinned at full deflection, which is not a
+meter. The analyser's mean bin runs 24 to 120 on this take; the mapping is now
+a floor and a span (28 / 92), which puts the median at 0.70 and the loudest
+hundredth at 0.98. The meter breathes with the voice and keeps its headroom.
+
+**Two harness repairs the recording forced, both of which make it more like a
+real host.** Its static servers now answer Range requests with
+`content-length`, which is what every production host does and what an
+`<audio>` element asks for — without it the page's network never went idle and
+half the rounds timed out. And a media element that asks for `bytes=0-`, reads
+the metadata it needs and abandons the rest raises `net::ERR_ABORTED`; that is
+the element working, not the page failing, so it no longer counts as an error.
+Two assertions moved to the state they actually describe: the self-test sweep
+is measured where the empty state exists (round 7), and round 12 now measures
+what ships — the recording playing, the meter answering it, and the playhead
+walking the passband without ever going blank.
+
 ### 4 · What could **not** be verified, and how the rest was
 
 - **No conversation was ever held.** ElevenLabs' API and WebSocket are blocked
@@ -337,7 +408,7 @@ switched off and the reason recorded: the client's snippet carries
   nobody can see, and the page would return to its start after 15 s.
 - The widget fetches its avatar texture from `storage.googleapis.com`; the
   harness stubs it. In production that host is one more the page touches.
-- Everything else is run, not reasoned: **131 / 131 harness checks** (fourteen rounds — round 14 is the demo, see the table) and **84 / 84 content checks**.
+- Everything else is run, not reasoned: **133 / 133 harness checks** (fourteen rounds — round 14 is the demo, see the table) and **84 / 84 content checks**.
 
 ### 5 · The calendar claim, and the percentages
 
@@ -357,7 +428,7 @@ decide there.
 
 ## 3 · Round 1 — final automated audit (`node audit.js`)
 
-**131 / 131 passed, all green.** Everything below was actually executed in
+**133 / 133 passed, all green.** Everything below was actually executed in
 headless Chromium against the real file.
 
 | # | round | result |
@@ -368,16 +439,16 @@ headless Chromium against the real file.
 | 4 | **CDN blocked (F1)** — cdnjs, jsDelivr, unpkg and elevenlabs.io aborted at the network layer | GSAP genuinely absent; every `[data-reveal]` block visible; hero copy visible; the phone falls back to a readable booked state; page scrolls; ~4 900 characters of body text; the live-demo block folds away with no dead button and no empty box; zero console errors before and after the fold |
 | 5 | `prefers-reduced-motion: reduce` | marquee static, Lenis never constructed, no `js-motion`/`js-loop`, phone at rest in the booked state, the meter renders one settled frame |
 | 6 | Diacritics | `fonts.check` true, glyphs pixel-distinct from their bases, no `.notdef`, in all three families |
-| 7 | CONFIG placeholders, empty **and** filled | see §1; also asserts the primary CTA never points backwards |
+| 7 | CONFIG placeholders, empty **and** filled | CONFIG is rewritten on the wire in both directions, so each state is tested for itself rather than whichever one ships; the empty state's self-test sweep is measured here; also asserts the primary CTA never points backwards |
 | 8 | Phone loop — 3 cycles + a 30 s tab switch | never two states at once, typing never overlaps its own bubble, timer never runs backwards, 3 clean wraps, no flash across the seam |
 | 9 | Contrast | 15 token pairs computed + every text node measured in situ against its real composited background — 0 failures |
 | 10 | Accessibility & interaction | landmarks, one `h1`, heading order, skip link, real accordion semantics, 28 keyboard tab stops each with a visible ring, focus never inside a closed panel, menu lock/unlock across a breakpoint |
 | 11 | Motion QA | 1920 → 360 resize *while the hero is pinned*, portrait ↔ landscape mid-scroll, instant scroll to the bottom skips no reveal |
-| 12 | Throttle + motion system | boots and scrolls under 4× CPU throttle; every trigger measured against the pinned layout; all 12 `[data-lines]` hosts split with **zero** height change to any element and zero change to the document; line masks preserve the text exactly; the band fills its canvas without clipping and breathes rather than drones; the probe sweeps below, through and above the telephone band |
+| 12 | Throttle + motion system | the recording plays and the meter answers it, and the playhead walks the passband without ever going blank; boots and scrolls under 4× CPU throttle; every trigger measured against the pinned layout; all 12 `[data-lines]` hosts split with **zero** height change to any element and zero change to the document; line masks preserve the text exactly; the band fills its canvas without clipping and breathes rather than drones; the probe sweeps below, through and above the telephone band |
 | 13 | Touch (Pixel 7) | sway replaces cursor tilt, magnetism never engages, no pin, menu works by tap, the inert player answers a tap without erroring |
 | 14 | **The live demo** — the real widget bundle served locally, its config and avatar texture stubbed, the microphone granted, the session driven through the widget's own hook on a fake clock | ready only once the engine renders its button; engine never painted, never focusable; the page's button presses the engine's — one `elevenlabs-convai:call` carrying the four hooks; a change of mind while connecting leaves no timer; live → `00:30` at ten seconds with the rule at ¾; the wrap-up nudge at 31 s; at 40 s the mic is muted and the clock reads `00:00` but a speaking agent is not cut; half a second of silence ends it and the card takes the widget's place; zero timers, a frozen clock, one fresh engine; restart works; while live the control is named for what pressing it does, and past the cap it says it is finishing; an attempt that never connects comes back after 8 s with a notice that steps aside after 4 s; an early hang-up — which the widget never forwards — is noticed within a tick and ends on the card; an agent that never goes quiet is ended at 46 s; the card's number line only with `DEMO_TELEFON`, the booking link when `DEMO_LINK` is set; reduced motion still live; zero console errors in every state |
 
-**Round 4 — content (`node .audit/copy-check.mjs`): 87 / 87 passed.** Every
+**Round 4 — content (`node .audit/copy-check.mjs`): 88 / 88 passed.** Every
 visible string diffed against §8/§6/§7 character for character (only NBSP is
 normalised, since §8 requires it before `€`), plus: no Cyrillic anywhere, no
 `30 %`/`85 %` published, meta/OG built only from §8 sentences, no generated

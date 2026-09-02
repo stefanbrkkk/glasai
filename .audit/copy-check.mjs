@@ -8,11 +8,21 @@ import fs from 'fs'; import http from 'http'; import path from 'path';
 
 const ROOT = '/home/user/glasai';
 const FIX = path.join(ROOT, '.audit/fixtures'), NM = path.join(ROOT, '.audit/node_modules');
-const MIME = { '.html': 'text/html; charset=utf-8' };
+const MIME = { '.html': 'text/html; charset=utf-8', '.mp3': 'audio/mpeg' };
 const srv = http.createServer((q, r) => {
   const f = path.join(ROOT, q.url === '/' ? 'index.html' : q.url.split('?')[0]);
   if (!fs.existsSync(f)) { r.writeHead(404); r.end(); return; }
-  r.writeHead(200, { 'content-type': MIME[path.extname(f)] || 'application/octet-stream' });
+  const size = fs.statSync(f).size, type = MIME[path.extname(f)] || 'application/octet-stream';
+  const m = /^bytes=(\d*)-(\d*)$/.exec(q.headers.range || '');
+  if (m) {                                   /* a media element asks by range */
+    let start = m[1] === '' ? size - Number(m[2]) : Number(m[1]);
+    let end = m[1] === '' || m[2] === '' ? size - 1 : Number(m[2]);
+    if (!isFinite(start) || start < 0) start = 0;
+    if (!isFinite(end) || end >= size) end = size - 1;
+    r.writeHead(206, { 'content-type': type, 'accept-ranges': 'bytes', 'content-length': end - start + 1, 'content-range': `bytes ${start}-${end}/${size}` });
+    fs.createReadStream(f, { start, end }).pipe(r); return;
+  }
+  r.writeHead(200, { 'content-type': type, 'accept-ranges': 'bytes', 'content-length': size });
   fs.createReadStream(f).pipe(r);
 });
 await new Promise(r => srv.listen(0, '127.0.0.1', r));
@@ -112,7 +122,7 @@ const EXPECT = {
     ['Agent', 'Zakazano — sreda u 14.00. Ponoviću: sreda, četrnaest časova. Prijatan dan!']
   ],
   phone: ['Dolazni poziv', 'AI AGENT AKTIVAN', 'zakonska najava', 'Termin zakazan', 'Sreda · 14.00', 'Upisano u kalendar'],
-  playLabel: 'Snimak uskoro'
+  playLabel: 'Poslušaj agenta'   /* DEMO_AUDIO is set, so the player is live */
 };
 
 const norm = s => (s || '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
@@ -143,8 +153,15 @@ const ctx = await b.newContext({ viewport: { width: 1440, height: 900 } });
 await ctx.route(/fonts\.googleapis\.com/, r => r.fulfill({ status: 200, contentType: 'text/css', body: fontCss }));
 await ctx.route(/fonts\.gstatic\.com/, r => { const f = path.join(FIX, 'gstatic', r.request().url().replace('https://fonts.gstatic.com/', '').replace(/\//g, '_')); r.fulfill({ status: 200, contentType: 'font/woff2', body: fs.readFileSync(f) }); });
 await ctx.route(/cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net/, r => { const u = r.request().url(); const f = /gsap\.min/.test(u) ? 'gsap/dist/gsap.min.js' : /ScrollTrigger/.test(u) ? 'gsap/dist/ScrollTrigger.min.js' : 'lenis/dist/lenis.min.js'; r.fulfill({ status: 200, contentType: 'text/javascript', body: fs.readFileSync(path.join(NM, f)) }); });
+/* the live-demo widget, served locally so this check is hermetic and never
+   waits on a network that is not there */
+await ctx.route(/unpkg\.com/, r => r.fulfill({ status: 200, contentType: 'text/javascript', body: fs.readFileSync(path.join(NM, '@elevenlabs/convai-widget-embed/dist/index.js')) }));
+await ctx.route(/storage\.googleapis\.com\/eleven-public-cdn/, r => r.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64') }));
+await ctx.route(/elevenlabs\.io/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ widget_config: { variant: 'full', placement: 'bottom-right', avatar: { type: 'orb', color_1: '#2792dc', color_2: '#9ce6e6' }, feedback_mode: 'none', language: 'sr', mic_muting_enabled: false, transcript_enabled: false, text_input_enabled: false, default_expanded: false, always_expanded: false, dismissible: false, text_contents: {}, language_presets: {}, disable_banner: true, text_only: false, supports_text_only: false } }) }));
 const page = await ctx.newPage();
-await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
+await page.goto(base + '/index.html', { waitUntil: 'load' });
+await page.waitForFunction(`window.__glasBooted === true`, null, { timeout: 20000 });
+await page.waitForTimeout(1800);
 await page.waitForTimeout(2200);
 
 /* A counting numeral is aria-hidden with a visually-hidden twin carrying the
@@ -199,6 +216,7 @@ eq('voice sub', await T1('#glas .lede'), EXPECT.voiceSub);
 eq('band marks', (await T('.band-mark span')).join('|'), EXPECT.voiceMarks.join('|'));
 eq('voice caption', await T1('.voice-cap'), EXPECT.voiceCap);
 eq('play label', await T1('#play-label'), EXPECT.playLabel);
+ok('the recording is served as audio', await page.evaluate(`(async () => { const r = await fetch('demo.mp3'); return r.ok && /audio/.test(r.headers.get('content-type') || '') && (await r.blob()).size > 10000; })()`));
 
 /* marquee */
 eq('marquee', await T1('.marquee-run'), EXPECT.marquee);
@@ -278,7 +296,9 @@ ok('talk: the state labels exist only in the script, verbatim', /"Povezujem…"/
 ok('talk: no SMS anywhere in the file — markup, comments, meta, script', !/sms/i.test(html));
 /* the snippet as supplied, with one deliberate change: the bundle is pinned to
    the version the forty-second cap was verified against */
-ok('talk: the widget snippet is present, pinned to 0.17.1', html.includes('<elevenlabs-convai agent-id="agent_5701m14n57q9e25ryes2tg8tdjhd"></elevenlabs-convai><script src="https://unpkg.com/@elevenlabs/convai-widget-embed@0.17.1" async type="text/javascript"></script>'));
+/* the client's snippet, byte for byte — the one thing on this page that is
+   quoted rather than written, so it is asserted as a literal */
+ok('talk: the widget snippet is present, exactly as supplied', html.includes('<elevenlabs-convai agent-id="agent_5701m14n57q9e25ryes2tg8tdjhd"></elevenlabs-convai><script src="https://unpkg.com/@elevenlabs/convai-widget-embed" async type="text/javascript"></script>'));
 ok('talk: the ending and stop words exist only in the script, verbatim', /"Završavam…"/.test(html) && /"Slušam — prekini demo"/.test(html));
 ok('the AI disclosure is the first line of the transcript', /Ja sam ve(š|s)ta(č|c)ka inteligencija, poziv se snima/.test(html));
 ok('a human is always reachable — stated in copy', /Dovoljno je re(ć|c)i „operater” i poziv ide na va(š|s) broj\./.test(html));
@@ -292,7 +312,9 @@ ok('no generated Serbian in aria-label / title / alt', strayAria.length === 0, J
 /* every string that is NOT in §8 must be one of the declared exceptions */
 const DECLARED_EXTRA = ['Preskoči na sadržaj', 'Meni', 'Zatvori', 'Pauziraj', '21.40', '+381 6• ••• •••', '00:22', 'Agent', 'Pozivalac',
   /* the live demo's own words, written once its copy was delegated: a stop name, an ending, a clock label, a failed attempt, a new-window hint */
-  'Slušam — prekini demo', 'Završavam…', 'Preostalo', 'Povezivanje nije uspelo — pokušajte ponovo.', '(otvara se u novom prozoru)'];
+  'Slušam — prekini demo', 'Završavam…', 'Preostalo', 'Povezivanje nije uspelo — pokušajte ponovo.', '(otvara se u novom prozoru)',
+  /* the player's own name, once a recording exists: it plays the agent — „Poslušaj demo” is the hero link that scrolls here */
+  'Poslušaj agenta'];
 console.log(`\n  \x1b[2mDeclared non-§8 UI strings (a11y names the brief does not supply): ${DECLARED_EXTRA.filter(x => /[a-zA-Zčćšžđ]/.test(x)).join(', ')}\x1b[0m`);
 
 console.log(`\n${'─'.repeat(72)}\n  ${checks - fails}/${checks} content checks passed${fails ? `   \x1b[31m${fails} FAILING\x1b[0m` : '   \x1b[32mall green\x1b[0m'}\n${'─'.repeat(72)}\n`);

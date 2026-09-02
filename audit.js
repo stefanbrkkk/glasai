@@ -52,14 +52,33 @@ function head(t) { console.log(`\n\x1b[1m${t}\x1b[0m`); }
 
 /* ── static server for index.html ─────────────────────────────────────── */
 const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.woff2': 'font/woff2', '.mp3': 'audio/mpeg' };
+function sendFile(f, req, rq) {
+  /* Range support: a media element asks for byte ranges, and a server that
+     answers every request with the whole body leaves the connection streaming
+     — which is what a real host does correctly and what `networkidle` needs. */
+  const size = fs.statSync(f).size;
+  const type = MIME[path.extname(f)] || 'application/octet-stream';
+  const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+  if (m) {
+    let start = m[1] === '' ? size - Number(m[2]) : Number(m[1]);
+    let end = m[1] === '' || m[2] === '' ? size - 1 : Number(m[2]);
+    if (!isFinite(start) || start < 0) start = 0;
+    if (!isFinite(end) || end >= size) end = size - 1;
+    if (start > end) { rq.writeHead(416, { 'content-range': `bytes */${size}` }); rq.end(); return; }
+    rq.writeHead(206, { 'content-type': type, 'accept-ranges': 'bytes', 'content-length': end - start + 1, 'content-range': `bytes ${start}-${end}/${size}` });
+    fs.createReadStream(f, { start, end }).pipe(rq);
+    return;
+  }
+  rq.writeHead(200, { 'content-type': type, 'accept-ranges': 'bytes', 'content-length': size });
+  fs.createReadStream(f).pipe(rq);
+}
 function serve() {
   return new Promise(res => {
     const srv = http.createServer((req, rq) => {
       const u = decodeURIComponent(req.url.split('?')[0]);
       const f = path.join(ROOT, u === '/' ? 'index.html' : u);
       if (!f.startsWith(ROOT) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { rq.writeHead(404); rq.end('404'); return; }
-      rq.writeHead(200, { 'content-type': MIME[path.extname(f)] || 'application/octet-stream' });
-      fs.createReadStream(f).pipe(rq);
+      sendFile(f, req, rq);
     });
     srv.listen(0, '127.0.0.1', () => res({ srv, base: `http://127.0.0.1:${srv.address().port}` }));
   });
@@ -135,6 +154,10 @@ function watch(page, bag) {
   page.on('pageerror', e => bag.push('pageerror: ' + (e && e.message)));
   page.on('requestfailed', r => {
     const u = r.url();
+    /* A media element asks for `bytes=0-`, reads the metadata it needs and
+       abandons the rest. Every browser does this; it is the element working,
+       not the page failing. */
+    if (r.resourceType() === 'media' && (r.failure() || {}).errorText === 'net::ERR_ABORTED') return;
     if (/cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|fonts\.g(oogleapis|static)\.com|unpkg\.com|elevenlabs\.io|eleven-public-cdn/.test(u)) return; // intentional in blocked runs
     bag.push('requestfailed: ' + u);
   });
@@ -402,17 +425,17 @@ const PHONE_STATE = `(() => {
   for (const filled of [false, true]) {
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     await wire(ctx);
-    if (filled) {
-      // rewrite the two CONFIG lines on the wire — exactly what the client edits
-      await ctx.route('**/index.html', async r => {
-        const res = await r.fetch();
-        let body = await res.text();
-        body = body.replace('DEMO_TELEFON: ""', 'DEMO_TELEFON: "+381 64 123 4567"')
-                   .replace('DEMO_AUDIO:   ""', 'DEMO_AUDIO:   "demo.wav"');
-        r.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body });
-      });
-      await ctx.route('**/demo.wav', r => r.fulfill({ status: 200, contentType: 'audio/wav', body: silentWav() }));
-    }
+    /* CONFIG is rewritten on the wire in BOTH directions — exactly the lines
+       the client edits — so each state is tested for itself rather than
+       whichever one the shipped file happens to be in. */
+    await ctx.route('**/index.html', async r => {
+      const res = await r.fetch();
+      let body = await res.text();
+      body = body.replace(/DEMO_TELEFON: *"[^"]*"/, filled ? 'DEMO_TELEFON: "+381 64 123 4567"' : 'DEMO_TELEFON: ""')
+                 .replace(/DEMO_AUDIO: *"[^"]*"/,   filled ? 'DEMO_AUDIO: "demo.wav"'          : 'DEMO_AUDIO: ""');
+      r.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body });
+    });
+    if (filled) await ctx.route('**/demo.wav', r => r.fulfill({ status: 200, contentType: 'audio/wav', body: silentWav() }));
     const page = await ctx.newPage(); const bag = [];
     watch(page, bag);
     await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
@@ -443,6 +466,19 @@ const PHONE_STATE = `(() => {
          makes the control live removes it). */
       rec(7, 'empty: play button wears the „uskoro” hairline but is pressable', rest.disabled === null && rest.label === 'Snimak uskoro' && rest.cursor === 'pointer' && rest.border === 'dashed', JSON.stringify(rest));
       rec(7, 'empty: a tap on it starts the self-test instead of doing nothing', s.playBorder === 'solid' && s.playScanning === true, 'scanning border: ' + s.playBorder);
+      const sweep = await page.evaluate(`(async () => {
+        const c = document.querySelector('canvas[data-band="voice"]'), cx = c.getContext('2d');
+        const ink = () => { const d = cx.getImageData(0, 0, c.width, c.height).data; let s = 0; for (let i = 3; i < d.length; i += 40) s += d[i]; return s; };
+        const e = document.querySelector('#glas'); window.__glasLenis ? window.__glasLenis.scrollTo(e, { immediate: true }) : e.scrollIntoView();
+        await new Promise(r => setTimeout(r, 1200));
+        const before = ink();
+        document.querySelector('#play').click();
+        const scanning = document.querySelector('#play').classList.contains('is-scanning');
+        let lo = Infinity, hi = 0;
+        for (let k = 0; k < 20; k++) { await new Promise(r => setTimeout(r, 105)); const v = ink(); if (v < lo) lo = v; if (v > hi) hi = v; }
+        return { scanning, swing: +(hi / lo).toFixed(3), vsRest: +(lo / before).toFixed(3) };
+      })()`);
+      rec(7, 'empty: the self-test runs a visible sweep across the band', sweep.scanning === true && sweep.swing > 1.35 && sweep.vsRest < 0.85, JSON.stringify(sweep));
       rec(7, 'empty: clicking the inert player throws nothing', bag.length === 0, bag.slice(0, 3).join(' | '));
       const cta = await page.evaluate(`(() => { const a = document.querySelector('#cta-btn'); return { href: a.getAttribute('href'), text: a.textContent.trim() }; })()`);
       rec(7, 'empty: the primary CTA still points forward, never back at #cene',
@@ -459,7 +495,7 @@ const PHONE_STATE = `(() => {
           !!primary && primary.href === 'tel:+381641234567' && primary.text === 'Zakaži demo razgovor',
           JSON.stringify(primary || {}));
       rec(7, 'filled: no inert chips remain', s.chips.length === 0);
-      rec(7, 'filled: real player, enabled', s.playDisabled === null && s.playBorder === 'solid', `${s.playLabel} / ${s.playBorder}`);
+      rec(7, 'filled: real player, enabled, named for what it plays', s.playDisabled === null && s.playBorder === 'solid' && s.playLabel === 'Poslušaj agenta', `${s.playLabel} / ${s.playBorder}`);
       rec(7, 'filled: zero console errors', bag.length === 0, bag.slice(0, 3).join(' | '));
       await page.screenshot({ path: path.join(SHOTS, 'config-filled.png'), fullPage: false });
     }
@@ -863,23 +899,34 @@ const PHONE_STATE = `(() => {
         mids.every(s => s.inb) && lows.every(s => !s.inb) && highs.every(s => !s.inb),
         JSON.stringify({ badLow: lows.filter(s => s.inb).length, badMid: mids.filter(s => !s.inb).length, badHigh: highs.filter(s => s.inb).length }));
 
-    /* The player's self-test: clicking it must visibly move the band. */
+    /* The shipped player: a real recording, driving the meter's amplitude and
+       walking the playhead across the passband. */
     await page.evaluate(`(() => { const e = document.querySelector('#glas'); window.__glasLenis ? window.__glasLenis.scrollTo(e, { immediate: true }) : e.scrollIntoView(); })()`);
     await page.waitForTimeout(1200);
-    const sweep = await page.evaluate(`(async () => {
-      const c = document.querySelector('canvas[data-band="voice"]'), cx = c.getContext('2d');
-      const ink = () => { const d = cx.getImageData(0, 0, c.width, c.height).data; let s = 0; for (let i = 3; i < d.length; i += 40) s += d[i]; return s; };
-      const before = ink();
-      document.querySelector('#play').click();
-      const scanning = document.querySelector('#play').classList.contains('is-scanning');
-      let lo = Infinity, hi = 0;
-      for (let k = 0; k < 20; k++) {
-        await new Promise(r => setTimeout(r, 105));
-        const v = ink(); if (v < lo) lo = v; if (v > hi) hi = v;
-      }
-      return { scanning, swing: +(hi / lo).toFixed(3), vsRest: +(lo / before).toFixed(3) };
+    const play = await page.evaluate(`(async () => {
+      const c = document.querySelector('canvas[data-band="voice"]'), cx = c.getContext('2d'), btn = document.querySelector('#play');
+      /* the rightmost bar tall enough to be a lit in-band bar — the playhead */
+      /* One row, just above the stub cap (stubs never reach 11% of half): the
+         rightmost pixel on it is the last lit in-band bar — the playhead. A
+         single row is far steadier than a per-column height, which flickers
+         with the voice's own amplitude. */
+      const head = () => { const W = c.width, cy = c.height >> 1, row = Math.max(1, Math.round(cy * 0.86));
+        const d = cx.getImageData(0, row, W, 1).data;
+        let lit = 0; for (let x = 0; x < W; x++) if (d[x * 4 + 3] > 90) lit = x;
+        return lit / W; };
+      const amp = () => { const d = cx.getImageData(0, 0, c.width, c.height).data; let s = 0; for (let i = 3; i < d.length; i += 40) s += d[i]; return s; };
+      btn.click();
+      await new Promise(r => setTimeout(r, 700));
+      const playing = btn.classList.contains('is-playing'), label = document.querySelector('#play-label').textContent.trim();
+      const marks = [], amps = [];
+      for (let k = 0; k < 12; k++) { await new Promise(r => setTimeout(r, 400)); marks.push(head()); amps.push(amp()); }
+      return { playing, label, first: +marks[0].toFixed(3), last: +marks[marks.length - 1].toFixed(3),
+               monotonic: marks.every((v, i) => i === 0 || v >= marks[i - 1] - 0.05),
+               swing: +(Math.max(...amps) / Math.min(...amps)).toFixed(3) };
     })()`);
-    rec(12, 'the „uskoro” player runs a visible sweep across the band', sweep.scanning === true && sweep.swing > 1.35 && sweep.vsRest < 0.85, JSON.stringify(sweep));
+    rec(12, 'the recording plays, and the meter answers it', play.playing === true && play.label === 'Pauziraj' && play.swing > 1.05, JSON.stringify(play));
+    rec(12, 'the playhead walks the passband as it plays — never blank while a voice is speaking',
+        play.first >= 0.30 && play.last > play.first + 0.15 && play.monotonic, JSON.stringify({ first: play.first, last: play.last, monotonic: play.monotonic }));
     rec(12, 'zero console errors across the motion system', bag.length === 0, bag.slice(0, 3).join(' | '));
     await ctx.close();
   }
