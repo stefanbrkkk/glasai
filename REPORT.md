@@ -126,9 +126,205 @@ against the pinned layout`).
 
 ---
 
+## 2b · The content round and the live demo — what the client asked for third
+
+Five items, in the order they were asked.
+
+### 1 · SMS is gone
+
+Five places, not four — every one is out, and `grep -i sms` over the page, the
+harness and the content corpus returns nothing:
+
+| where | was | is |
+|---|---|---|
+| the phone's last agent line | `Zakazano — sreda u 14.00. Potvrda stiže SMS-om. Prijatan dan!` | `Zakazano — sreda u 14.00. Ponoviću: sreda, četrnaest časova. Prijatan dan!` |
+| the phone's confirmation card, third line | `SMS potvrda poslata` | `Upisano u kalendar` |
+| feature card 3 | `SMS potvrde i podsetnici` | `Usklađen sa zakonom`, with the body supplied, and a shield whose check is the interior mark — same 1.35 stroke, same round joins, the silhouette closing first like the other five |
+| Starter plan, third bullet | `SMS potvrde` | (see 2) |
+| step 03's body | `Zakazuje direktno u vaš kalendar i šalje SMS potvrdu klijentu. Vi samo dođete na posao.` | `Zakazuje direktno u vaš kalendar. Vi samo dođete na posao.` — **the fifth place; no copy was supplied for it, so the SMS clause came out and nothing was written in** |
+
+The phone loop was re-timed for the longer line: the agent speaks 0.35 s
+longer (`speakTo` 19.20 → 19.55), the confirmation lands 0.30 s later
+(`CONFIRM_AT` 20.15) and the seam 0.20 s later (`OUT_AT` 22.55, `RESET_AT`
+23.22, `IN_AT` 23.30) — the card's dwell gives up a tenth of a second so the
+cycle stays exactly 24.0 s; the static timer is still `00:20`. While looking
+at it, one bug that predates this round: the thread made room for the card by
+reading the card's height while it was still `display: none`, which is zero,
+so at common viewport sizes the card landed on top of the last line. It is
+measured laid-out-but-unseen now. Watched at 16.8,
+18.4, 19.9, 21.0, 22.4, 23.2, 24.6 and 26.5 s: the line fits its bubble on two
+rows, the card lands with its check drawn, the screen goes dark on schedule and
+the next ring fades up with no cut. Round 8 of the harness (three cycles and a
+30 s tab switch) is green.
+
+### 2 · Pricing
+
+Starter: `Do 200 poziva mesečno · Zakazivanje termina · Prebacivanje na čoveka
+· Osnovni izveštaji`. Professional: `Do 600 poziva mesečno · Sve iz Starter
+paketa · Prilagođena skripta i ton · Prioritetna podrška`. Enterprise untouched.
+The content corpus asserts both lists in order.
+
+### 3 · The live demo — what the widget actually offers
+
+The instruction was to add ElevenLabs' widget snippet, and the requirements
+were a native-looking control, exact copy for four states, a visible countdown,
+a hard cap with a graceful end, and an end card *in place of the widget*.
+Those two things pull against each other, so the first hour went into finding
+out what the widget really exposes — from its bundle, not from the web. The
+bundle (`@elevenlabs/convai-widget-embed` 0.17.1, installed from npm, since
+unpkg and elevenlabs.io are unreachable from this sandbox) has **no**
+`startConversation`, `endConversation`, `conversationStarted` or
+`conversationEnded` — the pages that document those are describing something
+this version does not ship. It has one public hook: it dispatches
+`elevenlabs-convai:call` with a mutable `detail.config` that it then spreads
+into the SDK's `startSession`; the SDK spreads that config over no-op defaults
+and calls `onConversationCreated(conversation)` before `onConnect`. The widget
+overrides only `onMessage`, `onModeChange`, `onStatusChange`,
+`onCanSendFeedbackChange` and its agent-tool callbacks, so a page can attach
+`onConversationCreated`, `onConnect`, `onDisconnect` and `onError` through the
+documented event and receive the live `Conversation` — which has `endSession`,
+`setMicMuted`, `getOutputVolume` and `sendContextualUpdate`.
+
+So the build is: the snippet, **verbatim**, inside a one-pixel box that is
+`visibility: hidden`, transform-contained and `aria-hidden` — present, running,
+never painted, never in the tab order. The page's own control (`.btn--ghost`,
+a cyan line-art microphone, the four supplied strings) presses the widget's
+start button in its open shadow root; the hook above gives the page the
+session. A fresh widget element is cloned for every run, so no run inherits
+another's state. Cyan is the machine's colour on this page, and the live state
+— border, dot, clock, the draining rule — is the only place it appears outside
+the phone.
+
+**Readiness and degradation.** The block reserves its space from first paint
+but shows nothing until the engine has rendered a button; if that has not
+happened in 8 s (script blocked, config endpoint unreachable, agent not
+public) the block folds away, `ScrollTrigger.refresh()` re-measures, and the
+section is exactly what it was — the play button and `Snimak uskoro`. Nothing
+on the page logs. One caveat the client should know: when the *script* loads
+but ElevenLabs' config endpoint does not answer, the widget itself logs one
+`console.error` of its own before the page folds the block; that line is
+ElevenLabs', not the page's, and the only way to silence it would be to feed
+the widget a local `override-config`, which replaces the agent's dashboard
+settings wholesale and could change the conversation's language — not a trade
+worth making blind.
+
+**The cap.** A 250 ms clock drives `00:40 → 00:00` and a cyan rule that drains
+under it — the same gesture as every eyebrow rule on the page. At 31 s the
+agent receives a contextual update asking it to finish its thought in one
+sentence (in English: it is an instruction to the model, not page copy). At
+40 s the visitor's microphone is muted, the clock reads `00:00`, and the page
+watches the agent's output level: half a second of silence ends the session;
+an agent that will not stop is ended at 46 s regardless. `onDisconnect` swaps
+the control for the card — heading, line, the primary-CTA button (booking
+link if configured, else the booking section), the number as a ghost button
+*only* if `DEMO_TELEFON` is set (the slot is removed, not left empty), and a
+quiet mono link that reuses `Razgovaraj sa agentom` to run again, since no
+"again" copy was supplied. Every timer is in one list and every end path
+empties it; the harness asserts the list is empty after each run and that the
+clock no longer moves.
+
+**Transitions.** Control ↔ card is a cross-fade on transform/opacity at the
+page's `--d-mid`/`--ease`, and the block's height is transitioned between the
+two states so nothing below ever jumps; the outgoing state leaves the flow
+only once the fade has finished. Under reduced motion the swaps are instant
+and the demo still works — it is not motion.
+
+### 3b · The review pass on the demo
+
+Five independent reviewers, each with one lens — design at six widths, motion,
+adversarial code, a requirements audit against the numbered list, and
+accessibility — with every finding above a nit put to two skeptics who were
+told to refute it. (The box has four CPUs, so the pass ran two agents wide and
+the skeptics were still working as this was written; every refutation that had
+landed was of a finding already fixed in the working copy, which is what a
+refutation should say.) Forty-four findings; the ones that changed the build:
+
+- **The page's `onDisconnect` hook was dead** — found independently by the
+  requirements auditor and the code reviewer. My first read of the widget's
+  `startSession` call was truncated: after the spread it sets its *own*
+  `onDisconnect` as well as the four I had listed, so a session the agent ends
+  early would never have reached the end card. The page now reads the session's
+  own `isOpen()` on its clock — a tick after any hang-up shows the card — and
+  the harness has a test for exactly that.
+- **Callbacks were not bound to the engine that raised them.** Press, cancel,
+  press again: engine A's late session could be adopted by run B and the live
+  one hung up. Every callback now carries its engine and its run number; a
+  session that lands for either a replaced engine or an abandoned run is hung
+  up, unheard.
+- **The state swap measured the incoming state inside a stretched grid row**,
+  so the card→control swap snapped 59–65 px. `align-self: start`.
+- **"First visible button" is the wrong button under some dashboard settings**
+  (text input on, expanded by default). The start button is found by its
+  name first (`call | poziv | razgovor`), by position only as a fallback.
+- **The block reserved 108 px of nothing for eight seconds when the widget was
+  blocked, then collapsed in one frame** — the one state change that ignored
+  the page's easing. It reserves nothing now and grows in when the engine is
+  ready; a page whose engine never comes never shows a hole.
+- The live state wore the ghost button's amber hover inside a cyan border;
+  the pill changed width three times a run; the icon and the dot were hard
+  cuts; the rule popped 0→1 on a second run; the restart link read as a second
+  caption; the stacked card buttons differed in width; `endSession()`
+  rejections could surface; the fresh engine's five-second timeout was
+  declared and never wired; a fading control could still take Enter; focus
+  fell to `body` at the end. All fixed. The connect timeout is 8 s, not 15.
+- Accessibility: the note is now the button's description
+  (`aria-describedby`), the engine is `inert` as well as hidden, the end card
+  puts focus on its heading so Tab reaches its button with context, state
+  changes go through one polite live region instead of a label inside a
+  button, and `aria-busy` is set after the text it would defer.
+
+**Not changed, with reasons.** Three accessibility findings want a Serbian
+string the brief does not supply and §8 forbids composing — a stop name for
+the live control (it is named `Slušam` and pressing it ends the demo), a
+"remaining" label for the clock, and a new-window hint on an external booking
+link. Each is one word or phrase from the client away; say the words and they
+go in. The snippet's script is unpinned, so the cap mechanism is verified
+against 0.17.1 and relies on an order the widget does not document; pinning it
+would be a one-token change to a snippet I was told to add verbatim, so it is
+recorded here rather than made. The "hard 40 s" is 40 s for the visitor's
+microphone and up to 46 s of the agent's audio — the reviewers were right to
+call that a compromise, and it is the one the requirement's own words ("no
+abrupt cut mid-sentence") asked for.
+
+### 4 · What could **not** be verified, and how the rest was
+
+- **No conversation was ever held.** ElevenLabs' API and WebSocket are blocked
+  from this sandbox, so the harness never connects. What it does, against the
+  *real* widget bundle served from `node_modules` and a mocked config: proves
+  the page's button presses the engine's (exactly one `elevenlabs-convai:call`,
+  carrying the four hooks); then drives the same hook with a fake
+  `Conversation` on Playwright's fake clock through every state — 00:30 at ten
+  seconds, the nudge at 31, mute at 40 with a speaking agent *not* cut, the end
+  half a second after it goes quiet, the card, zero timers, a fresh engine,
+  a restart, and a second run ended at the 46 s ceiling. **The first real call
+  has to be made by a person with a microphone**, and three things can only
+  be seen then: that the agent answers in Serbian, that the browser's mic
+  prompt appears where expected, and that the agent's dashboard has "require
+  terms" off — with it on, the hidden widget would wait for an acceptance
+  nobody can see, and the page would return to its start after 15 s.
+- The widget fetches its avatar texture from `storage.googleapis.com`; the
+  harness stubs it. In production that host is one more the page touches.
+- Everything else is run, not reasoned: **128 / 128 harness checks** (fourteen rounds — round 14 is the demo, see the table) and **84 / 84 content checks**.
+
+### 5 · The calendar claim, and the percentages
+
+The FAQ answer now reads exactly `Radi sa Google kalendarom. Celo podešavanje
+radimo mi.` The same claim — `… i sistemima za zakazivanje` — was also on the
+first feature card (`Zakazivanje termina`), so that card's body is now
+`Direktna sinhronizacija sa Google kalendarom.` **Tell me if you want the card
+put back**; it seemed wrong to fix the claim in one place and leave it in the
+other.
+
+`30%` and `85%` are not on the page. They were replaced by §8's own
+replacement block in the first build because they were unsourced, and the
+content harness asserts every run that neither figure is published. Nothing to
+decide there.
+
+---
+
 ## 3 · Round 1 — final automated audit (`node audit.js`)
 
-**103 / 103 passed, all green.** Everything below was actually executed in
+**128 / 128 passed, all green.** Everything below was actually executed in
 headless Chromium against the real file.
 
 | # | round | result |
@@ -136,7 +332,7 @@ headless Chromium against the real file.
 | 1 | Console — network idle + 5 s of animation | zero `console.error`, zero `pageerror`, zero unhandled rejections; GSAP + ScrollTrigger + Lenis all live |
 | 2 | Horizontal overflow @ 360/390/414/768/1024/1280/1440/1920 | `scrollWidth ≤ clientWidth` at every width, at the top **and** after a full scroll-through |
 | 3 | Screenshots | stepped viewport frames at all 8 widths + 6 phone-loop states + degraded states |
-| 4 | **CDN blocked (F1)** — cdnjs + jsDelivr aborted at the network layer | GSAP genuinely absent; every `[data-reveal]` block visible; hero copy visible; the phone falls back to a readable booked state; page scrolls; ~4 900 characters of body text; zero console errors |
+| 4 | **CDN blocked (F1)** — cdnjs, jsDelivr, unpkg and elevenlabs.io aborted at the network layer | GSAP genuinely absent; every `[data-reveal]` block visible; hero copy visible; the phone falls back to a readable booked state; page scrolls; ~4 900 characters of body text; the live-demo block folds away with no dead button and no empty box; zero console errors before and after the fold |
 | 5 | `prefers-reduced-motion: reduce` | marquee static, Lenis never constructed, no `js-motion`/`js-loop`, phone at rest in the booked state, the meter renders one settled frame |
 | 6 | Diacritics | `fonts.check` true, glyphs pixel-distinct from their bases, no `.notdef`, in all three families |
 | 7 | CONFIG placeholders, empty **and** filled | see §1; also asserts the primary CTA never points backwards |
@@ -146,8 +342,9 @@ headless Chromium against the real file.
 | 11 | Motion QA | 1920 → 360 resize *while the hero is pinned*, portrait ↔ landscape mid-scroll, instant scroll to the bottom skips no reveal |
 | 12 | Throttle + motion system | boots and scrolls under 4× CPU throttle; every trigger measured against the pinned layout; all 12 `[data-lines]` hosts split with **zero** height change to any element and zero change to the document; line masks preserve the text exactly; the band fills its canvas without clipping and breathes rather than drones; the probe sweeps below, through and above the telephone band |
 | 13 | Touch (Pixel 7) | sway replaces cursor tilt, magnetism never engages, no pin, menu works by tap, the inert player answers a tap without erroring |
+| 14 | **The live demo** — the real widget bundle served locally, its config and avatar texture stubbed, the session driven through the widget's own hook on a fake clock | ready only once the engine renders its button; engine never painted, never focusable; the page's button presses the engine's — one `elevenlabs-convai:call` carrying the four hooks; a change of mind while connecting leaves no timer; live → `00:30` at ten seconds with the rule at ¾; the wrap-up nudge at 31 s; at 40 s the mic is muted and the clock reads `00:00` but a speaking agent is not cut; half a second of silence ends it and the card takes the widget's place; zero timers, a frozen clock, one fresh engine; restart works; an early hang-up — which the widget never forwards — is noticed within a tick and ends on the card; an agent that never goes quiet is ended at 46 s; the card's number line only with `DEMO_TELEFON`, the booking link when `DEMO_LINK` is set; reduced motion still live; zero console errors in every state |
 
-**Round 4 — content (`node .audit/copy-check.mjs`): 75 / 75 passed.** Every
+**Round 4 — content (`node .audit/copy-check.mjs`): 84 / 84 passed.** Every
 visible string diffed against §8/§6/§7 character for character (only NBSP is
 normalised, since §8 requires it before `€`), plus: no Cyrillic anywhere, no
 `30 %`/`85 %` published, meta/OG built only from §8 sentences, no generated

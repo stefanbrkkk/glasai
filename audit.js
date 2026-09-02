@@ -127,7 +127,9 @@ function watch(page, bag) {
     if (m.type() !== 'error') return;
     const loc = (m.location() && m.location().url) || '';
     // the browser logs the aborted CDN fetch itself — that abort is the test
-    if (EXPECTED_HOST.test(loc) || (/net::ERR_FAILED|Failed to load resource/.test(m.text()) && EXPECTED_HOST.test(loc + m.text()))) return;
+    /* only the browser's own resource-load line for a host this run blocks is
+       excused; anything the widget (or the page) logs at runtime counts */
+    if (/net::ERR_|Failed to load resource/.test(m.text()) && EXPECTED_HOST.test(loc + m.text())) return;
     bag.push('console.error: ' + m.text() + (loc ? ' @ ' + loc : ''));
   });
   page.on('pageerror', e => bag.push('pageerror: ' + (e && e.message)));
@@ -897,7 +899,7 @@ const PHONE_STATE = `(() => {
     const FAKE = `(() => { const cfg = {}; document.querySelector('elevenlabs-convai').dispatchEvent(new CustomEvent('elevenlabs-convai:call', { bubbles: true, composed: true, detail: { config: cfg } }));
       window.__fake = { ended: 0, muted: null, ctx: [], vol: 0.3,
         endSession() { this.ended++; setTimeout(() => cfg.onDisconnect({ reason: 'user' }), 40); return Promise.resolve(); },
-        setMicMuted(m) { this.muted = m; }, getOutputVolume() { return this.vol; }, sendContextualUpdate(t) { this.ctx.push(t); }, isOpen() { return !this.ended; } };
+        setMicMuted(m) { this.muted = m; }, getOutputVolume() { return this.vol; }, sendContextualUpdate(t) { this.ctx.push(t); }, isOpen() { return !this.ended && this.open !== false; } };
       const hooks = ['onConversationCreated', 'onConnect', 'onDisconnect', 'onError'].every(k => typeof cfg[k] === 'function');
       cfg.onConversationCreated(window.__fake); cfg.onConnect({ conversationId: 'x' }); return hooks; })()`;
     for (const filled of [false, true]) {
@@ -956,6 +958,18 @@ const PHONE_STATE = `(() => {
       rec(14, 'a fresh engine is in place for the next run, and only one', replaced === true);
       await page.click('#talk-again'); await page.clock.runFor(300); st = await page.evaluate(TALK_ST);
       rec(14, 'the demo can be started again', st.ctl && !st.card && st.label === 'Razgovaraj sa agentom', JSON.stringify(st));
+
+      /* the agent hangs up early — the widget keeps onDisconnect for itself,
+         so the page has to notice on its own */
+      await page.click('#talk-btn'); await page.clock.runFor(300);
+      await page.evaluate(`(() => { const cfg = {}; document.querySelector('elevenlabs-convai').dispatchEvent(new CustomEvent('elevenlabs-convai:call', { bubbles: true, composed: true, detail: { config: cfg } }));
+        window.__fake3 = { ended: 0, open: true, endSession() { this.ended++; return Promise.resolve(); }, setMicMuted() {}, getOutputVolume() { return 0; }, sendContextualUpdate() {}, isOpen() { return this.open && !this.ended; } };
+        cfg.onConversationCreated(window.__fake3); cfg.onConnect({}); })()`);
+      await page.clock.runFor(5000); st = await page.evaluate(TALK_ST);
+      const wasLive = st.live && /^00:3[56]$/.test(st.clock);
+      await page.evaluate(`window.__fake3.open = false`); await page.clock.runFor(600); st = await page.evaluate(TALK_ST);
+      rec(14, 'an early hang-up, which the widget never forwards, is still noticed within a tick and ends on the card', wasLive && st.card && !st.live && st.timers === 0, JSON.stringify({ wasLive, card: st.card, timers: st.timers }));
+      await page.click('#talk-again'); await page.clock.runFor(600);
 
       /* a second run whose agent never stops talking hits the hard ceiling */
       await page.click('#talk-btn'); await page.clock.runFor(300);

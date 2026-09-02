@@ -1174,36 +1174,54 @@ h3 {
    away and the section is exactly what it was. */
 .talk {
   position: relative;
-  margin-top: clamp(1.75rem, 3.2vw, 2.5rem);
   display: grid; justify-items: center;
-  /* the two states differ in height; the swap animates the box between
-     them (once, on a state change — nothing here runs per frame) and the
-     one that is off stays out of flow, so the block is only ever as tall as
-     what it is showing */
-  transition: height var(--d-mid) var(--ease);
+  /* Nothing is reserved: the block has no height until its engine is ready,
+     then grows in — so a page whose engine never arrives never shows a hole,
+     and a page with no JavaScript at all shows nothing here. The two states
+     differ in height, and the swap animates the box between them (once, on
+     a state change — nothing here runs per frame); the one that is off stays
+     out of flow, so the block is only ever as tall as what it is showing. */
+  height: 0; margin-top: 0;
+  transition: height var(--d-mid) var(--ease), margin-top var(--d-mid) var(--ease);
 }
-.talk.is-gone { display: none; }
+.talk.is-ready { margin-top: clamp(1.75rem, 3.2vw, 2.5rem); }
+.talk.is-gone, .no-js .talk { display: none; }
 .talk-state.is-off { display: none; }
 .talk-state {
-  grid-area: 1 / 1;
+  grid-area: 1 / 1; align-self: start;      /* its own height, not the row's — show() measures it */
   display: flex; flex-direction: column; align-items: center; text-align: center;
   gap: 0.9rem;
-  opacity: 0; transform: translateY(8px); visibility: hidden;
+  opacity: 0; transform: translateY(8px); visibility: hidden; pointer-events: none;
   transition: opacity var(--d-mid) var(--ease), transform var(--d-mid) var(--ease), visibility 0s linear var(--d-mid);
 }
 .talk-state.is-on {
-  opacity: 1; transform: none; visibility: visible;
+  opacity: 1; transform: none; visibility: visible; pointer-events: auto;
   transition: opacity var(--d-mid) var(--ease), transform var(--d-mid) var(--ease), visibility 0s;
 }
-.talk-btn svg { width: 1.05em; height: 1.05em; flex: none; color: var(--machine); }
-.talk-btn :is(path, rect, line) { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+/* The pill keeps one width across its three labels (set from the idle width
+   by the script), so it never re-centres itself mid-run. The microphone is
+   the visitor's — amber; it hands over to the machine's cyan dot when the
+   line is live, by a cross-fade in the same slot. */
+.talk-ico { position: relative; display: inline-grid; place-items: center; width: 1.05em; height: 1.05em; flex: none; }
+.talk-ico > * { grid-area: 1 / 1; transition: opacity var(--d-micro) var(--ease); }
+.talk-ico svg { width: 1.05em; height: 1.05em; color: var(--signal); }
+.talk-ico :is(path, rect, line) { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.talk-dot { width: 0.5em; height: 0.5em; border-radius: 50%; background: var(--machine); opacity: 0; }
 .talk-btn[aria-busy="true"] { cursor: progress; }
-.talk-btn[aria-busy="true"] svg { opacity: 0.45; }
-.talk-dot { display: none; width: 0.5em; height: 0.5em; border-radius: 50%; background: var(--machine); flex: none; }
+.talk-btn[aria-busy="true"] .talk-ico svg { opacity: 0.45; }
 .talk.is-live .talk-btn { border-color: var(--machine); }
-.talk.is-live .talk-btn svg { display: none; }
-.talk.is-live .talk-dot { display: inline-block; }
-.js-motion .talk.is-live .talk-dot { animation: blink 1.9s steps(1, end) infinite; }
+.talk.is-live .talk-ico svg { opacity: 0; }
+.talk.is-live .talk-dot { opacity: 1; }
+.talk.is-ending .talk-dot { animation: none !important; opacity: 0.55; }
+.js-motion .talk.is-live .talk-dot { animation: talk-blink 1.9s steps(1, end) infinite; }
+@keyframes talk-blink { 0%, 55% { opacity: 1; } 56%, 100% { opacity: 0.45; } }
+/* the ghost button's amber hover belongs to the visitor's idle state; once the
+   machine is on the line, hover stays in its colour */
+@media (hover: hover) and (pointer: fine) {
+  .talk.is-live .talk-btn:hover, .talk-btn[aria-busy="true"]:hover {
+    border-color: var(--machine); color: var(--text); background: var(--machine-dim);
+  }
+}
 /* under the button: the note before, the clock during — one cell again */
 .talk-sub { display: grid; justify-items: center; }
 .talk-sub > * {
@@ -1231,14 +1249,18 @@ h3 {
 .talk-card h3 { font-size: var(--t-lg); letter-spacing: -0.01em; }
 .talk-card p  { color: var(--muted); font-size: var(--t-sm); line-height: 1.55; max-width: 36ch; text-wrap: balance; }
 .talk-card-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.75rem; margin-top: 0.15rem; }
+.talk-card-row .btn { min-width: 12rem; }     /* stacked, the two read as a pair */
 .talk-again {
   font-family: var(--f-mono); font-size: var(--t-xs); font-weight: 600;
   letter-spacing: var(--track-mono); text-transform: uppercase;
   color: var(--muted); background: none; border: 0; padding: 0.4em 0.2em; cursor: pointer;
   border-radius: var(--r-xs);
-  transition: color var(--d-micro) var(--ease);
+  /* a hairline underline, so it reads as a link and not as a second caption */
+  text-decoration: underline; text-decoration-color: var(--line-hard);
+  text-underline-offset: 0.42em; text-decoration-thickness: 1px;
+  transition: color var(--d-micro) var(--ease), text-decoration-color var(--d-micro) var(--ease);
 }
-@media (hover: hover) and (pointer: fine) { .talk-again:hover { color: var(--signal); } }
+@media (hover: hover) and (pointer: fine) { .talk-again:hover { color: var(--signal); text-decoration-color: var(--signal); } }
 /* the engine: present, running, never painted, never in the tab order.
    A transform keeps its fixed-position parts inside this box. */
 .talk-engine {
@@ -1574,6 +1596,7 @@ html:not(.js) .faq-panel > div,
 /* ─── 24 · PRINT ────────────────────────────────────────────────────────── */
 @media print {
   .talk-engine, .talk-live { display: none !important; }
+  .talk-card h3:focus { outline: none; }
   .nav, .menu, .grain, .glow, .band, .cursor-glow, .phone-stage { display: none !important; }
   /* draw-ins hold their hidden state until scrolled to; paper never scrolls */
   .feat-ico :is(path, circle, rect, line, polyline) { stroke-dasharray: none !important; stroke-dashoffset: 0 !important; }
@@ -1930,11 +1953,11 @@ html:not(.js) .faq-panel > div,
       </div>
 
       <div class="talk" id="talk">
+        <span class="vh" id="talk-status" aria-live="polite"></span>
         <div class="talk-state" id="talk-ctl">
-          <button class="btn btn--ghost btn--magnetic talk-btn" id="talk-btn" type="button">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.3a6.5 6.5 0 0 0 13 0"/><line x1="12" y1="17.8" x2="12" y2="21"/></svg>
-            <i class="talk-dot" aria-hidden="true"></i>
-            <span id="talk-label" aria-live="polite">Razgovaraj sa agentom</span>
+          <button class="btn btn--ghost btn--magnetic talk-btn" id="talk-btn" type="button" aria-describedby="talk-note">
+            <span class="talk-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.3a6.5 6.5 0 0 0 13 0"/><line x1="12" y1="17.8" x2="12" y2="21"/></svg><i class="talk-dot"></i></span>
+            <span id="talk-label">Razgovaraj sa agentom</span>
           </button>
           <div class="talk-sub">
             <p class="talk-note is-on" id="talk-note">Govorite naglas — agent odgovara na srpskom. Traje četrdeset sekundi.</p>
@@ -1945,7 +1968,7 @@ html:not(.js) .faq-panel > div,
           </div>
         </div>
         <div class="talk-state talk-card is-off" id="talk-card" role="status">
-          <h3>Demo je gotov.</h3>
+          <h3 tabindex="-1">Demo je gotov.</h3>
           <p>Za pun razgovor zakažite petnaest minuta sa nama.</p>
           <div class="talk-card-row">
             <a class="btn btn--primary btn--magnetic" id="talk-book" href="#cta">Zakaži razgovor</a>
@@ -1953,7 +1976,7 @@ html:not(.js) .faq-panel > div,
           </div>
           <button class="talk-again" id="talk-again" type="button">Razgovaraj sa agentom</button>
         </div>
-        <div class="talk-engine" id="talk-engine" aria-hidden="true">
+        <div class="talk-engine" id="talk-engine" aria-hidden="true" inert>
           <elevenlabs-convai agent-id="agent_5701m14n57q9e25ryes2tg8tdjhd"></elevenlabs-convai><script src="https://unpkg.com/@elevenlabs/convai-widget-embed" async type="text/javascript"></script>
         </div>
       </div>
@@ -2834,24 +2857,34 @@ function initBands() {
   }
   setBandsMotion(!REDUCED());
 }
-/* ═══ 1b · TALK — the live demo ═══════════════════════════════════════════
+/* ═══ 14b · TALK — the live demo ══════════════════════════════════════════
    The official widget is the engine; the page is the instrument panel. The
    widget's one public hook — the `elevenlabs-convai:call` event, whose
    `detail.config` is spread into the SDK's startSession — is where the page
    attaches its own callbacks and receives the live Conversation. From there
    it can end the call, mute the line and read the output level, which is
-   everything the forty-second cap needs. Nothing here logs; a failure is a
-   quiet return to the state the visitor started from.                      */
+   everything the forty-second cap needs. Of the callbacks the page attaches,
+   the widget (0.17.1) keeps onConversationCreated, onConnect and onError but
+   replaces onDisconnect with its own — so the end of a session is read from
+   the Conversation itself (isOpen()), on the page's clock, and the hook is
+   kept only in case a later version forwards it. Nothing here logs; a
+   failure is a quiet return to the state the visitor started from.        */
 var TALK_CAP = 40;              /* seconds — the hard cap, not a suggestion */
 var TALK_GRACE = 6;             /* how long after the cap a sentence may finish */
 var TALK_NUDGE = 31;            /* when the agent is told to wrap up */
 var TALK_READY_MS = 8000;       /* how long to wait for the engine before folding */
-var TALK_CONNECT_MS = 15000;    /* how long „Povezujem…” may last */
-var TALK_ENGINE_MS = 5000;      /* a fresh engine's button, after a run */
+var TALK_CONNECT_MS = 8000;     /* how long „Povezujem…” may last */
+var TALK_ENGINE_MS = 5000;      /* a fresh engine that never renders, after a run */
+function hangUp(c) {
+  /* endSession() can reject (an already-closed AudioContext); nobody is
+     listening for that, so it must not surface */
+  try { var p = c && c.endSession && c.endSession(); if (p && p.catch) p.catch(function () {}); } catch (err) {}
+}
 function initTalk() {
   var root = $("#talk"), ctl = $("#talk-ctl"), card = $("#talk-card"), engine = $("#talk-engine");
   var btn = $("#talk-btn"), label = $("#talk-label"), note = $("#talk-note"), live = $("#talk-live");
   var clock = $("#talk-clock"), rule = $("#talk-rule"), book = $("#talk-book"), again = $("#talk-again");
+  var status = $("#talk-status");
   if (!root || !ctl || !card || !engine || !btn || !label || !note || !live || !clock || !rule) return;
   var widget = engine.querySelector("elevenlabs-convai");
   if (!widget) return;
@@ -2877,7 +2910,8 @@ function initTalk() {
     } else telSlot.parentNode.removeChild(telSlot);
   }
 
-  var state = "idle", conv = null, timers = [], startedAt = 0, ended = false;
+  var state = "idle", conv = null, timers = [], startedAt = 0, ended = false, run = 0;
+  function say(t) { if (status) status.textContent = t; }   /* the live region, state changes only */
   if (window.__glasDebug) window.__glasTalkTimers = timers;
   function later(fn, ms) { var id = setTimeout(function () { drop(id); fn(); }, ms); timers.push(id); return id; }
   function every(fn, ms) { var id = setInterval(fn, ms); timers.push(id); return id; }
@@ -2886,43 +2920,71 @@ function initTalk() {
   function stopTimers() { while (timers.length) { var id = timers.pop(); clearTimeout(id); clearInterval(id); } }
   keep(stopTimers);
 
-  /* A state swap is a cross-fade *and* a height change. The box is pinned
-     at its current height, the incoming state is laid out, the box is sent
-     to the incoming height, and only once the fade is over does the outgoing
-     state leave the flow — so nothing below ever jumps. */
+  /* Every change of the block's height goes through here — the grow-in and
+     the two swaps: the box is pinned at its current height, the incoming
+     state is laid out, the box is sent to the incoming height, and only once
+     the fade is over does the outgoing state leave the flow and the height
+     return to auto — so nothing below ever jumps. Triggers below are
+     re-measured afterwards, because the voice section just changed size. */
   var swapT = 0;
-  function show(which) {
+  var SWAP_MS = 460;                            /* --d-mid, and a frame to spare */
+  function settle(h1, done) {
+    root.style.height = root.offsetHeight + "px";
+    void root.offsetHeight;                     /* commit the start value */
+    root.style.height = h1 + "px";              /* the transition carries it */
+    clearTimeout(swapT);
+    swapT = setTimeout(function () {
+      root.style.height = "auto";
+      if (done) done();
+      if (window.ScrollTrigger) window.ScrollTrigger.refresh();
+    }, SWAP_MS);
+  }
+  function show(which, focus) {
     var into = which === "card" ? card : ctl, outOf = which === "card" ? ctl : card;
     if (into.classList.contains("is-on") && outOf.classList.contains("is-off")) return;
-    clearTimeout(swapT);
-    var h0 = root.offsetHeight;
-    root.style.height = h0 + "px";
     into.classList.remove("is-off"); outOf.classList.remove("is-off");
     var h1 = into.offsetHeight;
-    root.style.height = h1 + "px";                /* the transition carries it */
     into.classList.add("is-on"); outOf.classList.remove("is-on");
-    swapT = setTimeout(function () {
-      outOf.classList.add("is-off");
-      root.style.height = "";
-    }, 460);
+    settle(h1, function () { outOf.classList.add("is-off"); });
+    /* the control the visitor was on is leaving; put them on the next one —
+       but only if they were on it */
+    if (focus && root.contains(document.activeElement)) {
+      var f = which === "card" ? card.querySelector("h3") : btn;   /* the heading first: context, then its button on Tab */
+      if (f) try { f.focus({ preventScroll: true }); } catch (err) {}
+    }
   }
   keep(function () { clearTimeout(swapT); });
+  /* one width for the pill's three labels, from the longest, re-read on resize */
+  function sizePill() {
+    if (state !== "idle") return;
+    btn.style.minWidth = "";
+    btn.style.minWidth = Math.ceil(btn.getBoundingClientRect().width) + "px";
+  }
+  on(window, "resize", debounce(sizePill, 200), { passive: true });
   function sub(which) {
     note.classList.toggle("is-on", which === "note");
     live.classList.toggle("is-on", which === "live");
     live.setAttribute("aria-hidden", which === "live" ? "false" : "true");
   }
   function paint(left) {
-    var s = Math.max(0, Math.ceil(left));
+    var s = Math.max(0, Math.ceil(left - 0.0005));   /* a hair under a whole second is that second */
     clock.textContent = "00:" + (s < 10 ? "0" : "") + s;
     rule.style.transform = "scaleX(" + (Math.max(0, Math.min(TALK_CAP, left)) / TALK_CAP).toFixed(4) + ")";
   }
+  /* The start button, by its name where it has one — under some dashboard
+     settings (text input on, expanded by default) it is not the first button
+     in the widget — and by position only as a fallback. */
   function engineButton() {
     var sr = widget && widget.shadowRoot;
     if (!sr) return null;
-    var bs = sr.querySelectorAll("button");
-    for (var i = 0; i < bs.length; i++) if (bs[i].offsetWidth || bs[i].offsetHeight) return bs[i];
-    return null;
+    var bs = sr.querySelectorAll("button"), i, b, first = null;
+    for (i = 0; i < bs.length; i++) {
+      b = bs[i];
+      if (!(b.offsetWidth || b.offsetHeight)) continue;
+      if (/call|poziv|razgovor/i.test((b.getAttribute("aria-label") || "") + " " + b.textContent)) return b;
+      if (!first) first = b;
+    }
+    return first;
   }
   function freshEngine() {
     var next = proto.cloneNode(false);
@@ -2935,50 +2997,67 @@ function initTalk() {
     if (!engineButton()) return;
     cancel(readyPoll); cancel(readyNet);
     root.classList.add("is-ready");
-    show("ctl");
+    ctl.classList.remove("is-off");
+    sizePill();
+    var h1 = ctl.offsetHeight;
+    ctl.classList.add("is-on");
+    settle(h1);                                    /* grows in from nothing */
   }, 250);
   var readyNet = later(function () {
     cancel(readyPoll);
-    root.classList.add("is-gone");                 /* the section is what it was */
-    if (window.ScrollTrigger) window.ScrollTrigger.refresh();
+    root.classList.add("is-gone");                 /* nothing was ever shown */
   }, TALK_READY_MS);
 
-  /* ── the engine's one public hook ── */
+  /* ── the engine's one public hook. Every callback is bound to the engine
+        and the run that raised it: a session that lands late — after the
+        visitor changed their mind, or for an engine that has since been
+        replaced — is hung up, unheard, and never mistaken for the current one. */
   on(engine, "elevenlabs-convai:call", function (e) {
     var cfg = e.detail && e.detail.config;
     if (!cfg) return;
+    var mine = widget, myRun = run, own = null;
+    function current() { return mine === widget && myRun === run; }
     cfg.onConversationCreated = function (c) {
-      /* a session that arrives after the visitor gave up is ended, unheard */
-      if (state !== "connecting") { try { c.endSession(); } catch (err) {} return; }
+      own = c;
+      if (!current() || state !== "connecting") { hangUp(c); return; }
       conv = c;
     };
     cfg.onConnect = function () {
-      if (state !== "connecting") { try { if (conv) conv.endSession(); } catch (err) {} return; }
+      if (!current() || state !== "connecting") { hangUp(own); return; }
+      if (!conv) { hangUp(own); reset(); return; }   /* connected with nothing to hold — not ours to run */
       goLive();
     };
-    cfg.onDisconnect = function () { finish(); };
-    cfg.onError = function () { if (state === "connecting") reset(); };
+    cfg.onDisconnect = function () { if (current()) finish(); };
+    cfg.onError = function () { if (current() && state === "connecting") reset(); };
   });
 
   function start() {
     if (state !== "idle") return;
-    state = "connecting"; ended = false; conv = null;
-    btn.setAttribute("aria-busy", "true");
-    label.textContent = "Povezujem…";
-    /* a fresh engine may still be fetching its config; wait for its button */
-    var pressed = false;
-    var wait = every(function () {
-      var b = engineButton();
-      if (!b || pressed) return;
-      pressed = true; cancel(wait);
-      b.click();
-    }, 120);
+    state = "connecting"; ended = false; conv = null; run++;
+    label.textContent = "Povezujem…"; say("Povezujem…");
+    btn.setAttribute("aria-busy", "true");        /* after the text, so nothing defers it */
+    paint(TALK_CAP);                              /* the clock is reset while unseen */
+    /* the engine's button is pressed inside the visitor's own gesture when it
+       is there; a fresh engine may still be fetching its config, and then it
+       is pressed the moment it renders — or, if it never does, the block folds */
+    var pressed = false, b = engineButton();
+    if (b) { pressed = true; b.click(); }
+    else {
+      var wait = every(function () {
+        var b2 = engineButton();
+        if (!b2 || pressed) return;
+        pressed = true; cancel(wait);
+        b2.click();
+      }, 120);
+      later(function () { if (!pressed) { reset(); fold(); } }, TALK_ENGINE_MS);
+    }
     later(function () { if (state === "connecting") reset(); }, TALK_CONNECT_MS);
   }
   function goLive() {
+    if (state !== "connecting") return;
     state = "live"; startedAt = performance.now();
     btn.removeAttribute("aria-busy");
-    label.textContent = "Slušam";
+    label.textContent = "Slušam"; say("Slušam");
     root.classList.add("is-live");
     paint(TALK_CAP); sub("live");
     every(tick, 250);
@@ -2987,10 +3066,16 @@ function initTalk() {
     }, TALK_NUDGE * 1000);
     later(capReached, TALK_CAP * 1000);
   }
-  function tick() { if (state === "live") paint(TALK_CAP - (performance.now() - startedAt) / 1000); }
+  function tick() {
+    /* the session's own state is the truth about whether it is still on —
+       the widget keeps onDisconnect for itself, so it is read, not awaited */
+    if (conv && conv.isOpen && !conv.isOpen()) { finish(); return; }
+    if (state === "live") paint(TALK_CAP - (performance.now() - startedAt) / 1000);
+  }
   function capReached() {
     if (state !== "live") return;
     state = "ending"; paint(0);
+    root.classList.add("is-ending");              /* the line is closed; the agent finishes */
     /* the line closes to the visitor first; the agent may finish its sentence */
     try { if (conv && conv.setMicMuted) conv.setMicMuted(true); } catch (err) {}
     var quiet = 0;
@@ -3004,13 +3089,22 @@ function initTalk() {
   }
   function end() {
     stopTimers();
-    try { if (conv && conv.endSession) conv.endSession(); } catch (err) {}
-    later(finish, 1500);                            /* onDisconnect normally lands first */
+    hangUp(conv);
+    every(function () { if (!conv || !conv.isOpen || !conv.isOpen()) finish(); }, 100);
+    later(finish, 1500);                            /* a ceiling, should isOpen() never turn */
+  }
+  function fold() {
+    /* an engine that will not come back: the block leaves the way it came */
+    root.classList.remove("is-ready");
+    settle(0, function () { root.classList.add("is-gone"); });
   }
   function reset() {
     ended = true; stopTimers();
-    state = "idle"; conv = null;
-    root.classList.remove("is-live");
+    /* a change of mind mid-connect ends a session that is still open; one
+       already ended by end() or by the agent is left alone */
+    if (conv && (!conv.isOpen || conv.isOpen())) hangUp(conv);
+    state = "idle"; conv = null; say("");
+    root.classList.remove("is-live"); root.classList.remove("is-ending");
     btn.removeAttribute("aria-busy");
     label.textContent = "Razgovaraj sa agentom";
     sub("note");
@@ -3020,15 +3114,17 @@ function initTalk() {
     if (ended) return;
     var ran = state === "live" || state === "ending";
     reset();
-    show(ran ? "card" : "ctl");
+    if (ran) say("Demo je gotov.");
+    show(ran ? "card" : "ctl", ran);
   }
 
   on(btn, "click", function () {
+    if (!ctl.classList.contains("is-on")) return;   /* a control on its way out */
     if (state === "idle") start();
     else if (state === "connecting") reset();       /* the visitor changed their mind */
     else end();                                     /* live or ending: stop now */
   });
-  if (again) on(again, "click", function () { ended = false; show("ctl"); });
+  if (again) on(again, "click", function () { ended = false; show("ctl", true); });
 }
 
 /* ═══ 2 · CONFIG-DRIVEN PLACEHOLDERS ═══════════════════════════════════════
@@ -3397,8 +3493,18 @@ function initPhoneLoop(gsap) {
   tl.set(note, { display: "inline-flex" }, CUES[0].bub + 0.55)
     .fromTo(note, { opacity: 0, y: 4 }, { opacity: 1, y: 0, duration: 0.4, ease: EASE }, CUES[0].bub + 0.55);
 
-  /* 20 s · potvrda */
-  tl.to(thread, { y: function () { return threadTarget(confirm.offsetHeight + 14); }, duration: 0.5, ease: EASE }, CONFIRM_AT - 0.1)
+  /* 20 s · potvrda. The card is still display:none when the thread has to
+     make room for it, so its height is read with it laid out but unseen —
+     an element that is not displayed measures zero, and the card then lands
+     on top of the last line. */
+  function confirmHeight() {
+    var d = confirm.style.display, v = confirm.style.visibility;
+    confirm.style.visibility = "hidden"; confirm.style.display = "flex";
+    var h = confirm.offsetHeight;
+    confirm.style.display = d; confirm.style.visibility = v;
+    return h;
+  }
+  tl.to(thread, { y: function () { return threadTarget(confirmHeight() + 14); }, duration: 0.5, ease: EASE }, CONFIRM_AT - 0.1)
     .set(confirm, { display: "flex" }, CONFIRM_AT)
     .fromTo(confirm, { opacity: 0, y: 16, scale: 0.92 },
                      { opacity: 1, y: 0, scale: 1, duration: 0.62, ease: SPRING }, CONFIRM_AT)
