@@ -3880,14 +3880,29 @@ function initPhoneLoop(gsap) {
     }, { rootMargin: "160px 0px" });
     io.observe(stage);
     keep(function () { io.disconnect(); });
-  } else {
-    sync();                       /* no observer — the loop still has to start */
   }
+  /* The loop starts now, on the page's own word that the phone is in view —
+     the observer's first report only ever pauses it. A start that waited on
+     that report was, once in a while, a start that never came. */
+  sync();
   whenVisibilityChanges(function (hidden) {
     if (hidden) { sync(); return; }
     /* let the first oversized frame pass before resuming */
     requestAnimationFrame(function () { requestAnimationFrame(sync); });
   });
+  /* A belt for the braces. Play and pause are in the hands of two browser
+     callbacks, and one that never comes — or comes while the page cannot
+     render — leaves the phone on „Dolazni poziv" for good. Every few seconds
+     the loop's state is compared with what it should be and put right; it
+     only ever does anything when something was already wrong. */
+  var lastT = -1;
+  var guard = setInterval(function () {
+    if (!inView || document.hidden) { lastT = -1; return; }
+    var t = tl.time();
+    if (tl.paused() || (t === lastT && !tl.isActive())) tl.play();
+    lastT = t;
+  }, 4000);
+  keep(function () { clearInterval(guard); });
   keep(function () { tl.kill(); });
   return tl;
 }

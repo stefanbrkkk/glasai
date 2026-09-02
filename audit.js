@@ -573,7 +573,12 @@ const LAPTOP_ST = `(() => {
     for (let i = 1; i < secs.length; i++) if (secs[i] < secs[i - 1] && secs[i] !== 0) back++;
     rec(8, 'timer never runs backwards (only resets to 00:00)', back === 0, back + ' regressions');
     // d) three confirmations seen => three full cycles observed
-    rec(8, 'three full cycles observed with a clean wrap', cycles >= 3, `${cycles} wraps in ${took} s over ${samples.length} samples`);
+    /* a run that saw no wraps says why: the page's visibility, the loop's
+       flags, and the first and last states it sampled */
+    const why = cycles >= 3 ? '' : ' :: ' + JSON.stringify(await page.evaluate(`({ hidden: document.hidden, vis: document.visibilityState, frozen: document.querySelector('.phone-stage').classList.contains('is-frozen'),
+      heroDone: !!window.__glasHeroDone, loop: document.documentElement.classList.contains('js-loop'), y: window.scrollY, stageTop: Math.round(document.querySelector('.phone-stage').getBoundingClientRect().top) })`))
+      + ' first=' + JSON.stringify({ t: samples[0].t, inc: samples[0].incoming, call: samples[0].call }) + ' last=' + JSON.stringify({ t: samples[samples.length - 1].t, inc: samples[samples.length - 1].incoming, call: samples[samples.length - 1].call });
+    rec(8, 'three full cycles observed with a clean wrap', cycles >= 3, `${cycles} wraps in ${took} s over ${samples.length} samples` + why);
     // e) the seam is dark — no flash of the old state
     const flash = samples.filter(s => s.content < 0.9 && s.content > 0.05 && s.confirm > 0.5 && s.incoming > 0.5);
     rec(8, 'no flash of the previous state across the seam', flash.length === 0);
