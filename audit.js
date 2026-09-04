@@ -1148,10 +1148,12 @@ const LAPTOP_ST = `(() => {
       await page.waitForTimeout(400);
       await page.clock.runFor(12200); st = await page.evaluate(TALK_ST);
       const failShown = await page.evaluate(`document.querySelector('#talk-fail').classList.contains('is-on')`);
+      const failText = await page.evaluate(`document.querySelector('#talk-fail').textContent`);
+      const failLink = await page.evaluate(`!!document.querySelector('#talk-fail a[href="#kontakt"]')`);
       await page.clock.runFor(4200);
-      const failGone = await page.evaluate(`!document.querySelector('#talk-fail').classList.contains('is-on') && document.querySelector('#talk-note').classList.contains('is-on')`);
-      rec(14, 'an attempt that never connects comes back after 12 s with a notice, and the notice steps aside after 4 s',
-          midWait.label === 'Povezujem…' && st.label === 'Razgovaraj sa agentom' && failShown && failGone, JSON.stringify({ mid: midWait.label, after: st.label, failShown, failGone }));
+      const failStays = await page.evaluate(`document.querySelector('#talk-fail').classList.contains('is-on') && !document.querySelector('#talk-note').classList.contains('is-on')`);
+      rec(14, 'an attempt the service accepts and never answers comes back after 12 s with the owner\'s notice — the address linked — and that notice stays past the four seconds the generic one gets, since a retry cannot mend it',
+          midWait.label === 'Povezujem…' && st.label === 'Razgovaraj sa agentom' && failShown && failText === 'Demo trenutno nije dostupan — zakažite razgovor.' && failLink && failStays, JSON.stringify({ mid: midWait.label, after: st.label, failShown, failText, failLink, failStays }));
 
       /* the agent hangs up early — the widget keeps onDisconnect for itself,
          so the page has to notice on its own */
@@ -1295,6 +1297,9 @@ const LAPTOP_ST = `(() => {
       } else if (mode === 'storage') {
         rec(14, 'site data blocked for the origin: the widget throws before it opens a socket — the browser reports it as its own „Uncaught (in promise)” line (a cross-origin script, muted for the page), and the 12 s verdict says no socket was opened and points at that line',
             st.failOn && st.failText === 'Povezivanje nije uspelo — pokušajte ponovo.' && sock.url === null && bag.some(b => /Access is denied for this document/.test(b)) && said(/failed — no socket was opened within 12 s of pressing the widget — something inside the widget stopped it before it reached the network; the browser's own line above/), JSON.stringify({ st, lines, sock, bag }));
+        await page.waitForTimeout(4300);
+        const stGone = await page.evaluate(TALK_ST2);
+        rec(14, 'and the generic notice — a retry might mend this one — steps aside after four seconds, the note back in its place', !stGone.failOn && stGone.ctl && stGone.label === 'Razgovaraj sa agentom', JSON.stringify(stGone));
       } else if (mode === 'micdenied') {
         await page.waitForTimeout(4600);
         const stHold = await page.evaluate(TALK_ST2);
