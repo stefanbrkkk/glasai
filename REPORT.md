@@ -751,7 +751,7 @@ cross-origin scripts; MDN on `getUserMedia` in insecure contexts.
   harness accepts and declines it against the real widget.
 - The widget fetches its avatar texture from `storage.googleapis.com`; the
   harness stubs it. In production that host is one more the page touches.
-- Everything else is run, not reasoned: **170 / 170 harness checks** (sixteen rounds — round 14 is the demo on a fake clock, 14b the real widget against a mocked service, 15 the contact section; see the table) and **97 / 97 content checks**.
+- Everything else is run, not reasoned: **188 / 188 harness checks** (sixteen rounds — round 14 is the demo on a fake clock, 14b the real widget against a mocked service, 15 the contact section; see the table) and **97 / 97 content checks**.
 
 ### 5 · The calendar claim, and the percentages
 
@@ -771,7 +771,7 @@ decide there.
 
 ## 3 · Round 1 — final automated audit (`node audit.js`)
 
-**170 / 170 passed, all green — on the last two consecutive full runs.** Everything below was actually executed in
+**188 / 188 passed, all green — on the last full run.** Everything below was actually executed in
 headless Chromium against the real file.
 
 | # | round | result |
