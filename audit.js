@@ -1212,7 +1212,7 @@ const LAPTOP_ST = `(() => {
         timers: (window.__glasTalkTimers || []).length, ws: window.WebSocket.name, engines: document.querySelectorAll('elevenlabs-convai').length,
         terms: g('talk-terms').classList.contains('is-on'), termsText: g('talk-terms-body').textContent.trim(), focus: document.activeElement && document.activeElement.id,
         failLink: !!g('talk-fail').querySelector('a[href="#kontakt"]') }; })()`;
-    for (const mode of ['handshake', 'refused', 'quota', 'terms', 'terms-decline', 'micdenied', 'insecure']) {
+    for (const mode of ['handshake', 'refused', 'quota', 'terms', 'terms-decline', 'micdenied', 'insecure', 'errorfirst', 'hangpending', 'storage']) {
       const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
       const cfg = { widget_config: { ...CFG_BASE } };
       if (mode === 'terms' || mode === 'terms-decline') { cfg.widget_config.terms_html = '<p>Uslovi korišćenja demoa.</p>'; cfg.widget_config.terms_key = null; }
@@ -1225,10 +1225,14 @@ const LAPTOP_ST = `(() => {
       await page.addInitScript(() => { window.__glasDebug = true; });
       if (mode === 'micdenied') await page.addInitScript(() => { const md = navigator.mediaDevices; Object.defineProperty(navigator, 'mediaDevices', { value: Object.assign(Object.create(md), { getUserMedia: () => Promise.reject(new DOMException('Permission denied', 'NotAllowedError')) }), configurable: true }); });
       if (mode === 'insecure') await page.addInitScript(() => { Object.defineProperty(window, 'isSecureContext', { value: false, configurable: true }); });
+      /* a browser with site data blocked for this origin: storage that throws */
+      if (mode === 'storage') await page.addInitScript(() => { const thrower = { get() { throw new DOMException('Access is denied for this document.', 'SecurityError'); }, configurable: true }; Object.defineProperty(window, 'localStorage', thrower); Object.defineProperty(window, 'sessionStorage', thrower); });
       const sock = { url: null, protocol: null, first: null, pings: 0 };
       await page.routeWebSocket(/v1\/convai\/conversation/, ws => {
         sock.url = ws.url();
         if (mode === 'refused') { ws.close({ code: 1008, reason: 'Origin not allowed' }); return; }
+        if (mode === 'hangpending') { ws.onMessage(() => {}); return; }          /* accepted, then silence */
+        if (mode === 'errorfirst') { ws.onMessage(msg => { let m = {}; try { m = JSON.parse(String(msg)); } catch (e) {} if (m.type === 'conversation_initiation_client_data') { sock.first = sock.first || m.type; ws.send(JSON.stringify({ type: 'error', error_event: { error_type: 'agent_not_found', message: 'Agent not found' } })); } }); return; }
         ws.onMessage(msg => {
           let m = null; try { m = JSON.parse(String(msg)); } catch (e) { m = {}; }
           if (m.type === 'conversation_initiation_client_data') {
@@ -1249,7 +1253,7 @@ const LAPTOP_ST = `(() => {
       await page.evaluate(SCROLL_TO + `(document.querySelector('#glas').getBoundingClientRect().top + window.scrollY)`);
       await page.waitForTimeout(500);
       await page.click('#talk-btn');
-      await page.waitForTimeout(mode === 'quota' ? 2600 : 2200);
+      await page.waitForTimeout(mode === 'quota' ? 2600 : /^(errorfirst|hangpending|storage)$/.test(mode) ? 12600 : 2200);   /* the three that run out the 12 s clock */
       const st = await page.evaluate(TALK_ST2);
       const said = re => lines.some(l => re.test(l));
       if (mode === 'handshake') {
@@ -1282,6 +1286,15 @@ const LAPTOP_ST = `(() => {
           const st2 = await page.evaluate(TALK_ST2);
           rec(14, '„Odustani” returns to the start: no socket, no timer, one fresh engine, and the widget\'s waiting promise goes with the old one — no error', st2.ctl && !st2.terms && !st2.live && st2.label === 'Razgovaraj sa agentom' && sock.url === null && st2.timers === 0 && st2.engines === 1 && said(/terms declined by the visitor/), JSON.stringify({ st2, sock }));
         }
+      } else if (mode === 'errorfirst') {
+        rec(14, 'a first frame that is not the initiation metadata: named for the owner the moment it arrives, and the 12 s verdict says the service accepted the socket but never answered — the owner\'s notice, not „try again”',
+            st.failOn && st.failText === 'Demo trenutno nije dostupan — zakažite razgovor.' && st.failLink && !st.live && said(/first frame from the service was not the initiation metadata but „error”/) && said(/failed — the service accepted the socket but no session began within 12 s/), JSON.stringify({ st, lines }));
+      } else if (mode === 'hangpending') {
+        rec(14, 'a handshake the service accepts and never answers: the 12 s verdict names it (accepted, no session) and the notice is the owner\'s',
+            st.failOn && st.failText === 'Demo trenutno nije dostupan — zakažite razgovor.' && !st.live && said(/socket open — the service accepted/) && !said(/first frame/) && said(/failed — the service accepted the socket but no session began within 12 s/), JSON.stringify({ st, lines }));
+      } else if (mode === 'storage') {
+        rec(14, 'site data blocked for the origin: the widget throws before it opens a socket — the browser reports it as its own „Uncaught (in promise)” line (a cross-origin script, muted for the page), and the 12 s verdict says no socket was opened and points at that line',
+            st.failOn && st.failText === 'Povezivanje nije uspelo — pokušajte ponovo.' && sock.url === null && bag.some(b => /Access is denied for this document/.test(b)) && said(/failed — no socket was opened within 12 s of pressing the widget — something inside the widget stopped it before it reached the network; the browser's own line above/), JSON.stringify({ st, lines, sock, bag }));
       } else if (mode === 'micdenied') {
         await page.waitForTimeout(4600);
         const stHold = await page.evaluate(TALK_ST2);
@@ -1290,7 +1303,40 @@ const LAPTOP_ST = `(() => {
       }
       const stEnd = await page.evaluate(TALK_ST2);
       rec(14, `${mode}: the native WebSocket is restored and no timer is left`, stEnd.ws === 'WebSocket' && (mode === 'handshake' || mode === 'terms' || stEnd.timers <= 1), JSON.stringify({ ws: stEnd.ws, timers: stEnd.timers }));
-      rec(14, `${mode}: zero console errors from the page`, bag.filter(b => !/ConversationalAI\] Disconnected due to an error/.test(b)).length === 0, bag.slice(0, 3).join(' | '));
+      rec(14, `${mode}: zero console errors from the page`, bag.filter(b => !/ConversationalAI\] Disconnected due to an error/.test(b) && !(mode === 'storage' && /Access is denied for this document/.test(b))).length === 0, bag.slice(0, 3).join(' | '));
+      await ctx.close();
+    }
+    /* the page inside another site's frame, without allow="microphone": the
+       browser refuses the microphone by policy, and the page says so — both
+       origins https, so the frame is neither mixed content nor insecure */
+    {
+      const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+      await wire(ctx);
+      await ctx.route(/elevenlabs\.io/, r => { if (/\/v1\/convai\/agents\/[^/]+\/widget/.test(r.request().url())) return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ widget_config: { ...CFG_BASE } }) }); r.fulfill({ status: 500, contentType: 'application/json', body: '{}' }); });
+      await ctx.grantPermissions(['microphone']);
+      const page = await ctx.newPage(); const lines = [];
+      page.on('console', m => { if (/\[glas\] demo:/.test(m.text())) lines.push(m.text()); });
+      await page.route(/^https:\/\/site\.test\//, r => { const u = new URL(r.request().url()); const f = path.join(ROOT, u.pathname === '/' ? 'index.html' : u.pathname); if (!fs.existsSync(f)) return r.fulfill({ status: 404, body: '' }); r.fulfill({ status: 200, contentType: MIME[path.extname(f)] || 'application/octet-stream', body: fs.readFileSync(f) }); });
+      await page.route('https://frame.test/wrap.html', r => r.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>wrap</title><style>body{margin:0}iframe{border:0;width:100vw;height:100vh}</style><iframe src="https://site.test/index.html"></iframe>' }));
+      await page.addInitScript(() => { window.__glasDebug = true; });
+      const sock = { url: null };
+      await page.routeWebSocket(/v1\/convai\/conversation/, ws => { sock.url = ws.url(); ws.onMessage(() => {}); });
+      await page.goto('https://frame.test/wrap.html', { waitUntil: 'load' });
+      let P = null;
+      for (let i = 0; i < 100 && !(P = page.frames().find(f => /site\.test\/index\.html/.test(f.url()))); i++) await page.waitForTimeout(100);
+      let st = null;
+      if (P) {
+        await P.waitForFunction('window.__glasBooted === true', null, { timeout: 15000 }).catch(() => {});
+        await page.waitForTimeout(2500);
+        await P.evaluate(SCROLL_TO + `(document.querySelector('#glas').getBoundingClientRect().top + window.scrollY)`);
+        await page.waitForTimeout(500);
+        await P.click('#talk-btn');
+        await page.waitForTimeout(2200);
+        st = await P.evaluate(TALK_ST2);
+      }
+      const said = re => lines.some(l => re.test(l));
+      rec(14, 'framed by another origin without allow="microphone": the visitor sees the microphone notice, and the owner\'s line says the page is inside a frame and that the host\'s policy disallows the microphone — no socket',
+          !!st && st.failOn && st.failText === 'Mikrofon je blokiran u pretraživaču — dozvolite ga za ovu stranicu i pokušajte ponovo.' && sock.url === null && said(/microphone refused for this page: NotAllowedError.*the page is inside a frame \(window\.top !== window\).*the microphone is disallowed by the host's Permissions-Policy/), JSON.stringify({ st, lines, frames: page.frames().map(f => f.url()) }));
       await ctx.close();
     }
   }

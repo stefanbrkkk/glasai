@@ -3409,6 +3409,17 @@ function initTalk() {
       sawSocket = true;
       diag("socket opening to " + String(url).replace(/\?.*/, "?…"));
       ws.addEventListener("open", function () { socketOpen = true; release(); diag("socket open — the service accepted the connection"); });
+      /* the first frame: the SDK waits once, for the initiation metadata, and
+         anything else leaves it waiting in silence */
+      var firstFrame = function (e) {
+        ws.removeEventListener("message", firstFrame);
+        var m = null, t;
+        try { m = JSON.parse(String(e.data)); } catch (err) {}
+        t = m && m.type;
+        if (t === "conversation_initiation_metadata") diag("first frame from the service: the initiation metadata — conversation " + ((m.conversation_initiation_metadata_event || {}).conversation_id || "(no id)") + "; the dashboard has a record from here on");
+        else diag("first frame from the service was not the initiation metadata but " + (t ? "„" + t + "”" : "something else") + " — the SDK waits for the metadata alone, so this attempt will hang" + (m ? ": " + safeJSON(m) : ""));
+      };
+      ws.addEventListener("message", firstFrame);
       ws.addEventListener("error", function () { diag("socket error — the handshake was refused before the service answered (a firewall, a content-security policy, or the agent's allowlist)"); });
       ws.addEventListener("close", function (e) {
         socketNote = "code " + e.code + (e.reason ? " — " + e.reason : "");
@@ -3442,7 +3453,7 @@ function initTalk() {
       a.clocks.push(later(function () {
         if (!still()) return;
         var s = (TALK_CONNECT_MS / 1000) + " s " + what;
-        if (!sawSocket)  fail("no socket was opened within " + s + " — something inside the widget stopped it (its own console lines above, if any, say what)");
+        if (!sawSocket)  fail("no socket was opened within " + s + " — something inside the widget stopped it before it reached the network; the browser's own line above („Uncaught (in promise) …”), if there is one, names it — the widget is a cross-origin script, so the page cannot hear it itself");
         else if (!socketOpen) fail("a socket was opened but the service never accepted it within " + s + " — the handshake is being held or refused on the way (a firewall, a proxy, or a content-security policy between this page and api.elevenlabs.io)");
         else fail("the service accepted the socket but no session began within " + s + " — the initiation was never answered", OWNER_NOTICE);
       }, TALK_CONNECT_MS));
@@ -3539,7 +3550,9 @@ function initTalk() {
     return out.join(" · ").slice(0, 240);
   }
   /* a promise nobody caught while an attempt was under way is the owner's
-     business too: the widget's, the SDK's, this page's alike */
+     business too. The widget's own are muted by the browser — a cross-origin
+     script's rejections reach the console but never this event — so this
+     hears the page's; the widget's are pointed at in the 12 s verdict. */
   function onReject(e) {
     var r = e && e.reason, t = r && (r.message || r.reason || String(r));
     diag("an unhandled rejection while the attempt was under way: " + (t || "(no message)"));
