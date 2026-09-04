@@ -1214,6 +1214,8 @@ h3 {
   max-width: 38ch; text-wrap: balance;
 }
 .talk-fail { color: var(--muted-hi); }      /* a notice, in the same voice, a shade up */
+.talk-fail a { color: var(--signal); text-decoration: underline; text-underline-offset: 0.2em; text-decoration-color: color-mix(in srgb, var(--signal) 55%, transparent); }
+@media (hover: hover) and (pointer: fine) { .talk-fail a:hover { text-decoration-color: var(--signal); } }
 .talk-live { display: flex; flex-direction: column; align-items: center; gap: 0.6rem; width: min(100%, 22rem); }
 .talk-clock {
   font-family: var(--f-mono); font-size: var(--t-sm); font-weight: 600;
@@ -1226,6 +1228,21 @@ h3 {
   background: var(--machine); transform-origin: left center;
   transition: transform 260ms linear;
 }
+/* the owner's terms, shown by the page when the engine asks for them: the
+   sheet the widget would have drawn, in the page's own type, with the
+   answer handed back to the widget */
+.talk-terms-body {
+  width: min(100%, 46ch); max-height: 14rem; overflow: auto;
+  padding: 1rem 1.15rem; text-align: left;
+  font-size: var(--t-sm); line-height: 1.55; color: var(--muted-hi);
+  background: var(--ink-2); border: 1px solid var(--line-soft); border-radius: var(--r-md);
+  text-wrap: pretty;
+}
+.talk-terms-body > * + * { margin-top: 0.6em; }
+.talk-terms-body :is(h1, h2, h3, h4) { font: inherit; font-weight: 600; color: var(--text); }
+.talk-terms-body a { color: var(--signal); text-decoration: underline; text-underline-offset: 0.2em; }
+.talk-terms-body:focus-visible { box-shadow: var(--focus); }
+.talk-terms .talk-card-row { align-items: center; }
 .talk-card h3 { font-size: var(--t-lg); letter-spacing: -0.01em; }
 .talk-card p  { color: var(--muted); font-size: var(--t-sm); line-height: 1.55; max-width: 36ch; text-wrap: balance; }
 .talk-card-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.75rem; margin-top: 0.15rem; }
@@ -2164,6 +2181,13 @@ html:not(.js) .faq-panel > div,
           </div>
           <button class="talk-again" id="talk-again" type="button">Razgovaraj sa agentom</button>
         </div>
+        <div class="talk-state talk-terms is-off" id="talk-terms">
+          <div class="talk-terms-body" id="talk-terms-body" tabindex="-1"></div>
+          <div class="talk-card-row">
+            <button class="btn btn--primary btn--magnetic" id="talk-accept" type="button">Prihvatam</button>
+            <button class="talk-again" id="talk-decline" type="button">Odustani</button>
+          </div>
+        </div>
         <div class="talk-engine" id="talk-engine" aria-hidden="true" inert>
           <!-- The ElevenLabs snippet, exactly as supplied. The forty-second cap
                drives this widget through its `elevenlabs-convai:call` event and
@@ -3100,8 +3124,9 @@ function initBands() {
    the widget (0.17.1) keeps onConversationCreated, onConnect and onError but
    replaces onDisconnect with its own — so the end of a session is read from
    the Conversation itself (isOpen()), on the page's clock, and the hook is
-   kept only in case a later version forwards it. Nothing here logs; a
-   failure is a quiet return to the state the visitor started from.        */
+   kept only in case a later version forwards it. Every attempt that ends
+   without a session is named on the console for the owner („[glas] demo:”)
+   and, for the visitor, in the one notice they can act on.                */
 var TALK_CAP = 40;              /* seconds — the hard cap, not a suggestion */
 var TALK_GRACE = 6;             /* how long after the cap a sentence may finish */
 var TALK_NUDGE = 31;            /* when the agent is told to wrap up */
@@ -3121,6 +3146,7 @@ function initTalk() {
   var btn = $("#talk-btn"), label = $("#talk-label"), note = $("#talk-note"), live = $("#talk-live");
   var clock = $("#talk-clock"), rule = $("#talk-rule"), book = $("#talk-book"), again = $("#talk-again");
   var status = $("#talk-status");
+  var termsPanel = $("#talk-terms"), termsBody = $("#talk-terms-body"), accept = $("#talk-accept"), decline = $("#talk-decline");
   if (!root || !ctl || !card || !engine || !btn || !label || !note || !live || !clock || !rule) return;
   var widget = engine.querySelector("elevenlabs-convai");
   if (!widget) return;
@@ -3188,17 +3214,24 @@ function initTalk() {
       if (window.ScrollTrigger) window.ScrollTrigger.refresh();
     }, SWAP_MS);
   }
+  var panels = { ctl: ctl, card: card, terms: termsPanel };
   function show(which, focus) {
-    var into = which === "card" ? card : ctl, outOf = which === "card" ? ctl : card;
-    if (into.classList.contains("is-on") && outOf.classList.contains("is-off")) return;
-    into.classList.remove("is-off"); outOf.classList.remove("is-off");
+    var into = panels[which];
+    if (!into) return;
+    var others = [], k;
+    for (k in panels) if (panels[k] && panels[k] !== into) others.push(panels[k]);
+    var off = function (p) { return p.classList.contains("is-off"); };
+    if (into.classList.contains("is-on") && others.every(off)) return;
+    into.classList.remove("is-off"); others.forEach(function (p) { p.classList.remove("is-off"); });
     var h1 = into.offsetHeight;
-    into.classList.add("is-on"); outOf.classList.remove("is-on");
-    settle(h1, function () { outOf.classList.add("is-off"); });
+    into.classList.add("is-on"); others.forEach(function (p) { p.classList.remove("is-on"); });
+    settle(h1, function () { others.forEach(function (p) { p.classList.add("is-off"); }); });
     /* the control the visitor was on is leaving; put them on the next one —
        but only if they were on it */
     if (focus && root.contains(document.activeElement)) {
-      var f = which === "card" ? card.querySelector("h3") : btn;   /* the heading first: context, then its button on Tab */
+      /* the heading first: context, then its button on Tab; the terms first,
+         then their buttons */
+      var f = which === "card" ? card.querySelector("h3") : which === "terms" ? termsBody : btn;
       if (f) try { f.focus({ preventScroll: true }); } catch (err) {}
     }
   }
@@ -3220,6 +3253,17 @@ function initTalk() {
   /* the words the control needs and the brief did not supply: a stop name for
      the live control, an ending that is not „listening”, a failed attempt */
   var STOP_NAME = "Slušam — prekini demo", ENDING = "Završavam…", FAILED = "Povezivanje nije uspelo — pokušajte ponovo.";
+  /* a failure only the owner can mend — the quota, the allowlist, a closed
+     socket — is not one to retry; the visitor is pointed at the address */
+  var OWNER_NOTICE = "Demo trenutno nije dostupan — zakažite razgovor.";
+  function writeNotice(words) {
+    if (!fail$) return;
+    if (words !== OWNER_NOTICE) { fail$.textContent = words; return; }
+    fail$.textContent = "Demo trenutno nije dostupan — ";
+    var a = document.createElement("a");
+    a.href = "#kontakt"; a.textContent = "zakažite razgovor";
+    fail$.appendChild(a); fail$.appendChild(document.createTextNode("."));
+  }
   /* and the three the microphone can need — the one place a visitor can act */
   var MIC_DENIED = "Mikrofon je blokiran u pretraživaču — dozvolite ga za ovu stranicu i pokušajte ponovo.";
   var MIC_NONE = "Nije pronađen mikrofon.";
@@ -3233,17 +3277,23 @@ function initTalk() {
   /* The start button, by its name where it has one — under some dashboard
      settings (text input on, expanded by default) it is not the first button
      in the widget — and by position only as a fallback. */
+  var buttonByName = false;
   function engineButton() {
     var sr = widget && widget.shadowRoot;
+    buttonByName = false;
     if (!sr) return null;
     var bs = sr.querySelectorAll("button"), i, b, first = null;
     for (i = 0; i < bs.length; i++) {
       b = bs[i];
       if (!(b.offsetWidth || b.offsetHeight)) continue;
-      if (/call|poziv|razgovor/i.test((b.getAttribute("aria-label") || "") + " " + b.textContent)) return b;
+      if (/call|poziv|razgovor/i.test((b.getAttribute("aria-label") || "") + " " + b.textContent)) { buttonByName = true; return b; }
       if (!first) first = b;
     }
     return first;
+  }
+  function press(b) {
+    if (!buttonByName) diag("the widget's start button was not found by its name — its first button was pressed instead (with „Text only” on in the ElevenLabs widget settings there is no call button, and nothing will start)");
+    b.click();
   }
   function freshEngine() {
     var next = proto.cloneNode(false);
@@ -3275,21 +3325,29 @@ function initTalk() {
   on(engine, "elevenlabs-convai:call", function (e) {
     var cfg = e.detail && e.detail.config;
     if (!cfg) return;
+    diag("call event received — the widget is starting a session; the page's hooks are attached");
     var mine = widget, myRun = run, own = null;
     function current() { return mine === widget && myRun === run; }
+    function late(c) { diag("a session arrived after its attempt had ended — hung up"); hangUp(c); }
     cfg.onConversationCreated = function (c) {
       own = c;
-      if (!current() || state !== "connecting") { hangUp(c); return; }
+      if (!current() || state !== "connecting") { late(c); return; }
       conv = c;
     };
     cfg.onConnect = function () {
-      if (!current() || state !== "connecting") { hangUp(own); return; }
-      if (!conv) { hangUp(own); reset(); return; }   /* connected with nothing to hold — not ours to run */
+      if (!current() || state !== "connecting") { late(own); return; }
+      if (!conv) { hangUp(own); fail("connected, but no conversation was handed to the page — the widget's SDK no longer forwards onConversationCreated", OWNER_NOTICE); return; }
       goLive();
     };
     cfg.onDisconnect = function () { if (current()) finish(); };
-    cfg.onError = function () { if (current() && state === "connecting") reset(); };
+    cfg.onError = function (msg, ctx) {
+      if (!current()) return;
+      var t = String((msg && msg.message) || msg || "") + (ctx ? " " + safeJSON(ctx) : "");
+      if (state === "connecting") fail("the widget reported an error while connecting: " + t, OWNER_NOTICE);
+      else diag("the widget reported an error during the session: " + t);
+    };
   });
+  function safeJSON(x) { try { return JSON.stringify(x).slice(0, 200); } catch (err) { return ""; } }
 
   /* The engine takes the microphone before it opens its socket, and a
      microphone it cannot have ends the attempt inside the engine, unseen —
@@ -3297,13 +3355,31 @@ function initTalk() {
      its owner's dashboard shows no conversation at all. So the page asks for
      the microphone itself, first, in the visitor's own gesture: the browser
      shows one prompt, both requests share the answer, and a refusal is the
-     page's to name. Only the permission is wanted; the stream is closed at
-     once. */
+     page's to name. The stream is held until the engine's socket is open —
+     a device stopped and re-opened within the same instant can refuse the
+     second opening on some phones — and released then, or when the attempt
+     ends, whichever comes first. */
+  var held = null;
+  function release() {
+    if (!held) return;
+    var ts = held.getTracks(), i;
+    for (i = 0; i < ts.length; i++) ts[i].stop();
+    held = null;
+  }
+  keep(release);
   function mic() {
-    return navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
-      var ts = stream.getTracks(), i;
-      for (i = 0; i < ts.length; i++) ts[i].stop();
-    });
+    return navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) { release(); held = stream; });
+  }
+  /* why a microphone was refused, when the page can tell: a frame without
+     the permission, or a policy on the host */
+  function micPolicy() {
+    var why = [];
+    try { if (window.top !== window) why.push("the page is inside a frame (window.top !== window) — the frame needs allow=\"microphone\""); } catch (err) { why.push("the page is inside a cross-origin frame"); }
+    try {
+      var pp = document.permissionsPolicy || document.featurePolicy;
+      if (pp && pp.allowsFeature && !pp.allowsFeature("microphone")) why.push("the microphone is disallowed by the host's Permissions-Policy header");
+    } catch (err) {}
+    return why.length ? " — " + why.join("; ") : "";
   }
   function micNotice(err) {
     var n = (err && err.name) || "";
@@ -3318,21 +3394,26 @@ function initTalk() {
      the code and reason the service closed it with — the quota, an allowlist,
      a firewall — which the engine otherwise keeps to itself. Restored the
      moment the attempt ends, whichever way. */
-  var NativeWS = window.WebSocket, sawSocket = false, socketNote = "";
+  var NativeWS = window.WebSocket, sawSocket = false, socketOpen = false, socketNote = "";
   function watchSocket(myRun) {
     if (typeof NativeWS !== "function") return;
-    sawSocket = false; socketNote = "";
+    sawSocket = false; socketOpen = false; socketNote = "";
     function Watched(url, protocols) {
-      var ws = protocols === undefined ? new NativeWS(url) : new NativeWS(url, protocols);
-      if (!/elevenlabs\.io|\/v1\/convai\/conversation/.test(String(url))) return ws;
+      var ours = /elevenlabs\.io|\/v1\/convai\/conversation/.test(String(url)), ws;
+      try { ws = protocols === undefined ? new NativeWS(url) : new NativeWS(url, protocols); }
+      catch (err) {
+        if (ours) diag("the browser refused to open the socket: " + ((err && err.name) || "") + (err && err.message ? " — " + err.message : "") + " (mixed content, or a content-security policy without connect-src wss://api.elevenlabs.io)");
+        throw err;
+      }
+      if (!ours) return ws;
       sawSocket = true;
       diag("socket opening to " + String(url).replace(/\?.*/, "?…"));
-      ws.addEventListener("open", function () { diag("socket open — the service accepted the connection"); });
+      ws.addEventListener("open", function () { socketOpen = true; release(); diag("socket open — the service accepted the connection"); });
       ws.addEventListener("error", function () { diag("socket error — the handshake was refused before the service answered (a firewall, a content-security policy, or the agent's allowlist)"); });
       ws.addEventListener("close", function (e) {
         socketNote = "code " + e.code + (e.reason ? " — " + e.reason : "");
         diag("socket closed, " + socketNote);
-        if (state === "connecting" && myRun === run) fail("the service closed the socket before a session began (" + socketNote + ")");
+        if (state === "connecting" && myRun === run) fail("the service closed the socket before a session began (" + socketNote + ")", OWNER_NOTICE);
       });
       return ws;
     }
@@ -3349,58 +3430,133 @@ function initTalk() {
     cancel(failT); sub("note");
     label.textContent = "Povezujem…"; say("Povezujem…");
     btn.setAttribute("aria-busy", "true");        /* after the text, so nothing defers it */
+    window.addEventListener("unhandledrejection", onReject);
     paint(TALK_CAP);                              /* the clock is reset while unseen */
     var myRun = run;
     function still() { return state === "connecting" && myRun === run; }
+    /* the attempt's own record: the microphone's answer, kept for as long as
+       the visitor may be reading the terms, and the clocks it arms */
+    var a = attempt = { run: myRun, micDone: false, micErr: null, clocks: [] };
+    a.ceiling = function (what) { a.clocks.push(later(function () { if (still()) fail("no session within " + (TALK_CONNECT_MAX_MS / 1000) + " s " + what); }, TALK_CONNECT_MAX_MS)); };
+    a.clock = function (what) {
+      a.clocks.push(later(function () {
+        if (!still()) return;
+        var s = (TALK_CONNECT_MS / 1000) + " s " + what;
+        if (!sawSocket)  fail("no socket was opened within " + s + " — something inside the widget stopped it (its own console lines above, if any, say what)");
+        else if (!socketOpen) fail("a socket was opened but the service never accepted it within " + s + " — the handshake is being held or refused on the way (a firewall, a proxy, or a content-security policy between this page and api.elevenlabs.io)");
+        else fail("the service accepted the socket but no session began within " + s + " — the initiation was never answered", OWNER_NOTICE);
+      }, TALK_CONNECT_MS));
+    };
+    a.failMic = function (err) { fail("microphone refused for this page: " + ((err && err.name) || "unknown error") + (err && err.message ? " — " + err.message : "") + micPolicy(), micNotice(err)); };
     /* the ceiling, whatever happens — a prompt left unanswered included */
-    later(function () { if (still()) fail("no session within " + (TALK_CONNECT_MAX_MS / 1000) + " s — the microphone prompt was never answered, or the engine never tried"); }, TALK_CONNECT_MAX_MS);
+    a.ceiling("— the microphone prompt was never answered, or the engine never tried");
     watchSocket(myRun);
     /* the microphone: asked for first, so its answer is the page's; the clock
        for the rest starts only once that answer is in */
     mic().then(function () {
+      a.micDone = true;
       if (!still()) return;
       diag("microphone granted");
-      later(function () {
-        if (!still()) return;
-        fail(sawSocket ? "the socket opened but no session began within " + (TALK_CONNECT_MS / 1000) + " s"
-                       : "no socket was opened within " + (TALK_CONNECT_MS / 1000) + " s of pressing the widget — something inside the widget stopped it (its own console lines above, if any, say what)");
-      }, TALK_CONNECT_MS);
+      a.clock("of pressing the widget");
     }, function (err) {
-      if (!still()) return;
-      fail("microphone refused for this page: " + ((err && err.name) || "unknown error") + (err && err.message ? " — " + err.message : ""), micNotice(err));
+      a.micDone = true; a.micErr = err;
+      if (still()) a.failMic(err);
     });
     /* the engine's button is pressed inside the visitor's own gesture when it
        is there; a fresh engine may still be fetching its config, and then it
        is pressed the moment it renders — or, if it never does, the block folds */
     var pressed = false, b = engineButton();
-    if (b) { pressed = true; b.click(); }
+    if (b) { pressed = true; press(b); }
     else {
       var wait = every(function () {
         var b2 = engineButton();
         if (!b2 || pressed) return;
         pressed = true; cancel(wait);
-        b2.click();
+        press(b2);
       }, 120);
       later(function () { if (!pressed && still()) { diag("hidden — a fresh engine never rendered its button within " + (TALK_ENGINE_MS / 1000) + " s"); reset(); fold(); } }, TALK_ENGINE_MS);
     }
     /* the one thing the widget can put in the visitor's way that this page
-       never shows: its terms dialog. It is looked for, and named. */
-    every(function () {
-      if (!still()) return;
-      var sr = widget && widget.shadowRoot;
-      if (sr && sr.querySelector(".terms")) fail("the widget is asking the visitor to accept terms — „Require the caller to accept your terms” is on in the ElevenLabs widget settings, and a dialog this page never shows cannot be accepted; switch it off for the demo");
+       never shows: its terms sheet. It is looked for, and when it comes the
+       page shows the same terms itself and hands the answer back. */
+    var probe = every(function () {
+      if (!still()) { cancel(probe); return; }
+      var sheet = termsSheet();
+      if (sheet) { cancel(probe); askTerms(sheet); }
     }, 250);
   }
+  /* ── the terms ── ElevenLabs' agents ship with „Require the caller to
+     accept your terms" on, and the widget will not start a call until its
+     own sheet is accepted — a sheet that, inside this page's hidden engine,
+     nobody could ever see. So the page draws the same terms in its own
+     block, and the visitor's „Prihvatam" presses the widget's own Accept:
+     the attempt goes on from exactly where it waited. „Odustani" replaces
+     the engine, and with it the promise the widget was waiting on. */
+  var attempt = null;
+  function termsSheet() { var sr = widget && widget.shadowRoot; return sr ? sr.querySelector(".terms") : null; }
+  function askTerms(sheet) {
+    if (!termsPanel || !termsBody) { fail("the widget is asking the visitor to accept terms and this page has no panel for them"); return; }
+    state = "terms";
+    diag("the widget is asking the visitor to accept terms — „Require the caller to accept your terms” is on in the ElevenLabs widget settings; the page shows them and hands the answer back");
+    termsBody.innerHTML = sheet.innerHTML;         /* the owner's own words, from the owner's own dashboard */
+    btn.removeAttribute("aria-busy");
+    label.textContent = "Razgovaraj sa agentom"; say("");
+    show("terms", true);
+  }
+  if (accept) on(accept, "click", function () {
+    if (state !== "terms") return;
+    var a = attempt;
+    var sheet = termsSheet(), box = sheet && sheet.parentNode;
+    var bs = box ? box.querySelectorAll("button") : null, ok = bs && bs.length ? bs[bs.length - 1] : null;   /* dismiss, then accept */
+    if (!a || a.run !== run || !ok) { fail("the terms sheet was gone before the visitor's answer could be handed back"); show("ctl", true); return; }
+    state = "connecting";
+    btn.setAttribute("aria-busy", "true");
+    label.textContent = "Povezujem…"; say("Povezujem…");
+    show("ctl");
+    diag("terms accepted by the visitor — handed to the widget");
+    ok.click();                                    /* the widget's own Accept: the call goes on from where it waited */
+    a.ceiling("of accepting the terms");
+    if (a.micErr) a.failMic(a.micErr);            /* refused while the terms were up: said now */
+    else if (a.micDone) a.clock("of accepting the terms");
+    /* a microphone still being asked for arms the clock itself when answered */
+  });
+  if (decline) on(decline, "click", function () {
+    if (state !== "terms") return;
+    diag("terms declined by the visitor");
+    reset();                                       /* the engine goes, and with it the promise it was waiting on */
+    show("ctl", true);
+  });
+  /* whatever the widget wrote in its own error line or sheet — the words it
+     would have shown, had anyone been able to see it */
+  function engineWords() {
+    var sr = widget && widget.shadowRoot, out = [], seen = {}, els, i, t;
+    if (!sr) return "";
+    els = sr.querySelectorAll(".text-base-error, [class*='rounded-sheet'] h1");
+    for (i = 0; i < els.length; i++) {
+      t = (els[i].tagName === "H1" ? els[i].parentNode : els[i]).textContent.replace(/\s+/g, " ").trim();
+      if (t && !seen[t]) { seen[t] = 1; out.push(t); }
+    }
+    return out.join(" · ").slice(0, 240);
+  }
+  /* a promise nobody caught while an attempt was under way is the owner's
+     business too: the widget's, the SDK's, this page's alike */
+  function onReject(e) {
+    var r = e && e.reason, t = r && (r.message || r.reason || String(r));
+    diag("an unhandled rejection while the attempt was under way: " + (t || "(no message)"));
+  }
+  keep(function () { window.removeEventListener("unhandledrejection", onReject); });
   /* an attempt that ends without a session: the owner's line, the visitor's
      notice, and the engine replaced */
   function fail(why, notice) {
-    diag("failed — " + why);
+    var own = engineWords();
+    diag("failed — " + why + (own ? " · the widget's own words: „" + own + "”" : ""));
     reset(true, notice);
   }
   function goLive() {
     if (state !== "connecting") return;
     state = "live"; startedAt = performance.now();
-    unwatchSocket();
+    unwatchSocket(); release();
+    if (attempt && attempt.clocks) { while (attempt.clocks.length) cancel(attempt.clocks.pop()); }
     diag("session live");
     btn.removeAttribute("aria-busy");
     label.textContent = "Slušam"; say("Slušam");
@@ -3449,7 +3605,8 @@ function initTalk() {
     settle(0, function () { root.classList.add("is-gone"); });
   }
   function reset(failed, notice) {
-    ended = true; stopTimers(); unwatchSocket();
+    ended = true; stopTimers(); unwatchSocket(); release();
+    window.removeEventListener("unhandledrejection", onReject);
     /* a change of mind mid-connect ends a session that is still open; one
        already ended by end() or by the agent is left alone */
     if (conv && (!conv.isOpen || conv.isOpen())) hangUp(conv);
@@ -3460,9 +3617,11 @@ function initTalk() {
     if (failed) {
       /* an attempt that went nowhere says so, briefly, and steps aside */
       var words = notice || FAILED;
-      if (fail$) fail$.textContent = words;
+      writeNotice(words);
       sub("fail"); say(words);
-      failT = later(function () { sub("note"); }, TALK_FAIL_MS);
+      /* the generic notice steps aside by itself; one the visitor can act on
+         — the microphone, the address — stays until they try again */
+      if (words === FAILED) failT = later(function () { sub("note"); }, TALK_FAIL_MS);
     } else { sub("note"); say(""); }
     freshEngine();
   }
@@ -3474,7 +3633,7 @@ function initTalk() {
        failed attempt, not shown to the visitor as a demo that finished. A
        visitor who pressed stop that soon is another matter — that is theirs. */
     if (state === "live" && !stopping && performance.now() - startedAt < TALK_TOO_SHORT_MS) {
-      fail("the session ended " + Math.round(performance.now() - startedAt) + " ms after it began" + (socketNote ? " (" + socketNote + ")" : "") + " — the service closed it; the ElevenLabs dashboard has the record and the reason");
+      fail("the session ended " + Math.round(performance.now() - startedAt) + " ms after it began" + (socketNote ? " (" + socketNote + ")" : "") + " — the service closed it; the ElevenLabs dashboard has the record and the reason", OWNER_NOTICE);
       return;
     }
     reset();
@@ -3486,6 +3645,7 @@ function initTalk() {
     if (!ctl.classList.contains("is-on")) return;   /* a control on its way out */
     if (state === "idle") start();
     else if (state === "connecting") reset();       /* the visitor changed their mind */
+    else if (state === "terms") return;             /* the terms panel holds the answer */
     else end();                                     /* live or ending: stop now */
   });
   if (again) on(again, "click", function () { ended = false; show("ctl", true); });

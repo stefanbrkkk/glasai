@@ -206,6 +206,8 @@ eq('talk: card heading', await T1('#talk-card h3'), EXPECT.talk.cardH);
 eq('talk: card body', await T1('#talk-card p'), EXPECT.talk.cardP);
 eq('talk: card button', await T1('#talk-book'), EXPECT.talk.cardBtn);
 eq('talk: run-again reuses the start label', await T1('#talk-again'), EXPECT.talk.start);
+eq('talk: the terms panel accepts', await T1('#talk-accept'), 'Prihvatam');
+eq('talk: the terms panel declines', await T1('#talk-decline'), 'Odustani');
 eq('feature titles', (await T('.feat h3')).join('|'), EXPECT.feats.map(f => f[0]).join('|'));
 eq('feature bodies', (await T('.feat p')).join('|'), EXPECT.feats.map(f => f[1]).join('|'));
 
@@ -322,6 +324,10 @@ const DECLARED_EXTRA = ['Preskoči na sadržaj', 'Meni', 'Zatvori', 'Zaustavi', 
   'Slušam — prekini demo', 'Završavam…', 'Preostalo', 'Povezivanje nije uspelo — pokušajte ponovo.', '(otvara se u novom prozoru)',
   /* the microphone's three notices — the one place a visitor can act on a failed attempt */
   'Mikrofon je blokiran u pretraživaču — dozvolite ga za ovu stranicu i pokušajte ponovo.', 'Nije pronađen mikrofon.', 'Mikrofon je zauzet ili nedostupan — pokušajte ponovo.',
+  /* the terms panel's two answers, handed back to the widget's own sheet */
+  'Prihvatam', 'Odustani',
+  /* the notice for a failure only the owner can mend: no retry, the address instead */
+  'Demo trenutno nije dostupan — zakažite razgovor.',
   /* the player's own name, once a recording exists: it plays the agent — „Poslušaj demo” is the hero link that scrolls here */
   'Poslušaj agenta',
   /* the contact section, written for the client's address: an eyebrow, a heading, the address, a button and what it says once pressed */
