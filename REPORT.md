@@ -771,7 +771,7 @@ decide there.
 
 ## 3 · Round 1 — final automated audit (`node audit.js`)
 
-**188 / 188 passed, all green — on the last full run.** Everything below was actually executed in
+**188 / 188 passed, all green — on the last two consecutive full runs.** Everything below was actually executed in
 headless Chromium against the real file.
 
 | # | round | result |
