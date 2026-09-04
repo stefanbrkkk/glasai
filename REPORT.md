@@ -556,8 +556,11 @@ it), and a four-second guard compares its state with what it should be and
 puts it right — which only ever does anything when something was already
 wrong. Round 8 records the page's visibility, the loop's flags and the first
 and last sampled states whenever it sees no wraps, so the next such run would
-explain itself. The two full runs since — 151 / 151 each — wrapped three
-times in 70 and 71 s, as every green run before.
+explain itself. A later run caught the observer's wrong report in that
+trace — the phone in the middle of the viewport, `is-frozen` on — so the
+guard now reads the stage's rectangle itself every four seconds and lets
+the layout overrule the observer. Every full run since has wrapped three
+times in about 70 s.
 
 ### 3g · Why the site never logged a conversation — and what the page says now
 
@@ -676,7 +679,7 @@ and unpkg.com is blocked at the proxy.
   nobody can see, and the page would return to its start after 15 s.
 - The widget fetches its avatar texture from `storage.googleapis.com`; the
   harness stubs it. In production that host is one more the page touches.
-- Everything else is run, not reasoned: **151 / 151 harness checks** (fifteen rounds — round 14 is the demo, round 15 the contact section, see the table) and **95 / 95 content checks**.
+- Everything else is run, not reasoned: **170 / 170 harness checks** (sixteen rounds — round 14 is the demo on a fake clock, 14b the real widget against a mocked service, 15 the contact section; see the table) and **95 / 95 content checks**.
 
 ### 5 · The calendar claim, and the percentages
 
@@ -696,7 +699,7 @@ decide there.
 
 ## 3 · Round 1 — final automated audit (`node audit.js`)
 
-**151 / 151 passed, all green — on the last two consecutive full runs.** Everything below was actually executed in
+**170 / 170 passed, all green — on the last two consecutive full runs.** Everything below was actually executed in
 headless Chromium against the real file.
 
 | # | round | result |
