@@ -3106,9 +3106,9 @@ var TALK_CAP = 40;              /* seconds — the hard cap, not a suggestion */
 var TALK_GRACE = 6;             /* how long after the cap a sentence may finish */
 var TALK_NUDGE = 31;            /* when the agent is told to wrap up */
 var TALK_READY_MS = 8000;       /* how long to wait for the engine before folding */
-var TALK_CONNECT_MS = 8000;     /* how long „Povezujem…” may last once the mic is settled */
-var TALK_CONNECT_BLIND_MS = 20000; /* …when the browser cannot say whether a prompt is open */
+var TALK_CONNECT_MS = 12000;    /* how long „Povezujem…” may last once the microphone is settled */
 var TALK_CONNECT_MAX_MS = 45000;   /* …while the browser's own microphone prompt is open */
+var TALK_TOO_SHORT_MS = 3000;   /* a session over this soon after it began never happened */
 var TALK_FAIL_MS = 4000;        /* how long the failure notice stays */
 var TALK_ENGINE_MS = 5000;      /* a fresh engine that never renders, after a run */
 function hangUp(c) {
@@ -3125,6 +3125,19 @@ function initTalk() {
   var widget = engine.querySelector("elevenlabs-convai");
   if (!widget) return;
   var proto = widget.cloneNode(false);           /* a clean engine for every run */
+
+  /* The one line the owner needs. Everything the engine swallows — a refused
+     microphone, a terms dialog nobody can see, a socket the service turned
+     away — is written here in plain words, because the page is the only
+     thing that can see it. */
+  function diag(msg) { try { console.warn("[glas] demo: " + msg); } catch (err) {} }
+  /* A page that is not secure cannot open a microphone, in any browser: the
+     demo would be a dead button. It is hidden instead, and the owner is told. */
+  if (!window.isSecureContext || !(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) {
+    diag("hidden — the live demo needs a secure page (https) and a browser that can open the microphone; this page is " + location.protocol + " " + (navigator.mediaDevices ? "" : "and navigator.mediaDevices is missing"));
+    root.classList.add("is-gone");
+    return;
+  }
 
   /* the card's button goes to the booking link if there is one, else to the
      contact section — never nowhere */
@@ -3197,17 +3210,21 @@ function initTalk() {
     btn.style.minWidth = Math.ceil(btn.getBoundingClientRect().width) + "px";
   }
   on(window, "resize", debounce(sizePill, 200), { passive: true });
-  var fail = $("#talk-fail");
+  var fail$ = $("#talk-fail");
   function sub(which) {
     note.classList.toggle("is-on", which === "note");
     live.classList.toggle("is-on", which === "live");
-    if (fail) fail.classList.toggle("is-on", which === "fail");
+    if (fail$) fail$.classList.toggle("is-on", which === "fail");
     if (which === "live") live.removeAttribute("aria-hidden"); else live.setAttribute("aria-hidden", "true");
   }
   /* the words the control needs and the brief did not supply: a stop name for
      the live control, an ending that is not „listening”, a failed attempt */
   var STOP_NAME = "Slušam — prekini demo", ENDING = "Završavam…", FAILED = "Povezivanje nije uspelo — pokušajte ponovo.";
-  var permWatch = null, failT = 0;
+  /* and the three the microphone can need — the one place a visitor can act */
+  var MIC_DENIED = "Mikrofon je blokiran u pretraživaču — dozvolite ga za ovu stranicu i pokušajte ponovo.";
+  var MIC_NONE = "Nije pronađen mikrofon.";
+  var MIC_BUSY = "Mikrofon je zauzet ili nedostupan — pokušajte ponovo.";
+  var failT = 0;
   function paint(left) {
     var s = Math.max(0, Math.ceil(left - 0.0005));   /* a hair under a whole second is that second */
     clock.textContent = "00:" + (s < 10 ? "0" : "") + s;
@@ -3247,6 +3264,7 @@ function initTalk() {
   }, 250);
   var readyNet = later(function () {
     cancel(readyPoll);
+    diag("hidden — the widget never rendered within " + (TALK_READY_MS / 1000) + " s: its script (unpkg.com) or its settings (api.elevenlabs.io) did not load, or the agent is not public");
     root.classList.add("is-gone");                 /* nothing was ever shown */
   }, TALK_READY_MS);
 
@@ -3273,6 +3291,58 @@ function initTalk() {
     cfg.onError = function () { if (current() && state === "connecting") reset(); };
   });
 
+  /* The engine takes the microphone before it opens its socket, and a
+     microphone it cannot have ends the attempt inside the engine, unseen —
+     which is how a site can show „Povezivanje nije uspelo” for weeks while
+     its owner's dashboard shows no conversation at all. So the page asks for
+     the microphone itself, first, in the visitor's own gesture: the browser
+     shows one prompt, both requests share the answer, and a refusal is the
+     page's to name. Only the permission is wanted; the stream is closed at
+     once. */
+  function mic() {
+    return navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+      var ts = stream.getTracks(), i;
+      for (i = 0; i < ts.length; i++) ts[i].stop();
+    });
+  }
+  function micNotice(err) {
+    var n = (err && err.name) || "";
+    if (/NotAllowed|PermissionDenied|Security/i.test(n)) return MIC_DENIED;
+    if (/NotFound|DevicesNotFound|Overconstrained/i.test(n)) return MIC_NONE;
+    if (/NotReadable|TrackStart|Abort/i.test(n)) return MIC_BUSY;
+    return FAILED;
+  }
+  /* The socket, watched for as long as the page is connecting. The engine
+     opens it with the page's own WebSocket, so for those seconds the page
+     hands it one that reports back: whether a socket was opened at all, and
+     the code and reason the service closed it with — the quota, an allowlist,
+     a firewall — which the engine otherwise keeps to itself. Restored the
+     moment the attempt ends, whichever way. */
+  var NativeWS = window.WebSocket, sawSocket = false, socketNote = "";
+  function watchSocket(myRun) {
+    if (typeof NativeWS !== "function") return;
+    sawSocket = false; socketNote = "";
+    function Watched(url, protocols) {
+      var ws = protocols === undefined ? new NativeWS(url) : new NativeWS(url, protocols);
+      if (!/elevenlabs\.io|\/v1\/convai\/conversation/.test(String(url))) return ws;
+      sawSocket = true;
+      diag("socket opening to " + String(url).replace(/\?.*/, "?…"));
+      ws.addEventListener("open", function () { diag("socket open — the service accepted the connection"); });
+      ws.addEventListener("error", function () { diag("socket error — the handshake was refused before the service answered (a firewall, a content-security policy, or the agent's allowlist)"); });
+      ws.addEventListener("close", function (e) {
+        socketNote = "code " + e.code + (e.reason ? " — " + e.reason : "");
+        diag("socket closed, " + socketNote);
+        if (state === "connecting" && myRun === run) fail("the service closed the socket before a session began (" + socketNote + ")");
+      });
+      return ws;
+    }
+    Watched.prototype = NativeWS.prototype;
+    var k, keys = ["CONNECTING", "OPEN", "CLOSING", "CLOSED"];
+    for (k = 0; k < keys.length; k++) Watched[keys[k]] = NativeWS[keys[k]];
+    window.WebSocket = Watched;
+  }
+  function unwatchSocket() { if (typeof NativeWS === "function" && window.WebSocket !== NativeWS) window.WebSocket = NativeWS; }
+
   function start() {
     if (state !== "idle") return;
     state = "connecting"; ended = false; conv = null; run++;
@@ -3280,6 +3350,25 @@ function initTalk() {
     label.textContent = "Povezujem…"; say("Povezujem…");
     btn.setAttribute("aria-busy", "true");        /* after the text, so nothing defers it */
     paint(TALK_CAP);                              /* the clock is reset while unseen */
+    var myRun = run;
+    function still() { return state === "connecting" && myRun === run; }
+    /* the ceiling, whatever happens — a prompt left unanswered included */
+    later(function () { if (still()) fail("no session within " + (TALK_CONNECT_MAX_MS / 1000) + " s — the microphone prompt was never answered, or the engine never tried"); }, TALK_CONNECT_MAX_MS);
+    watchSocket(myRun);
+    /* the microphone: asked for first, so its answer is the page's; the clock
+       for the rest starts only once that answer is in */
+    mic().then(function () {
+      if (!still()) return;
+      diag("microphone granted");
+      later(function () {
+        if (!still()) return;
+        fail(sawSocket ? "the socket opened but no session began within " + (TALK_CONNECT_MS / 1000) + " s"
+                       : "no socket was opened within " + (TALK_CONNECT_MS / 1000) + " s of pressing the widget — something inside the widget stopped it (its own console lines above, if any, say what)");
+      }, TALK_CONNECT_MS);
+    }, function (err) {
+      if (!still()) return;
+      fail("microphone refused for this page: " + ((err && err.name) || "unknown error") + (err && err.message ? " — " + err.message : ""), micNotice(err));
+    });
     /* the engine's button is pressed inside the visitor's own gesture when it
        is there; a fresh engine may still be fetching its config, and then it
        is pressed the moment it renders — or, if it never does, the block folds */
@@ -3292,39 +3381,27 @@ function initTalk() {
         pressed = true; cancel(wait);
         b2.click();
       }, 120);
-      later(function () { if (!pressed) { reset(); fold(); } }, TALK_ENGINE_MS);
+      later(function () { if (!pressed && still()) { diag("hidden — a fresh engine never rendered its button within " + (TALK_ENGINE_MS / 1000) + " s"); reset(); fold(); } }, TALK_ENGINE_MS);
     }
-    armConnect();
-  }
-  /* „Povezujem…” may last eight seconds once the microphone is settled — but
-     the first thing the browser does is ask for the microphone, and a visitor
-     reading that prompt must not have the rug pulled from under them. So the
-     clock starts when the permission is known, or, where the browser cannot
-     say, runs longer; a denied microphone ends the attempt at once. */
-  function armConnect() {
-    var myRun = run;
-    function still() { return state === "connecting" && myRun === run; }
-    function clockFor(ms) { later(function () { if (still()) reset(true); }, ms); }
-    later(function () { if (still()) reset(true); }, TALK_CONNECT_MAX_MS);   /* the ceiling, whatever happens */
-    var q = null;
-    try { q = navigator.permissions && navigator.permissions.query ? navigator.permissions.query({ name: "microphone" }) : null; } catch (err) { q = null; }
-    if (!q || !q.then) { clockFor(TALK_CONNECT_BLIND_MS); return; }
-    q.then(function (p) {
+    /* the one thing the widget can put in the visitor's way that this page
+       never shows: its terms dialog. It is looked for, and named. */
+    every(function () {
       if (!still()) return;
-      if (p.state === "denied") { reset(true); return; }
-      if (p.state === "granted") { clockFor(TALK_CONNECT_MS); return; }
-      permWatch = p;                               /* a prompt is open: wait for its answer */
-      p.onchange = function () {
-        if (permWatch === p) { p.onchange = null; permWatch = null; }
-        if (!still()) return;
-        if (p.state === "denied") reset(true); else clockFor(TALK_CONNECT_MS);
-      };
-    }, function () { if (still()) clockFor(TALK_CONNECT_BLIND_MS); });
+      var sr = widget && widget.shadowRoot;
+      if (sr && sr.querySelector(".terms")) fail("the widget is asking the visitor to accept terms — „Require the caller to accept your terms” is on in the ElevenLabs widget settings, and a dialog this page never shows cannot be accepted; switch it off for the demo");
+    }, 250);
+  }
+  /* an attempt that ends without a session: the owner's line, the visitor's
+     notice, and the engine replaced */
+  function fail(why, notice) {
+    diag("failed — " + why);
+    reset(true, notice);
   }
   function goLive() {
     if (state !== "connecting") return;
     state = "live"; startedAt = performance.now();
-    if (permWatch) { permWatch.onchange = null; permWatch = null; }
+    unwatchSocket();
+    diag("session live");
     btn.removeAttribute("aria-busy");
     label.textContent = "Slušam"; say("Slušam");
     btn.setAttribute("aria-label", STOP_NAME);      /* the visible word, and what pressing it does */
@@ -3370,9 +3447,8 @@ function initTalk() {
     root.classList.remove("is-ready");
     settle(0, function () { root.classList.add("is-gone"); });
   }
-  function reset(failed) {
-    ended = true; stopTimers();
-    if (permWatch) { permWatch.onchange = null; permWatch = null; }
+  function reset(failed, notice) {
+    ended = true; stopTimers(); unwatchSocket();
     /* a change of mind mid-connect ends a session that is still open; one
        already ended by end() or by the agent is left alone */
     if (conv && (!conv.isOpen || conv.isOpen())) hangUp(conv);
@@ -3382,7 +3458,9 @@ function initTalk() {
     label.textContent = "Razgovaraj sa agentom";
     if (failed) {
       /* an attempt that went nowhere says so, briefly, and steps aside */
-      sub("fail"); say(FAILED);
+      var words = notice || FAILED;
+      if (fail$) fail$.textContent = words;
+      sub("fail"); say(words);
       failT = later(function () { sub("note"); }, TALK_FAIL_MS);
     } else { sub("note"); say(""); }
     freshEngine();
@@ -3390,8 +3468,15 @@ function initTalk() {
   function finish() {
     if (ended) return;
     var ran = state === "live" || state === "ending";
+    /* a session the service ends seconds after it began was never a demo:
+       the quota, most often. It is named for the owner and treated as a
+       failed attempt, not shown to the visitor as a demo that finished. */
+    if (state === "live" && performance.now() - startedAt < TALK_TOO_SHORT_MS) {
+      fail("the session ended " + Math.round(performance.now() - startedAt) + " ms after it began" + (socketNote ? " (" + socketNote + ")" : "") + " — the service closed it; the ElevenLabs dashboard has the record and the reason");
+      return;
+    }
     reset();
-    if (ran) say("Demo je gotov.");
+    if (ran) { diag("session ended"); say("Demo je gotov."); }
     show(ran ? "card" : "ctl", ran);
   }
 

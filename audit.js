@@ -235,7 +235,8 @@ const LAPTOP_ST = `(() => {
    ══════════════════════════════════════════════════════════════════════ */
 (async () => {
   const { srv, base } = await serve();
-  const browser = await chromium.launch({ executablePath: EXE, args: ['--font-render-hinting=none'] });
+  /* a fake microphone, always granted: the engine takes one before it opens its socket */
+  const browser = await chromium.launch({ executablePath: EXE, args: ['--font-render-hinting=none', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] });
 
   /* ── 1 · console cleanliness ─────────────────────────────────────────── */
   head('1 · Console — normal load, network idle + 5 s of animation');
@@ -1131,15 +1132,18 @@ const LAPTOP_ST = `(() => {
       await page.click('#talk-again'); await page.clock.runFor(300); st = await page.evaluate(TALK_ST);
       rec(14, 'the demo can be started again', st.ctl && !st.card && st.label === 'Razgovaraj sa agentom', JSON.stringify(st));
 
-      /* an attempt that goes nowhere: eight seconds after the microphone is
-         known, the control comes back with a notice that steps aside itself */
+      /* an attempt that goes nowhere: twelve seconds after the microphone is
+         known, the control comes back with a notice that steps aside itself.
+         The microphone is real (a fake device) and answers in real time, so
+         the fake clock is given that moment before it is run. */
       await page.click('#talk-btn'); await page.clock.runFor(200);
       const midWait = await page.evaluate(TALK_ST);
-      await page.clock.runFor(8200); st = await page.evaluate(TALK_ST);
+      await page.waitForTimeout(400);
+      await page.clock.runFor(12200); st = await page.evaluate(TALK_ST);
       const failShown = await page.evaluate(`document.querySelector('#talk-fail').classList.contains('is-on')`);
       await page.clock.runFor(4200);
       const failGone = await page.evaluate(`!document.querySelector('#talk-fail').classList.contains('is-on') && document.querySelector('#talk-note').classList.contains('is-on')`);
-      rec(14, 'an attempt that never connects comes back after 8 s with a notice, and the notice steps aside after 4 s',
+      rec(14, 'an attempt that never connects comes back after 12 s with a notice, and the notice steps aside after 4 s',
           midWait.label === 'Povezujem…' && st.label === 'Razgovaraj sa agentom' && failShown && failGone, JSON.stringify({ mid: midWait.label, after: st.label, failShown, failGone }));
 
       /* the agent hangs up early — the widget keeps onDisconnect for itself,
@@ -1177,6 +1181,88 @@ const LAPTOP_ST = `(() => {
       await page.waitForTimeout(2500);
       const st = await page.evaluate(TALK_ST);
       rec(14, 'reduced motion: the block is ready and its control live', st.ready && st.ctl && st.engineBtn && bag.length === 0, JSON.stringify(st));
+      await ctx.close();
+    }
+  }
+
+  /* ── 14b · the real engine against a mocked service ────────────────── */
+  head('14b · The real widget, the real SDK, a mocked ElevenLabs socket — every way it can go');
+  {
+    /* The service, mocked at the socket: it speaks enough of the protocol for
+       the real widget and its bundled SDK to hold a session — the initiation
+       metadata with a conversation id, pong for ping — and can refuse the
+       handshake, or accept it and close with the quota message the owner's
+       own dashboard showed. Each mode is a fresh context; each asserts what
+       the visitor sees, what the owner's console says, and what reached the
+       socket. */
+    const CFG_BASE = { variant: 'full', placement: 'bottom-right', avatar: { type: 'orb', color_1: '#2792dc', color_2: '#9ce6e6' }, feedback_mode: 'none', language: 'sr',
+      mic_muting_enabled: false, transcript_enabled: true, text_input_enabled: true, default_expanded: false, always_expanded: false, dismissible: false,
+      text_contents: {}, language_presets: {}, disable_banner: false, text_only: false, supports_text_only: true };
+    const QUOTA = 'This request exceeds your quota of 33338. You have 5 credits remaining, while 100 credits are required for this request.';
+    const TALK_ST2 = `(() => { const g = id => document.getElementById(id); const t = g('talk');
+      return { ready: t.classList.contains('is-ready'), gone: t.classList.contains('is-gone'), live: t.classList.contains('is-live'), ctl: g('talk-ctl').classList.contains('is-on'), card: g('talk-card').classList.contains('is-on'),
+        label: g('talk-label').textContent, failOn: g('talk-fail').classList.contains('is-on'), failText: g('talk-fail').textContent.trim(), clock: g('talk-clock').textContent,
+        timers: (window.__glasTalkTimers || []).length, ws: window.WebSocket.name, engines: document.querySelectorAll('elevenlabs-convai').length }; })()`;
+    for (const mode of ['handshake', 'refused', 'quota', 'terms', 'micdenied', 'insecure']) {
+      const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+      const cfg = { widget_config: { ...CFG_BASE } };
+      if (mode === 'terms') { cfg.widget_config.terms_html = '<p>Uslovi.</p>'; cfg.widget_config.terms_key = 'glas-terms-test'; }
+      await wire(ctx);
+      await ctx.route(/elevenlabs\.io/, r => { if (/\/v1\/convai\/agents\/[^/]+\/widget/.test(r.request().url())) return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(cfg) }); r.fulfill({ status: 500, contentType: 'application/json', body: '{}' }); });
+      await ctx.grantPermissions(['microphone']);
+      const page = await ctx.newPage(); const bag = [], lines = [];
+      watch(page, bag);
+      page.on('console', m => { if (/\[glas\] demo:|ConversationalAI/.test(m.text())) lines.push(m.text()); });
+      await page.addInitScript(() => { window.__glasDebug = true; });
+      if (mode === 'micdenied') await page.addInitScript(() => { const md = navigator.mediaDevices; Object.defineProperty(navigator, 'mediaDevices', { value: Object.assign(Object.create(md), { getUserMedia: () => Promise.reject(new DOMException('Permission denied', 'NotAllowedError')) }), configurable: true }); });
+      if (mode === 'insecure') await page.addInitScript(() => { Object.defineProperty(window, 'isSecureContext', { value: false, configurable: true }); });
+      const sock = { url: null, protocol: null, first: null, pings: 0 };
+      await page.routeWebSocket(/v1\/convai\/conversation/, ws => {
+        sock.url = ws.url();
+        if (mode === 'refused') { ws.close({ code: 1008, reason: 'Origin not allowed' }); return; }
+        ws.onMessage(msg => {
+          let m = null; try { m = JSON.parse(String(msg)); } catch (e) { m = {}; }
+          if (m.type === 'conversation_initiation_client_data') {
+            sock.first = sock.first || m.type;
+            ws.send(JSON.stringify({ type: 'conversation_initiation_metadata', conversation_initiation_metadata_event: { conversation_id: 'conv_mock_' + mode, agent_output_audio_format: 'pcm_16000', user_input_audio_format: 'pcm_16000' } }));
+            if (mode === 'quota') setTimeout(() => ws.close({ code: 1008, reason: QUOTA }), 400);
+          } else if (m.type === 'ping') { sock.pings++; ws.send(JSON.stringify({ type: 'pong', event_id: m.ping_event && m.ping_event.event_id })); }
+        });
+      });
+      await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
+      await page.waitForTimeout(2500);
+      const before = await page.evaluate(TALK_ST2);
+      if (mode === 'insecure') {
+        rec(14, 'insecure page: the demo is hidden, and the owner is told why', before.gone && !before.ready && lines.some(l => /\[glas\] demo: hidden — the live demo needs a secure page \(https\)/.test(l)), JSON.stringify({ gone: before.gone, lines }));
+        rec(14, 'insecure page: zero console errors', bag.length === 0, bag.slice(0, 3).join(' | '));
+        await ctx.close(); continue;
+      }
+      await page.evaluate(SCROLL_TO + `(document.querySelector('#glas').getBoundingClientRect().top + window.scrollY)`);
+      await page.waitForTimeout(500);
+      await page.click('#talk-btn');
+      await page.waitForTimeout(mode === 'quota' ? 2600 : 2200);
+      const st = await page.evaluate(TALK_ST2);
+      const said = re => lines.some(l => re.test(l));
+      if (mode === 'handshake') {
+        rec(14, 'the real engine, a fake microphone, a service that answers: the page goes live — „Slušam”, the clock running, the socket the widget opened seen by the page',
+            st.live && st.label === 'Slušam' && /^00:(3[6-9]|40)$/.test(st.clock) && st.ws === 'WebSocket' && said(/microphone granted/) && said(/socket open — the service accepted/) && said(/session live/), JSON.stringify({ st, lines }));
+        rec(14, 'the socket is the one the widget documents: wss api.elevenlabs.io /v1/convai/conversation?agent_id=…&source=widget&version=0.17.1, and the first thing sent is the initiation client data',
+            /^wss:\/\/api\.(us\.)?elevenlabs\.io\/v1\/convai\/conversation\?agent_id=agent_5701m14n57q9e25ryes2tg8tdjhd&source=widget&version=0\.17\.1$/.test(sock.url || '') && sock.first === 'conversation_initiation_client_data', JSON.stringify(sock));
+        await page.click('#talk-btn');          /* the visitor stops it */
+        await page.waitForTimeout(2200);
+        const after = await page.evaluate(TALK_ST2);
+        rec(14, 'stopped by the visitor: the end card, no timers, one fresh engine, the native WebSocket back in place', after.card && !after.ctl && !after.live && after.timers === 0 && after.engines === 1 && after.ws === 'WebSocket' && said(/session ended/), JSON.stringify(after));
+      } else if (mode === 'refused') {
+        rec(14, 'a refused handshake: the notice within two seconds, and the owner\'s console names the close code and reason', st.failOn && st.failText === 'Povezivanje nije uspelo — pokušajte ponovo.' && !st.live && st.label === 'Razgovaraj sa agentom' && said(/socket closed, code 1008 — Origin not allowed/) && said(/failed — the service closed the socket before a session began/), JSON.stringify({ st, lines }));
+      } else if (mode === 'quota') {
+        rec(14, 'a session the service closes for the quota half a second in: named for the owner, and the visitor sees a failed attempt, not a finished demo', st.failOn && !st.card && !st.live && st.label === 'Razgovaraj sa agentom' && said(/session live/) && said(/socket closed, code 1008 — This request exceeds your quota/) && said(/failed — the session ended \d+ ms after it began/), JSON.stringify({ st, lines }));
+      } else if (mode === 'terms') {
+        rec(14, 'a terms dialog inside the hidden engine is detected within two seconds and named for the owner; no socket is opened', st.failOn && !st.live && sock.url === null && said(/failed — the widget is asking the visitor to accept terms/), JSON.stringify({ st, lines, sock }));
+      } else if (mode === 'micdenied') {
+        rec(14, 'a blocked microphone: the visitor is told to allow it, the owner\'s console names the error, and no socket is opened', st.failOn && st.failText === 'Mikrofon je blokiran u pretraživaču — dozvolite ga za ovu stranicu i pokušajte ponovo.' && sock.url === null && said(/microphone refused for this page: NotAllowedError/), JSON.stringify({ st, lines }));
+      }
+      rec(14, `${mode}: the native WebSocket is restored and no timer is left`, st.ws === 'WebSocket' && (mode === 'handshake' || st.timers <= 1), JSON.stringify({ ws: st.ws, timers: st.timers }));
+      rec(14, `${mode}: zero console errors from the page`, bag.filter(b => !/ConversationalAI\] Disconnected due to an error/.test(b)).length === 0, bag.slice(0, 3).join(' | '));
       await ctx.close();
     }
   }
