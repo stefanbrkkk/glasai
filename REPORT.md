@@ -559,6 +559,105 @@ and last sampled states whenever it sees no wraps, so the next such run would
 explain itself. The two full runs since — 151 / 151 each — wrapped three
 times in 70 and 71 s, as every green run before.
 
+### 3g · Why the site never logged a conversation — and what the page says now
+
+The owner's dashboard showed no conversation at all from the site, while
+ElevenLabs' own hosted page for the same agent logged one that failed on the
+quota. Their support architect read that correctly: no record means the
+request never reached the service to initiate a conversation. The widget's
+own bundle (0.17.1, the current release) explains the gap exactly:
+
+- The widget forces `connectionType: 'websocket'` for a public agent (its
+  `use_rtc` flag defaults to false), so a conversation is created on the
+  server only when the socket's handshake completes — the client sends
+  `conversation_initiation_client_data`, the server answers with
+  `conversation_initiation_metadata` carrying the conversation id.
+- The SDK's browser setup takes the **microphone first** —
+  `navigator.mediaDevices.getUserMedia({audio:true})` — and only then opens
+  the socket. A microphone the page cannot have (blocked for that origin, or
+  a page that is not `https`, where `mediaDevices` does not exist at all)
+  ends the attempt before any socket exists. No record.
+- The start button's handler awaits the widget's **terms** gate first. With
+  „Require the caller to accept your terms" on, a dialog renders inside the
+  engine — which this page keeps hidden — and the attempt waits for an
+  acceptance that can never come. Acceptance is stored per origin, so
+  having accepted on the hosted page does not carry to the site. No record.
+- A socket the service turns away — an agent that is not public, a
+  hostname allowlist without the site's domain, a firewall or a
+  content-security policy — closes before the handshake. No record.
+- Every one of these is caught by the widget's `startSession` and written
+  into its **own** transcript and error state, inside the hidden engine.
+  Nothing reaches the page's `onError` (that hook is for errors inside a
+  session). The page only ever timed out and said „Povezivanje nije uspelo"
+  — for all of them alike. That was the defect on the page's side: not that
+  it did anything wrong, but that it could not say what went wrong.
+
+All four causes are origin-specific, which is precisely why the hosted page
+works and the site does not. Which one it is on the owner's machine will now
+be printed by the page itself.
+
+**What the page does now**
+
+- It asks for the microphone itself, first, inside the visitor's own
+  gesture, before pressing the engine's button in that same gesture. The
+  browser shows one prompt; both requests share the answer. A refusal is the
+  page's to name: `Mikrofon je blokiran u pretraživaču — dozvolite ga za
+  ovu stranicu i pokušajte ponovo.`, `Nije pronađen mikrofon.`, or
+  `Mikrofon je zauzet ili nedostupan — pokušajte ponovo.` The connect
+  window — twelve seconds now — starts only once the microphone's answer
+  is in, so a visitor reading the prompt is never cut off.
+- A page that is not secure, or a browser without `getUserMedia`, hides the
+  demo at boot instead of showing a dead button.
+- For as long as the page is connecting it hands the engine a `WebSocket`
+  that reports back: whether a socket was opened at all, and the code and
+  reason the service closed it with. The native constructor is restored the
+  moment the attempt ends, either way. A close before the session begins
+  ends the attempt at once, with the reason.
+- It looks for the widget's terms dialog after pressing, and names the
+  dashboard setting.
+- A session the service closes within three seconds of beginning — the
+  quota, most often — is treated as a failed attempt and named, not shown
+  to the visitor as a demo that finished.
+- Every path prints one line for the owner, prefixed `[glas] demo:` — the
+  console the support architect asked them to open now says, in order:
+  `microphone granted`, `socket opening to …`, `socket open — the service
+  accepted the connection`, `session live`; or exactly where it stopped and
+  why.
+
+**Verified against the real widget.** Round 14b serves the real widget
+bundle and lets its real SDK run, with a fake microphone, against a mocked
+ElevenLabs socket in Playwright that speaks the protocol (initiation
+metadata with a conversation id, pong for ping). Six modes, each a fresh
+context: a handshake that goes live — „Slušam", the clock running, the
+socket the widget opened seen and named by the page, then stopped by the
+visitor onto the end card with the native `WebSocket` back in place; a
+refused handshake (code 1008, "Origin not allowed") — the notice within two
+seconds and the reason in the console; the quota close half a second in —
+named for the owner, a failed attempt for the visitor; a terms dialog —
+detected and named, no socket opened; a blocked microphone — the visitor's
+notice and the error's name, no socket opened; an insecure page — the demo
+hidden and the reason printed. The socket the widget opens is
+`wss://api.us.elevenlabs.io/v1/convai/conversation?agent_id=…&source=widget&version=0.17.1`
+and the first thing it sends is the initiation client data.
+
+**What the owner should do, in order.** Open the site, press the button,
+and read the `[glas] demo:` lines in the browser console:
+
+1. `hidden — the live demo needs a secure page` → the site is served over
+   `http://`; put it on `https://`.
+2. `microphone refused … NotAllowedError` → the browser has the microphone
+   blocked for this site (the lock icon in the address bar; allow it).
+3. `failed — the widget is asking the visitor to accept terms` → switch
+   „Require the caller to accept your terms" off in the widget settings.
+4. `socket closed, code 1008 — …` before `session live` → the reason is
+   the service's own words; an allowlist or authentication setting under
+   the agent's Security page is the usual one.
+5. `socket open` then a close with the quota message → the site is fine;
+   top up the credits. That conversation will be in the dashboard.
+
+None of this can be tried live from this sandbox: egress to elevenlabs.io
+and unpkg.com is blocked at the proxy.
+
 ### 4 · What could **not** be verified, and how the rest was
 
 - **No conversation was ever held.** ElevenLabs' API and WebSocket are blocked
@@ -616,6 +715,7 @@ headless Chromium against the real file.
 | 12 | Throttle + motion system | the recording plays and the meter answers it, and the playhead walks the passband without ever going blank; boots and scrolls under 4× CPU throttle; every trigger measured against the pinned layout; all 12 `[data-lines]` hosts split with **zero** height change to any element and zero change to the document; line masks preserve the text exactly; the band fills its canvas without clipping and breathes rather than drones; the probe sweeps below, through and above the telephone band |
 | 13 | Touch (Pixel 7) | sway replaces cursor tilt, magnetism never engages, no pin, menu works by tap, the player answers a tap without erroring; the laptop stands open at the bottom, its button and address are real tap targets, a tap copies |
 | 14 | **The live demo** — the real widget bundle served locally, its config and avatar texture stubbed, the microphone granted, the session driven through the widget's own hook on a fake clock | ready only once the engine renders its button; engine never painted, never focusable; the page's button presses the engine's — one `elevenlabs-convai:call` carrying the four hooks; a change of mind while connecting leaves no timer; live → `00:30` at ten seconds with the rule at ¾; the wrap-up nudge at 31 s; at 40 s the mic is muted and the clock reads `00:00` but a speaking agent is not cut; half a second of silence ends it and the card takes the widget's place; zero timers, a frozen clock, one fresh engine; restart works; while live the control is named for what pressing it does, and past the cap it says it is finishing; an attempt that never connects comes back after 8 s with a notice that steps aside after 4 s; an early hang-up — which the widget never forwards — is noticed within a tick and ends on the card; an agent that never goes quiet is ended at 46 s; the card's number line only with `DEMO_TELEFON`, the booking link when `DEMO_LINK` is set; reduced motion still live; zero console errors in every state |
+| 14b | **The real widget against a mocked service** — the real bundle, its real SDK, a fake microphone, a Playwright-mocked ElevenLabs socket that speaks the protocol | six modes: a handshake goes live and is stopped onto the end card; a refused handshake (1008) gives the notice within two seconds and the reason in the console; a quota close half a second in is named and shown as a failed attempt; a terms dialog is detected and named, no socket opened; a blocked microphone gives the visitor's notice and the error's name; an insecure page hides the demo. The socket's URL, subprotocol and first message are asserted; the native WebSocket is restored and no timer is left in every mode |
 | 15 | **Kontakt** — the laptop and the address | a plan's button lands under the nav with focus on the section, the laptop open and the copy button in view; shut → half → open sampled off the scrub, with the lid's projected height, the words, the deck's light and identity transforms asserted at each; the button copies, says „Kopirano" at the same width, announces once and reverts; the address is a `mailto:`; an instant jump to the bottom leaves it open; zero console errors |
 
 **Round 4 — content (`node .audit/copy-check.mjs`): 95 / 95 passed.** Every
