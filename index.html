@@ -3159,7 +3159,7 @@ function initTalk() {
     } else telSlot.parentNode.removeChild(telSlot);
   }
 
-  var state = "idle", conv = null, timers = [], startedAt = 0, ended = false, run = 0;
+  var state = "idle", conv = null, timers = [], startedAt = 0, ended = false, run = 0, stopping = false;
   function say(t) { if (status) status.textContent = t; }   /* the live region, state changes only */
   if (window.__glasDebug) window.__glasTalkTimers = timers;
   function later(fn, ms) { var id = setTimeout(function () { drop(id); fn(); }, ms); timers.push(id); return id; }
@@ -3345,7 +3345,7 @@ function initTalk() {
 
   function start() {
     if (state !== "idle") return;
-    state = "connecting"; ended = false; conv = null; run++;
+    state = "connecting"; ended = false; stopping = false; conv = null; run++;
     cancel(failT); sub("note");
     label.textContent = "Povezujem…"; say("Povezujem…");
     btn.setAttribute("aria-busy", "true");        /* after the text, so nothing defers it */
@@ -3437,6 +3437,7 @@ function initTalk() {
     }, 250);
   }
   function end() {
+    stopping = true;                              /* this end is the page's own doing */
     stopTimers();
     hangUp(conv);
     every(function () { if (!conv || !conv.isOpen || !conv.isOpen()) finish(); }, 100);
@@ -3470,8 +3471,9 @@ function initTalk() {
     var ran = state === "live" || state === "ending";
     /* a session the service ends seconds after it began was never a demo:
        the quota, most often. It is named for the owner and treated as a
-       failed attempt, not shown to the visitor as a demo that finished. */
-    if (state === "live" && performance.now() - startedAt < TALK_TOO_SHORT_MS) {
+       failed attempt, not shown to the visitor as a demo that finished. A
+       visitor who pressed stop that soon is another matter — that is theirs. */
+    if (state === "live" && !stopping && performance.now() - startedAt < TALK_TOO_SHORT_MS) {
       fail("the session ended " + Math.round(performance.now() - startedAt) + " ms after it began" + (socketNote ? " (" + socketNote + ")" : "") + " — the service closed it; the ElevenLabs dashboard has the record and the reason");
       return;
     }
