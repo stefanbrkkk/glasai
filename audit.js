@@ -542,6 +542,7 @@ const LAPTOP_ST = `(() => {
     await wire(ctx);
     const page = await ctx.newPage(); const bag = [];
     watch(page, bag);
+    await page.addInitScript(() => { window.__glasDebug = true; });   /* the loop keeps a trace of the observer's reports */
     await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
 
@@ -577,7 +578,7 @@ const LAPTOP_ST = `(() => {
     /* a run that saw no wraps says why: the page's visibility, the loop's
        flags, and the first and last states it sampled */
     const why = cycles >= 3 ? '' : ' :: ' + JSON.stringify(await page.evaluate(`({ hidden: document.hidden, vis: document.visibilityState, frozen: document.querySelector('.phone-stage').classList.contains('is-frozen'),
-      heroDone: !!window.__glasHeroDone, loop: document.documentElement.classList.contains('js-loop'), y: window.scrollY, stageTop: Math.round(document.querySelector('.phone-stage').getBoundingClientRect().top) })`))
+      heroDone: !!window.__glasHeroDone, loop: document.documentElement.classList.contains('js-loop'), y: window.scrollY, stageTop: Math.round(document.querySelector('.phone-stage').getBoundingClientRect().top), trace: window.__glasPhoneLog })`))
       + ' first=' + JSON.stringify({ t: samples[0].t, inc: samples[0].incoming, call: samples[0].call }) + ' last=' + JSON.stringify({ t: samples[samples.length - 1].t, inc: samples[samples.length - 1].incoming, call: samples[samples.length - 1].call });
     rec(8, 'three full cycles observed with a clean wrap', cycles >= 3, `${cycles} wraps in ${took} s over ${samples.length} samples` + why);
     // e) the seam is dark — no flash of the old state
@@ -1083,6 +1084,12 @@ const LAPTOP_ST = `(() => {
       const page = await ctx.newPage(); const bag = [];
       watch(page, bag);
       await page.addInitScript(() => { window.__glasDebug = true; });
+      /* The engine now reaches a real socket, and this sandbox refuses it —
+         which the page would now report within a second, resetting the very
+         attempt these tests drive by hand. So the socket is mocked to open
+         and say nothing: the real SDK waits for metadata that never comes,
+         and the page's hooks are worked by the fakes below, as designed. */
+      await page.routeWebSocket(/v1\/convai\/conversation/, ws => { ws.onMessage(() => {}); });
       await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
       await page.waitForTimeout(2500);
       let st = await page.evaluate(TALK_ST);

@@ -3958,17 +3958,28 @@ function initPhoneLoop(gsap) {
     stage.classList.toggle("is-frozen", !live);
     if (live) tl.play(); else tl.pause();
   }
+  /* The page's own reading of whether the phone is on screen — the same
+     question the observer answers, asked directly of the layout. */
+  var MARGIN = 160;
+  function onScreen() {
+    var r = stage.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 && r.bottom > -MARGIN && r.top < window.innerHeight + MARGIN;
+  }
+  var trace = window.__glasDebug ? (window.__glasPhoneLog = []) : null;
   if ("IntersectionObserver" in window) {
     var io = new IntersectionObserver(function (es) {
-      inView = es[0].isIntersecting;
+      var e = es[0];
+      if (trace) trace.push({ t: Math.round(performance.now()), io: e.isIntersecting, ratio: +e.intersectionRatio.toFixed(3), top: Math.round(e.boundingClientRect.top), h: Math.round(e.boundingClientRect.height), root: e.rootBounds ? Math.round(e.rootBounds.height) : null, hidden: document.hidden });
+      inView = e.isIntersecting;
       sync();
-    }, { rootMargin: "160px 0px" });
+    }, { rootMargin: MARGIN + "px 0px" });
     io.observe(stage);
     keep(function () { io.disconnect(); });
   }
-  /* The loop starts now, on the page's own word that the phone is in view —
-     the observer's first report only ever pauses it. A start that waited on
-     that report was, once in a while, a start that never came. */
+  /* The loop starts now, on the page's own reading — the observer's first
+     report only ever pauses it. A start that waited on that report was, once
+     in a while, a start that never came. */
+  inView = onScreen();
   sync();
   whenVisibilityChanges(function (hidden) {
     if (hidden) { sync(); return; }
@@ -3976,13 +3987,22 @@ function initPhoneLoop(gsap) {
     requestAnimationFrame(function () { requestAnimationFrame(sync); });
   });
   /* A belt for the braces. Play and pause are in the hands of two browser
-     callbacks, and one that never comes — or comes while the page cannot
-     render — leaves the phone on „Dolazni poziv" for good. Every few seconds
-     the loop's state is compared with what it should be and put right; it
-     only ever does anything when something was already wrong. */
+     callbacks, and once in a while the observer's last word is wrong — it
+     has reported the phone out of view while it stood in the middle of the
+     viewport — and the phone stays on „Dolazni poziv" for good. Every few
+     seconds the layout is read directly: where it disagrees with the
+     observer, the layout wins; and a loop that should be running but is not
+     is set running. It only ever does anything when something was already
+     wrong. */
   var lastT = -1;
   var guard = setInterval(function () {
-    if (!inView || document.hidden) { lastT = -1; return; }
+    var live = onScreen();
+    if (live !== inView) {
+      if (trace) trace.push({ t: Math.round(performance.now()), corrected: live });
+      inView = live;
+      sync();
+    }
+    if (!live || document.hidden) { lastT = -1; return; }
     var t = tl.time();
     if (tl.paused() || (t === lastT && !tl.isActive())) tl.play();
     lastT = t;
