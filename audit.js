@@ -1421,7 +1421,10 @@ const LAPTOP_ST = `(() => {
       await page.routeWebSocket(/elevenlabs/, ws => { const u = ws.url(); const sig = /livekit|\/rtc\//.test(u); sockets.push(sig ? 'signalling' : 'conversation'); hosts.push(new URL(u).host);
         if (sig) { if (mode === 'rtc-signal-close') setTimeout(() => ws.close({ code: 4001, reason: 'room not found' }), 600); else { ws.onMessage(() => {}); ws.send('\u0008\u0001not-json'); } return; }   /* a frame the page must not read */
         ws.onMessage(msg => { let m = {}; try { m = JSON.parse(String(msg)); } catch (e) {}
-          if (m.type === 'conversation_initiation_client_data') ws.send(JSON.stringify({ type: 'conversation_initiation_metadata', conversation_initiation_metadata_event: { conversation_id: 'conv_mock_' + mode, agent_output_audio_format: 'pcm_16000', user_input_audio_format: 'pcm_16000' } }));
+          if (m.type === 'conversation_initiation_client_data') {
+            const meta = () => ws.send(JSON.stringify({ type: 'conversation_initiation_metadata', conversation_initiation_metadata_event: { conversation_id: 'conv_mock_' + mode, agent_output_audio_format: 'pcm_16000', user_input_audio_format: 'pcm_16000' } }));
+            if (mode === 'rtc-token-slow') setTimeout(meta, 2500); else meta();     /* the retry still connecting when the orphan dials */
+          }
           else if (m.type === 'ping') ws.send(JSON.stringify({ type: 'pong', event_id: m.ping_event && m.ping_event.event_id })); }); });
       await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
       await page.waitForTimeout(2500);
@@ -1451,7 +1454,7 @@ const LAPTOP_ST = `(() => {
         rec(14, 'ws-terms-idle: a sheet left unanswered lets the microphone go after the wait (shortened to 1.5 s here) — the panel stays, the answer is still taken', t.terms && ended && said(/the terms went unanswered for 1\.5 s — the microphone is let go/), JSON.stringify({ t, ended, lines }));
         await page.click('#talk-accept');
       }
-      await page.waitForTimeout(/^(rtc-silent|rtc-slow-config)$/.test(mode) ? 9000 : /^rtc-token-(hang|slow)$/.test(mode) ? 11500 : 3500);
+      await page.waitForTimeout(mode === 'rtc-slow-config' ? 9000 : /^(rtc-silent|rtc-token-hang)$/.test(mode) ? 12500 : mode === 'rtc-token-slow' ? 14000 : 3500);
       const st = await page.evaluate(TALK_ST3);
       if (mode === 'ws-config') {
         rec(14, 'ws-config: DEMO_VEZA "websocket" — no token is asked for, the plain socket opens at once to api.elevenlabs.io, the host ElevenLabs routes, live', st.live && reqs.token === 0 && sockets.join() === 'conversation' && hosts[0] === 'api.elevenlabs.io' && said(/attempt begins over a plain WebSocket, as configured/) && said(/session live over a plain WebSocket/), JSON.stringify({ st, reqs, sockets, hosts, lines }));
@@ -1459,7 +1462,7 @@ const LAPTOP_ST = `(() => {
       } else if (mode === 'rtc-token-hang') {
         rec(14, 'a token request the service never answers: the page\'s own eight-second clock names it and the same attempt goes on over the plain socket — live', st.live && reqs.token === 1 && said(/the token was requested but no signalling socket was opened within 8 s/) && said(/the same attempt goes on over a plain WebSocket, once/) && said(/session live over a plain WebSocket/) && !said(/failed —/), JSON.stringify({ st, reqs, lines }));
       } else if (mode === 'rtc-token-slow') {
-        rec(14, 'a token that arrives after the page has moved on: its late answer and the signalling socket it opens are ignored as an earlier attempt\'s, and the plain socket\'s session is not disturbed', st.live && said(/opened after its attempt had moved on — ignored/) && !said(/failed —/) && said(/session live over a plain WebSocket/), JSON.stringify({ st, sockets, lines }));
+        rec(14, 'a token that arrives after the page has moved on: the signalling socket it then opens, while the retry is still connecting, is ignored as an earlier attempt\'s, and the plain socket\'s session is not disturbed', st.live && sockets.join() === 'conversation,signalling' && said(/opened after its attempt had moved on — ignored/) && !said(/failed —/) && said(/session live over a plain WebSocket/), JSON.stringify({ st, sockets, lines }));
       } else if (mode === 'rtc-slow-config') {
         rec(14, 'a retried engine whose settings never arrive in time: the attempt fails with a notice and the block stays — it does not fold away mid-attempt', !st.live && st.ctl && st.failOn && !st.gone && said(/the retried engine never rendered its button within 5 s/), JSON.stringify({ st, reqs, lines }));
       } else if (mode === 'ws-terms-late' || mode === 'ws-terms-idle') {
@@ -1469,7 +1472,7 @@ const LAPTOP_ST = `(() => {
       } else if (mode === 'rtc-signal-close') {
         rec(14, 'a signalling socket the service closes: the code and reason named, the retry over the plain socket, live — and no false first-frame alarm on the binary channel', st.live && sockets.join() === 'signalling,conversation' && said(/WebRTC token issued/) && said(/WebRTC signalling closed, code 4001 — room not found/) && said(/the same attempt goes on over a plain WebSocket, once/) && said(/session live over a plain WebSocket/) && !said(/first frame from the service was not/), JSON.stringify({ st, sockets, lines }));
       } else if (mode === 'rtc-silent') {
-        rec(14, 'signalling that opens and sends a binary frame the page must not read: no first-frame alarm; the SDK gives up on its own within seconds, the page retries over the plain socket, live', st.live && sockets.join() === 'signalling,conversation' && said(/WebRTC signalling open/) && !said(/first frame from the service was not/) && said(/the same attempt goes on over a plain WebSocket, once/) && said(/session live over a plain WebSocket/), JSON.stringify({ st, sockets, lines }));
+        rec(14, 'signalling that opens and sends a binary frame the page must not read: no first-frame alarm; the page\'s own eight-second clock names the silence, the retry over the plain socket, live', st.live && sockets.join() === 'signalling,conversation' && said(/WebRTC signalling open/) && !said(/first frame from the service was not/) && said(/the signalling opened but no session began within 8 s/) && said(/session live over a plain WebSocket/), JSON.stringify({ st, sockets, lines }));
       } else if (mode === 'rtc-terms') {
         rec(14, 'terms accepted, then a refused token: the retried engine asks for the terms again and gets the visitor\'s earlier answer — the panel is shown once, and the call goes live', st.live && !st.terms && count(/asking the visitor to accept terms/) === 1 && said(/the retried engine asked for the terms again — the visitor's earlier answer stands/) && said(/session live over a plain WebSocket/), JSON.stringify({ st, lines }));
       }
@@ -1480,7 +1483,8 @@ const LAPTOP_ST = `(() => {
         const micGone = await page.evaluate(`window.__glasStreams.length > 0 && window.__glasStreams[0].getTracks().every(x => x.readyState === 'ended')`);
         rec(14, `${mode}: stopped onto the end card — no timers, native WebSocket and fetch back, the page's microphone stream ended, one fresh engine marked use-rtc="${want}" for the next attempt`, st.live && after.card && !after.live && after.timers === 0 && after.ws === 'WebSocket' && after.fetchNative && micGone && after.engines === 1 && after.useRtc === want && after.region === 'global', JSON.stringify({ wasLive: st.live, after, micGone }));
       }
-      rec(14, `${mode}: zero console errors from the page`, bag.filter(b => !(/token-500|rtc-terms|rtc-slow-config/.test(mode) && /status of 500/.test(b))).length === 0, bag.slice(0, 3).join(' | '));
+      /* the widget's own line when an element is removed while its settings are still on the way — the page replaces the engine on purpose there */
+      rec(14, `${mode}: zero console errors from the page`, bag.filter(b => !(/token-500|rtc-terms|rtc-slow-config/.test(mode) && /status of 500/.test(b)) && !(mode === 'rtc-slow-config' && /Cannot fetch config .* aborted/.test(b))).length === 0, bag.slice(0, 3).join(' | '));
       await ctx.close();
     }
   }

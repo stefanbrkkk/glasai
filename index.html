@@ -2399,7 +2399,7 @@ html:not(.js) .faq-panel > div,
 "use strict";
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   ——— PODESI OVDE ——— Jedina tri mesta koja menjaš kad budeš spreman. ———
+   ——— PODESI OVDE ——— Jedina četiri mesta koja menjaš kad budeš spreman. ———
    ═══════════════════════════════════════════════════════════════════════ */
 const CONFIG = {
   DEMO_TELEFON: "",   // npr. "+381 64 123 4567" — prazno = broj se nigde ne prikazuje
@@ -3148,7 +3148,10 @@ var TALK_ENGINE_MS = 5000;      /* a fresh engine that never renders, after a ru
 var TALK_HUSH_MS = 2000;        /* at the cap, an agent that has made no sound by then has no sentence to finish */
 var TALK_TERMS_MIC_MS = 180000; /* how long an unanswered terms sheet may hold the microphone */
 /* a test harness may shorten a wait before boot; nothing in production does */
-if (window.__glasDebug && window.__glasTiming) (function (o) { var k; for (k in o) if (Object.prototype.hasOwnProperty.call(o, k) && /^TALK_/.test(k)) window[k] = o[k]; })(window.__glasTiming);
+function tune(name, value) {
+  var o = window.__glasDebug && window.__glasTiming;
+  return o && typeof o[name] === "number" ? o[name] : value;
+}
 function hangUp(c) {
   /* endSession() can reject (an already-closed AudioContext); nobody is
      listening for that, so it must not surface */
@@ -3489,7 +3492,7 @@ function initTalk() {
       ws.addEventListener("error", function () { diag(rtc ? "WebRTC signalling socket error — refused on the way (a firewall or a proxy between this page and livekit.rtc.elevenlabs.io)" : "socket error — the handshake was refused before the service answered (a firewall, a content-security policy, or the agent's allowlist)"); });
       ws.addEventListener("close", function (e) {
         var note = "code " + e.code + (e.reason ? " — " + scrub(e.reason) : "");
-        if (stale()) { diag("the earlier " + (rtc ? "WebRTC signalling" : "socket") + " closed after its attempt had moved on (" + note + ") — ignored"); return; }
+        if (stale()) { diag(state === "connecting" ? "the earlier " + (rtc ? "WebRTC signalling" : "socket") + " closed after its attempt had moved on (" + note + ") — ignored" : (rtc ? "WebRTC signalling closed, " : "socket closed, ") + note); return; }
         socketNote = note;
         diag((rtc ? "WebRTC signalling closed, " : "socket closed, ") + socketNote);
         if (!(state === "connecting" && myRun === run)) return;
@@ -3673,12 +3676,12 @@ function initTalk() {
        answered must not hold the microphone for the life of the page. The
        panel stays and the answer is still taken; only the device is let go,
        and the widget asks for it again itself if „Prihvatam” comes. */
-    var a = attempt, myRun = run;
+    var a = attempt, myRun = run, wait = tune("TALK_TERMS_MIC_MS", TALK_TERMS_MIC_MS);
     if (a) a.clocks.push(later(function () {
       if (state !== "terms" || run !== myRun || !held) return;
       release();
-      diag("the terms went unanswered for " + (TALK_TERMS_MIC_MS / 1000) + " s — the microphone is let go; the widget asks for it again if the visitor accepts");
-    }, TALK_TERMS_MIC_MS));
+      diag("the terms went unanswered for " + (wait / 1000) + " s — the microphone is let go; the widget asks for it again if the visitor accepts");
+    }, wait));
   }
   var TERMS_SAY = "Uslovi korišćenja: pročitajte ih i pritisnite „Prihvatam”.";
   if (accept) on(accept, "click", function () {
