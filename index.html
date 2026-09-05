@@ -3183,6 +3183,18 @@ function initTalk() {
      the SDK's own default. Set on the element, so the snippet stays exactly
      as supplied, and before the first clone, so every engine carries it. */
   widget.setAttribute("server-location", "global");
+  /* ── the visitor's id ── without one the widget computes a browser
+     fingerprint on the first call (a few hundred milliseconds, and a
+     fingerprint); with one it does neither. A random id per browser, kept
+     locally, so the dashboard still tells visitors apart. */
+  try {
+    var uid = localStorage.getItem("glas_convai_uid");
+    if (!uid) {
+      uid = window.crypto && crypto.randomUUID ? crypto.randomUUID() : "v-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+      localStorage.setItem("glas_convai_uid", uid);
+    }
+    widget.setAttribute("user-id", uid);
+  } catch (err) {}
   var proto = widget.cloneNode(false);           /* a clean engine for every run */
 
   /* The one line the owner needs. Everything the engine swallows — a refused
@@ -3310,22 +3322,38 @@ function initTalk() {
   /* The start button, by its name where it has one — under some dashboard
      settings (text input on, expanded by default) it is not the first button
      in the widget — and by position only as a fallback. */
-  var buttonByName = false;
+  /* The start button, by its phone icon — the one thing about it the
+     dashboard cannot rename (the icon is a named slot inside the button,
+     in the widget's open shadow tree) — then by its name, and by position
+     only as a last resort. A button on its way out keeps its box for a
+     moment at zero opacity; that one is not pressed. */
+  var buttonByName = false, buttonLabel = "";
+  function visible(b) {
+    if (!b.getClientRects().length) return false;
+    try { if (getComputedStyle(b).opacity === "0") return false; } catch (err) {}
+    return true;
+  }
+  function nameOf(b) {
+    var a = (b.getAttribute("aria-label") || "").replace(/\s+/g, " ").trim(), t = (b.textContent || "").replace(/\s+/g, " ").trim();
+    return a && t && a !== t ? a + " " + t : (a || t);
+  }
   function engineButton() {
     var sr = widget && widget.shadowRoot;
-    buttonByName = false;
+    buttonByName = false; buttonLabel = "";
     if (!sr) return null;
-    var bs = sr.querySelectorAll("button"), i, b, first = null;
+    var slot = sr.querySelector('slot[name="icon-phone"]'), b = slot && slot.closest ? slot.closest("button") : null;
+    if (b && visible(b)) { buttonByName = true; buttonLabel = nameOf(b); return b; }
+    var bs = sr.querySelectorAll("button"), i, first = null;
     for (i = 0; i < bs.length; i++) {
-      b = bs[i];
-      if (!(b.offsetWidth || b.offsetHeight)) continue;
-      if (/call|poziv|razgovor/i.test((b.getAttribute("aria-label") || "") + " " + b.textContent)) { buttonByName = true; return b; }
-      if (!first) first = b;
+      if (!visible(bs[i])) continue;
+      if (/call|poziv|razgovor/i.test(nameOf(bs[i]))) { buttonByName = true; buttonLabel = nameOf(bs[i]); return bs[i]; }
+      if (!first) first = bs[i];
     }
+    if (first) buttonLabel = nameOf(first);
     return first;
   }
   function press(b) {
-    if (!buttonByName) diag("the widget's start button was not found by its name — its first button was pressed instead (with „Text only” on in the ElevenLabs widget settings there is no call button, and nothing will start)");
+    diag("the widget's start button pressed" + (buttonByName ? "" : " by position — neither its phone icon nor its name was found (with „Text only” on in the ElevenLabs widget settings there is no call button, and nothing will start)") + (buttonLabel ? " — „" + buttonLabel + "”" : ""));
     b.click();
   }
   function freshEngine(t) {
@@ -3360,6 +3388,19 @@ function initTalk() {
     var cfg = e.detail && e.detail.config;
     if (!cfg) return;
     diag("call event received — the widget is starting a session; the page's hooks are attached");
+    /* the widget sleeps 300 ms before it dials, on every platform; the SDK's
+       own default is none on desktop and iOS. The widget's Android allowance
+       is kept — the SDK's own is ten times longer. Once per call, at start. */
+    cfg.connectionDelay = { "default": 0, "android": 300, "ios": 0 };
+    /* the service's own gap: from the moment it has the caller's transcript
+       to the moment it has the agent's reply — the model's thinking, tools
+       included. Printed per turn, for the owner's console. */
+    var heardAt = 0, turnsSaid = 0;
+    cfg.onIncomingEvent = function (ev) {
+      var t = ev && ev.type;
+      if (t === "user_transcript") heardAt = performance.now();
+      else if (t === "agent_response" && heardAt && turnsSaid < 12) { turnsSaid++; diag("turn " + turnsSaid + ": the service had your words → the agent's reply was ready " + Math.round(performance.now() - heardAt) + " ms later (the model's thinking, tools included)"); heardAt = 0; }
+    };
     var mine = widget, myRun = run, own = null;
     function current() { return mine === widget && myRun === run; }
     function late(c) { diag("a session arrived after its attempt had ended — hung up"); hangUp(c); }
@@ -3740,7 +3781,9 @@ function initTalk() {
     state = "live"; startedAt = performance.now();
     unwatchSocket(); unwatchFetch(); release();
     if (attempt && attempt.clocks) { while (attempt.clocks.length) cancel(attempt.clocks.pop()); }
+    talking = false; lastTalk = 0; quietAt = 0; gapsSaid = 0;
     diag("session live over " + (transport === "webrtc" ? "WebRTC" : "a plain WebSocket"));
+    if (transport === "webrtc") later(roundTrip, 2000);
     btn.removeAttribute("aria-busy");
     label.textContent = "Slušam"; say("Slušam");
     btn.setAttribute("aria-label", STOP_NAME);      /* the visible word, and what pressing it does */
@@ -3752,16 +3795,42 @@ function initTalk() {
     }, TALK_NUDGE * 1000);
     later(capReached, TALK_CAP * 1000);
   }
+  /* the round trip to the media server, read once from the browser's own
+     statistics for the microphone's sender — every step guarded, nothing
+     written, nothing the SDK is not already doing */
+  function roundTrip() {
+    try {
+      var room = conv && conv.connection && conv.connection.getRoom ? conv.connection.getRoom() : null;
+      var pub = room && room.localParticipant && room.localParticipant.getTrackPublication ? room.localParticipant.getTrackPublication("microphone") : null;
+      var tr = pub && pub.track;
+      if (!tr || !tr.getRTCStatsReport) return;
+      tr.getRTCStatsReport().then(function (rep) {
+        var ms = null;
+        if (rep && rep.forEach) rep.forEach(function (s) { if (s.type === "candidate-pair" && (s.nominated || s.state === "succeeded") && typeof s.currentRoundTripTime === "number") ms = Math.round(s.currentRoundTripTime * 1000); });
+        if (ms !== null) diag("network round trip to the media server ≈ " + ms + " ms");
+      }, function () {});
+    } catch (err) {}
+  }
   function tick() {
     /* the session's own state is the truth about whether it is still on —
        the widget keeps onDisconnect for itself, so it is read, not awaited */
     if (conv && conv.isOpen && !conv.isOpen()) { finish(); return; }
     if (state !== "live") return;
     paint(TALK_CAP - (performance.now() - startedAt) / 1000);
+    var vin = 0, vout = 0, now = performance.now();
+    try { vout = conv && conv.getOutputVolume ? conv.getOutputVolume() : 0; } catch (err) { vout = 0; }
+    try { vin = conv && conv.getInputVolume ? conv.getInputVolume() : 0; } catch (err) { vin = 0; }
     /* whether the output meter ever moves — over WebRTC it can read a flat
        zero until the SDK's analyser is up, and forever if that fails */
-    if (!meterMoved) { try { if (conv && conv.getOutputVolume && conv.getOutputVolume() > 0.02) meterMoved = true; } catch (err) {} }
+    if (vout > 0.02) meterMoved = true;
+    /* the page's own gap: the caller goes quiet, the agent becomes audible.
+       Read at this tick's pace, so a quarter of a second either way; said
+       per turn, for the owner's console, and never when the meters are dead. */
+    if (vin > 0.02) { talking = true; lastTalk = now; quietAt = 0; }
+    else if (talking && now - lastTalk > 500) { talking = false; quietAt = lastTalk; }
+    if (quietAt && vout > 0.02 && gapsSaid < 12) { gapsSaid++; diag("turn " + gapsSaid + ": you went quiet → the agent was audible ≈ " + Math.round(now - quietAt) + " ms later (the whole gap: turn detection, the model, the voice, the network)"); quietAt = 0; }
   }
+  var talking = false, lastTalk = 0, quietAt = 0, gapsSaid = 0;
   function capReached() {
     if (state !== "live") return;
     state = "ending"; paint(0);
