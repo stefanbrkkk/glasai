@@ -1,0 +1,30 @@
+{
+  "name": "glasai",
+  "version": "1.0.0",
+  "description": "GLAS AI - AI agent koji se javlja za dve sekunde",
+  "main": "index.html",
+  "scripts": {
+    "dev": "npx serve .",
+    "build": "echo 'Static site - no build needed'",
+    "test": "echo \"No tests specified\" && exit 0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/stefanbrkkk/glasai.git"
+  },
+  "keywords": [
+    "ai",
+    "voice",
+    "assistant",
+    "analytics"
+  ],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/stefanbrkkk/glasai/issues"
+  },
+  "homepage": "https://github.com/stefanbrkkk/glasai#readme",
+  "dependencies": {
+    "@vercel/analytics": "^2.0.1"
+  }
+}

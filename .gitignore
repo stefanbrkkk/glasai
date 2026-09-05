@@ -1,3 +1,4 @@
 .audit/node_modules/
 .audit/shots/
 .audit/result.json
+node_modules/
