@@ -1193,6 +1193,7 @@ h3 {
 .talk.is-live .talk-dot { opacity: 1; }
 .talk.is-ending .talk-dot { animation: none !important; opacity: 0.55; }
 .js-motion .talk.is-live .talk-dot { animation: talk-blink 1.9s steps(1, end) infinite; }
+.js-motion .talk.is-thinking .talk-dot { animation-duration: 0.7s; }   /* the agent is forming its answer */
 @keyframes talk-blink { 0%, 55% { opacity: 1; } 56%, 100% { opacity: 0.45; } }
 /* the ghost button's amber hover belongs to the visitor's idle state; once the
    machine is on the line, hover stays in its colour */
@@ -3147,6 +3148,7 @@ var TALK_FAIL_MS = 4000;        /* how long the failure notice stays */
 var TALK_ENGINE_MS = 5000;      /* a fresh engine that never renders, after a run */
 var TALK_HUSH_MS = 2000;        /* at the cap, an agent that has made no sound by then has no sentence to finish */
 var TALK_TERMS_MIC_MS = 180000; /* how long an unanswered terms sheet may hold the microphone */
+var TALK_THINK_MS = 6000;       /* how long „Razmišljam…” may stand before the control says „Slušam” again regardless */
 /* a test harness may shorten a wait before boot; nothing in production does */
 function tune(name, value) {
   var o = window.__glasDebug && window.__glasTiming;
@@ -3297,7 +3299,8 @@ function initTalk() {
   }
   /* the words the control needs and the brief did not supply: a stop name for
      the live control, an ending that is not „listening”, a failed attempt */
-  var STOP_NAME = "Slušam — prekini demo", ENDING = "Završavam…", FAILED = "Povezivanje nije uspelo — pokušajte ponovo.";
+  var STOP_NAME = "Prekini demo", ENDING = "Završavam…", FAILED = "Povezivanje nije uspelo — pokušajte ponovo.";
+  var THINKING = "Razmišljam…";                 /* the visible word while the agent forms its answer */
   /* a failure only the owner can mend — the quota, the allowlist, a closed
      socket — is not one to retry; the visitor is pointed at the address */
   var OWNER_NOTICE = "Demo trenutno nije dostupan — zakažite razgovor.";
@@ -3395,11 +3398,35 @@ function initTalk() {
     /* the service's own gap: from the moment it has the caller's transcript
        to the moment it has the agent's reply — the model's thinking, tools
        included. Printed per turn, for the owner's console. */
-    var heardAt = 0, turnsSaid = 0;
+    /* Per turn, for the owner's console: the caller's last word to the
+       moment the service closes the turn (its own decision — what „turn
+       eagerness” moves); that moment to the agent's reply being ready (the
+       model, its tools); and the tools it called, by name and time. The
+       events come only if the agent's client events allow them; their
+       absence says nothing. And the one thing a visitor sees: the control
+       reads „Razmišljam…” from the transcript until the agent is audible. */
+    var heardAt = 0, toolAt = 0, toolName = "", probPeak = 0, probAt = 0;
     cfg.onIncomingEvent = function (ev) {
-      var t = ev && ev.type;
-      if (t === "user_transcript") heardAt = performance.now();
-      else if (t === "agent_response" && heardAt && turnsSaid < 12) { turnsSaid++; diag("turn " + turnsSaid + ": the service had your words → the agent's reply was ready " + Math.round(performance.now() - heardAt) + " ms later (the model's thinking, tools included)"); heardAt = 0; }
+      if (!current() || state !== "live") return;
+      var t = ev && ev.type, now = performance.now();
+      if (t === "user_transcript") {
+        turnNo++; heardAt = now; transcriptAt = now;
+        if (turnNo <= 12) diag("turn " + turnNo + ": your last word → the service closed your turn " + (quietAt ? "≈ " + Math.round(now - quietAt) + " ms later" : "(the page did not catch your last word)") + (probAt ? " — turn probability peaked at " + probPeak.toFixed(2) + ", " + (quietAt ? Math.round(probAt - quietAt) + " ms after it" : Math.round(now - probAt) + " ms before the transcript") : ""));
+        quietAt = 0; probPeak = 0; probAt = 0;
+        thinking(true);
+      } else if (t === "agent_response") {
+        if (heardAt && turnNo <= 12) diag("turn " + turnNo + ": the service had your words → the agent's reply was ready " + Math.round(now - heardAt) + " ms later (the model's thinking, tools included)");
+        heardAt = 0; thinking(false);
+      } else if (t === "agent_tool_request") {
+        toolAt = now; toolName = (ev.agent_tool_request && ev.agent_tool_request.tool_name) || "a tool";
+        if (turnNo <= 12) diag("turn " + turnNo + ": the agent is calling " + toolName);
+      } else if (t === "agent_tool_response") {
+        if (toolAt && turnNo <= 12) diag("turn " + turnNo + ": " + toolName + " answered " + Math.round(now - toolAt) + " ms later" + (ev.agent_tool_response && ev.agent_tool_response.is_error ? " — with an error" : ""));
+        toolAt = 0;
+      } else if (t === "internal_turn_probability") {
+        var p = ev.turn_probability_internal_event && ev.turn_probability_internal_event.turn_probability;
+        if (typeof p === "number" && p > probPeak) { probPeak = p; probAt = now; }
+      }
     };
     var mine = widget, myRun = run, own = null;
     function current() { return mine === widget && myRun === run; }
@@ -3781,7 +3808,7 @@ function initTalk() {
     state = "live"; startedAt = performance.now();
     unwatchSocket(); unwatchFetch(); release();
     if (attempt && attempt.clocks) { while (attempt.clocks.length) cancel(attempt.clocks.pop()); }
-    talking = false; lastTalk = 0; quietAt = 0; gapsSaid = 0;
+    talking = false; talkFrom = 0; lastTalk = 0; quietAt = 0; transcriptAt = 0; turnNo = 0; thinkT = 0;
     diag("session live over " + (transport === "webrtc" ? "WebRTC" : "a plain WebSocket"));
     if (transport === "webrtc") later(roundTrip, 2000);
     btn.removeAttribute("aria-busy");
@@ -3801,6 +3828,8 @@ function initTalk() {
   function roundTrip() {
     try {
       var room = conv && conv.connection && conv.connection.getRoom ? conv.connection.getRoom() : null;
+      var id = room && typeof room.name === "string" ? /conv_[a-z0-9]+/i.exec(room.name) : null;
+      if (id) diag("conversation " + id[0] + " — the dashboard's record of this call");
       var pub = room && room.localParticipant && room.localParticipant.getTrackPublication ? room.localParticipant.getTrackPublication("microphone") : null;
       var tr = pub && pub.track;
       if (!tr || !tr.getRTCStatsReport) return;
@@ -3822,15 +3851,26 @@ function initTalk() {
     try { vin = conv && conv.getInputVolume ? conv.getInputVolume() : 0; } catch (err) { vin = 0; }
     /* whether the output meter ever moves — over WebRTC it can read a flat
        zero until the SDK's analyser is up, and forever if that fails */
-    if (vout > 0.02) meterMoved = true;
-    /* the page's own gap: the caller goes quiet, the agent becomes audible.
-       Read at this tick's pace, so a quarter of a second either way; said
-       per turn, for the owner's console, and never when the meters are dead. */
-    if (vin > 0.02) { talking = true; lastTalk = now; quietAt = 0; }
-    else if (talking && now - lastTalk > 500) { talking = false; quietAt = lastTalk; }
-    if (quietAt && vout > 0.02 && gapsSaid < 12) { gapsSaid++; diag("turn " + gapsSaid + ": you went quiet → the agent was audible ≈ " + Math.round(now - quietAt) + " ms later (the whole gap: turn detection, the model, the voice, the network)"); quietAt = 0; }
+    if (vout > 0.02) { meterMoved = true; if (root.classList.contains("is-thinking")) thinking(false); }
+    /* the caller's speech, read from the echo-cancelled microphone: above a
+       gate the room's noise does not reach, only while the agent is not
+       audible (its own voice through the speakers is not a turn), and only
+       for as long as a word takes. Read at this tick's pace: a quarter of a
+       second either way. */
+    if (vin > 0.12 && vout < 0.05) { if (!talking) { talking = true; talkFrom = now; } lastTalk = now; }
+    else if (talking && now - lastTalk > 300) { talking = false; if (lastTalk - talkFrom >= 400) quietAt = lastTalk; }
+    /* the rest of the gap: from the turn's close to the agent being audible */
+    if (transcriptAt && vout > 0.02) { if (turnNo <= 12) diag("turn " + turnNo + ": the service closed your turn → the agent was audible ≈ " + Math.round(now - transcriptAt) + " ms later (the model, the voice, the network)"); transcriptAt = 0; }
   }
-  var talking = false, lastTalk = 0, quietAt = 0, gapsSaid = 0;
+  var talking = false, talkFrom = 0, lastTalk = 0, quietAt = 0, transcriptAt = 0, turnNo = 0, thinkT = 0;
+  /* the control's word while the agent forms its answer; never left standing */
+  function thinking(on) {
+    if (state !== "live") return;
+    cancel(thinkT); thinkT = 0;
+    root.classList.toggle("is-thinking", !!on);
+    label.textContent = on ? THINKING : "Slušam";
+    if (on) thinkT = later(function () { thinking(false); }, TALK_THINK_MS);
+  }
   function capReached() {
     if (state !== "live") return;
     state = "ending"; paint(0);
@@ -3871,7 +3911,7 @@ function initTalk() {
        already ended by end() or by the agent is left alone */
     if (conv && (!conv.isOpen || conv.isOpen())) hangUp(conv);
     state = "idle"; conv = null;
-    root.classList.remove("is-live"); root.classList.remove("is-ending");
+    root.classList.remove("is-live"); root.classList.remove("is-ending"); root.classList.remove("is-thinking");
     btn.removeAttribute("aria-busy"); btn.removeAttribute("aria-label");
     label.textContent = "Razgovaraj sa agentom";
     if (failed) {

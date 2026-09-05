@@ -1118,7 +1118,7 @@ const LAPTOP_ST = `(() => {
       const hooks = await page.evaluate(FAKE); await page.clock.runFor(100);
       st = await page.evaluate(TALK_ST);
       rec(14, 'a connected session goes live: „Slušam”, the clock at 00:40, the rule full', hooks && st.live && st.label === 'Slušam' && st.clock === '00:40' && st.rule === 'scaleX(1)' && st.liveOn && !st.noteOn, JSON.stringify(st));
-      rec(14, 'while live the control is named for what pressing it does', (await page.getAttribute('#talk-btn', 'aria-label')) === 'Slušam — prekini demo');
+      rec(14, 'while live the control is named for what pressing it does — and for nothing about the state, which the visible word carries', (await page.getAttribute('#talk-btn', 'aria-label')) === 'Prekini demo');
       await page.clock.runFor(10000); st = await page.evaluate(TALK_ST);
       rec(14, 'ten seconds in: 00:30, the rule three-quarters', st.clock === '00:30' && /scaleX\(0\.7[45]/.test(st.rule), JSON.stringify({ clock: st.clock, rule: st.rule }));
       await page.clock.runFor(21500);
@@ -1427,8 +1427,10 @@ const LAPTOP_ST = `(() => {
           if (m.type === 'conversation_initiation_client_data') {
             const meta = () => ws.send(JSON.stringify({ type: 'conversation_initiation_metadata', conversation_initiation_metadata_event: { conversation_id: 'conv_mock_' + mode, agent_output_audio_format: 'pcm_16000', user_input_audio_format: 'pcm_16000' } }));
             if (mode === 'rtc-token-slow') setTimeout(meta, 2500); else meta();     /* the retry still connecting when the orphan dials */
-            if (mode === 'ws-config') {                                                /* the service hears a turn and answers it */
+            if (mode === 'ws-config') {                                                /* the service hears a turn, calls a tool, answers */
               setTimeout(() => ws.send(JSON.stringify({ type: 'user_transcript', user_transcription_event: { user_transcript: 'Dobar dan' } })), 900);
+              setTimeout(() => ws.send(JSON.stringify({ type: 'agent_tool_request', agent_tool_request: { tool_name: 'google_calendar_check_availability', tool_call_id: 't1' } })), 1000);
+              setTimeout(() => ws.send(JSON.stringify({ type: 'agent_tool_response', agent_tool_response: { tool_name: 'google_calendar_check_availability', tool_call_id: 't1', is_error: false, is_called: true } })), 1400);
               setTimeout(() => ws.send(JSON.stringify({ type: 'agent_response', agent_response_event: { agent_response: 'Dobar dan!' } })), 1700);
             }
           }
@@ -1461,7 +1463,15 @@ const LAPTOP_ST = `(() => {
         rec(14, 'ws-terms-idle: a sheet left unanswered lets the microphone go after the wait (shortened to 1.5 s here) — the panel stays, the answer is still taken', t.terms && ended && said(/the terms went unanswered for 1\.5 s — the microphone is let go/), JSON.stringify({ t, ended, lines }));
         await page.click('#talk-accept');
       }
-      await page.waitForTimeout(mode === 'rtc-slow-config' ? 9000 : /^(rtc-silent|rtc-token-hang)$/.test(mode) ? 12500 : mode === 'rtc-token-slow' ? 14000 : 3500);
+      let labels = null;
+      if (mode === 'ws-config') {
+        /* the control's word through the mocked turn: „Slušam” at first, „Razmišljam…” once the service has the words, „Slušam” again when the reply is ready */
+        await page.waitForTimeout(600);  const l0 = await page.evaluate(`document.getElementById('talk-label').textContent`);   /* live, before the transcript (~1.2 s) */
+        await page.waitForTimeout(850);  const l1 = await page.evaluate(`document.getElementById('talk-label').textContent`);   /* after the transcript, before the reply (~2.0 s) */
+        await page.waitForTimeout(900);  const l2 = await page.evaluate(`document.getElementById('talk-label').textContent`);   /* after the reply */
+        labels = { l0, l1, l2, thinkingClassNow: await page.evaluate(`document.getElementById('talk').classList.contains('is-thinking')`) };
+        await page.waitForTimeout(1150);
+      } else await page.waitForTimeout(mode === 'rtc-slow-config' ? 9000 : /^(rtc-silent|rtc-token-hang)$/.test(mode) ? 12500 : mode === 'rtc-token-slow' ? 14000 : 3500);
       const st = await page.evaluate(TALK_ST3);
       if (mode === 'ws-config') {
         rec(14, 'ws-config: DEMO_VEZA "websocket" — no token is asked for, the plain socket opens at once to api.elevenlabs.io, the host ElevenLabs routes, live', st.live && reqs.token === 0 && sockets.join() === 'conversation' && hosts[0] === 'api.elevenlabs.io' && said(/attempt begins over a plain WebSocket, as configured/) && said(/session live over a plain WebSocket/), JSON.stringify({ st, reqs, sockets, hosts, lines }));
@@ -1469,6 +1479,8 @@ const LAPTOP_ST = `(() => {
         rec(14, 'a start button the dashboard renamed („Pozovi”) is still found — by its phone icon, not its name or its place — and the label pressed is printed', said(/the widget's start button pressed — „Pozovi”/) && !said(/by position/), JSON.stringify(lines));
         rec(14, 'with the visitor id handed to the widget, its own fingerprint-derived id is never computed or stored', st.widgetOwnId === null && st.userId === st.stored, JSON.stringify({ own: st.widgetOwnId, userId: st.userId }));
         rec(14, 'the service\'s own gap is printed per turn: from the caller\'s transcript to the agent\'s reply, in milliseconds', said(/turn 1: the service had your words → the agent's reply was ready [5-9]\d\d ms later/), JSON.stringify(lines));
+        rec(14, 'the tool the agent calls is named, and its answer timed', said(/turn 1: the agent is calling google_calendar_check_availability/) && said(/turn 1: google_calendar_check_availability answered [2-7]\d\d ms later/), JSON.stringify(lines));
+        rec(14, 'the control reads „Slušam” before the turn, „Razmišljam…” once the service has the words, and „Slušam” again when the reply is ready — with the thinking class gone', labels && labels.l0 === 'Slušam' && labels.l1 === 'Razmišljam…' && labels.l2 === 'Slušam' && labels.thinkingClassNow === false && st.label === 'Slušam', JSON.stringify(labels));
       } else if (mode === 'rtc-token-hang') {
         rec(14, 'a token request the service never answers: the page\'s own eight-second clock names it and the same attempt goes on over the plain socket — live', st.live && reqs.token === 1 && said(/the token was requested but no signalling socket was opened within 8 s/) && said(/the same attempt goes on over a plain WebSocket, once/) && said(/session live over a plain WebSocket/) && !said(/failed —/), JSON.stringify({ st, reqs, lines }));
       } else if (mode === 'rtc-token-slow') {

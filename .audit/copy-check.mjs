@@ -308,20 +308,20 @@ ok('talk: no SMS anywhere in the file — markup, comments, meta, script', !/sms
 /* the client's snippet, byte for byte — the one thing on this page that is
    quoted rather than written, so it is asserted as a literal */
 ok('talk: the widget snippet is present, exactly as supplied', html.includes('<elevenlabs-convai agent-id="agent_5701m14n57q9e25ryes2tg8tdjhd"></elevenlabs-convai><script src="https://unpkg.com/@elevenlabs/convai-widget-embed" async type="text/javascript"></script>'));
-ok('talk: the ending and stop words exist only in the script, verbatim', /"Završavam…"/.test(html) && /"Slušam — prekini demo"/.test(html));
+ok('talk: the ending, stop and thinking words exist only in the script, verbatim', /"Završavam…"/.test(html) && /"Prekini demo"/.test(html) && /"Razmišljam…"/.test(html));
 ok('the AI disclosure is the first line of the transcript', /Ja sam ve(š|s)ta(č|c)ka inteligencija, poziv se snima/.test(html));
 ok('a human is always reachable — stated in copy', /Dovoljno je re(ć|c)i „operater” i poziv ide na va(š|s) broj\./.test(html));
 
 /* aria-label / title / alt must not contain generated Serbian beyond the declared set */
 const ARIA = await page.evaluate(`Array.from(document.querySelectorAll('[aria-label],[title],[alt]')).map(e => e.getAttribute('aria-label') || e.getAttribute('title') || e.getAttribute('alt'))`);
-const ALLOWED_ARIA = new Set(['GLAS AI', 'Meni', 'Slušam — prekini demo', 'Uslovi korišćenja']);   /* the terms region's name, declared above */
+const ALLOWED_ARIA = new Set(['GLAS AI', 'Meni', 'Prekini demo', 'Uslovi korišćenja']);   /* the terms region's name, declared above */
 const strayAria = ARIA.filter(a => a && !ALLOWED_ARIA.has(a.trim()));
 ok('no generated Serbian in aria-label / title / alt', strayAria.length === 0, JSON.stringify(strayAria));
 
 /* every string that is NOT in §8 must be one of the declared exceptions */
 const DECLARED_EXTRA = ['Preskoči na sadržaj', 'Meni', 'Zatvori', 'Zaustavi', '21.40', '+381 6• ••• •••', '00:22', 'Agent', 'Pozivalac',
   /* the live demo's own words, written once its copy was delegated: a stop name, an ending, a clock label, a failed attempt, a new-window hint */
-  'Slušam — prekini demo', 'Završavam…', 'Preostalo', 'Povezivanje nije uspelo — pokušajte ponovo.', '(otvara se u novom prozoru)',
+  'Prekini demo', 'Razmišljam…', 'Završavam…', 'Preostalo', 'Povezivanje nije uspelo — pokušajte ponovo.', '(otvara se u novom prozoru)',
   /* the microphone's three notices — the one place a visitor can act on a failed attempt */
   'Mikrofon je blokiran u pretraživaču — dozvolite ga za ovu stranicu i pokušajte ponovo.', 'Nije pronađen mikrofon.', 'Mikrofon je zauzet ili nedostupan — pokušajte ponovo.',
   /* the terms panel's two answers, handed back to the widget's own sheet; the panel's name and what the live region says when it opens */

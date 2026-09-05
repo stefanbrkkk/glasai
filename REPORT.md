@@ -897,6 +897,42 @@ and the documentation — settled what the page can and cannot do:
   The owner's next call therefore comes with numbers, which the pasted
   console did not have.
 
+**The third pass: why the preview feels faster.** With WebRTC live and
+the first numbers in hand — the service's own gap from the caller's
+transcript to the agent's reply measured at 3.4, 1.3 and 1.8 seconds on
+three turns, a 145 ms round trip to the media server — the owner, having
+set eagerness to Eager, speculative turn on and reasoning off, still found
+ElevenLabs' preview faster than the site. A third pass (six Opus
+researchers, six Opus verifiers, on agent versioning, event semantics,
+the preview's differences, echo and turn detection, the media region and
+perceived latency) found no mechanism by which the service could be
+slower for the widget: one media host worldwide with a single address for
+every subnet, the same turn settings on both surfaces, three differences
+in the initiation payload none of which touch timing. What it found was
+that the preview *shows* the wait — the caller's words as text, the
+agent's reply as it streams — while the page showed an unchanged „Slušam"
+for the whole one to three seconds. And two things on the owner's side
+that would make settings not bite: a workflow node can carry its own turn
+configuration, in force while that node conducts the call, whatever the
+agent-level setting says; and a procedure has a draft-and-publish step
+that agent settings do not.
+
+The page now names the wait: from the moment the service has the caller's
+words the control reads „Razmišljam…", the dot quickens, and it reads
+„Slušam" again the moment the agent is audible — or when the reply is
+ready, or after six seconds regardless. The stop name no longer mixes the
+state with the action. The console's numbers were made honest: the
+earlier „you went quiet → audible" line had a structural floor of half a
+second and had counted the greeting's echo as the caller's turns; it is
+replaced by three lines per turn — the caller's last word to the moment
+the service closes the turn (its own decision, what eagerness moves), the
+close to the reply being ready (the model and its tools), and the close to
+the agent being audible — with the tools the agent calls named and timed,
+the turn probability when the service sends it, and the conversation id
+once per call. All of it only if the agent's client events allow those
+events; their absence says nothing, and the owner's guide says which to
+allow.
+
 **Verified in round 14c** against the real 0.18.0 bundle and a mocked
 service (a token endpoint, a LiveKit-style signalling socket, the plain
 conversation socket): a refused token, a closed signalling socket, a
@@ -928,7 +964,7 @@ when the net caught it.
   harness accepts and declines it against the real widget.
 - The widget fetches its avatar texture from `storage.googleapis.com`; the
   harness stubs it. In production that host is one more the page touches.
-- Everything else is run, not reasoned: **247 / 247 harness checks** (seventeen rounds — round 14 is the demo on a fake clock, 14b the real widget against a mocked service, 14c the connection with its fallback, 15 the contact section; see the table) and **97 / 97 content checks**.
+- Everything else is run, not reasoned: **249 / 249 harness checks** (seventeen rounds — round 14 is the demo on a fake clock, 14b the real widget against a mocked service, 14c the connection with its fallback, 15 the contact section; see the table) and **97 / 97 content checks**.
 
 ### 5 · The calendar claim, and the percentages
 
@@ -948,7 +984,7 @@ decide there.
 
 ## 3 · Round 1 — final automated audit (`node audit.js`)
 
-**247 / 247 passed, all green — on the last two consecutive full runs.** Everything below was actually executed in
+**249 / 249 passed, all green — on the last two consecutive full runs.** Everything below was actually executed in
 headless Chromium against the real file.
 
 | # | round | result |
@@ -968,7 +1004,7 @@ headless Chromium against the real file.
 | 13 | Touch (Pixel 7) | sway replaces cursor tilt, magnetism never engages, no pin, menu works by tap, the player answers a tap without erroring; the laptop stands open at the bottom, its button and address are real tap targets, a tap copies |
 | 14 | **The live demo** (the plain socket pinned through the debug override; the connection has round 14c) — the real widget bundle served locally, its config and avatar texture stubbed, the microphone granted, the session driven through the widget's own hook on a fake clock | ready only once the engine renders its button; engine never painted, never focusable; the page's button presses the engine's — one `elevenlabs-convai:call` carrying the four hooks; a change of mind while connecting leaves no timer; live → `00:30` at ten seconds with the rule at ¾; the wrap-up nudge at 31 s; at 40 s the mic is muted and the clock reads `00:00` but a speaking agent is not cut; half a second of silence ends it and the card takes the widget's place; zero timers, a frozen clock, one fresh engine; restart works; while live the control is named for what pressing it does, and past the cap it says it is finishing; an attempt the service accepts and never answers comes back after 12 s with the owner's notice, the address linked, and that notice stays; an early hang-up — which the widget never forwards — is noticed within a tick and ends on the card; an agent that never goes quiet is ended at 46 s; the card's number line only with `DEMO_TELEFON`, the booking link when `DEMO_LINK` is set; reduced motion still live; zero console errors in every state |
 | 14b | **The real widget against a mocked service** (the plain socket pinned; the connection has round 14c) — the real bundle, its real SDK, a fake microphone, a Playwright-mocked ElevenLabs socket that speaks the protocol | eleven situations, each a fresh context: a handshake goes live and is stopped onto the end card; a refused handshake (1008) gives the owner's notice with the address linked within two seconds and the reason in the console; a quota close half a second in is named and shown with the owner's notice, not as a finished demo; the widget's terms sheet is met with the page's own panel — the owner's words in it, focus on them, no socket yet — and „Prihvatam" hands the answer to the widget, the socket opens and the page goes live, then stops onto the card; „Odustani" returns to the start with no socket, no timer, one fresh engine; a blocked microphone gives the visitor's notice and the error's name, and the notice is still there after the four seconds the generic one gets; an insecure page hides the demo; a first frame that is not the metadata is named the moment it arrives and the 12 s verdict says accepted-but-no-session; a handshake accepted and never answered gives the same verdict with `socket open` before it; site data blocked for the origin leaves the browser's own „Uncaught (in promise)" line and a verdict that points at it; the page framed by another origin without `allow="microphone"` gives the microphone notice and an owner's line naming the frame and the host's policy. The socket's URL, subprotocol and first message are asserted; the native WebSocket is restored and no timer is left in every mode |
-| 14c | **The connection** — the real widget, WebRTC first, the plain socket as the net | before any press the engine carries `use-rtc="true"` and `server-location="global"` (or `use-rtc="false"` under `DEMO_VEZA: "websocket"`), set on the element with the snippet's bytes untouched; a token the service refuses is named and the same attempt goes on over the plain socket within a second; a token never answered runs out the page's own eight-second clock; a token answered after the page has moved on, and the signalling socket it then opens, are ignored as an earlier attempt's; a signalling socket the service closes (code and reason named) and one that opens and sends a binary frame both end in the retry and a live session, with no first-frame alarm; terms accepted before a refused token are handed to the retried engine without the panel showing twice; a retried engine whose settings never arrive fails with a notice and the block stays; `"websocket"` asks for no token and dials `api.elevenlabs.io`; a reader who accepts the terms after ten seconds is not failed by a stale clock; a sheet left unanswered lets the microphone go after its wait; the fingerprint library is told not to phone home and nothing leaves for it; the engine carries a visitor id kept in the browser and the widget's own fingerprint-derived id is never written; a start button the dashboard renamed is found by its phone icon and the label pressed is printed, in every mode; the token is requested within a quarter second of the call event, the widget's 300 ms sleep gone; the service's per-turn gap is printed from a mocked transcript and reply; every live mode stops onto the end card with no timers, the native `WebSocket` and `fetch` back, the page's microphone stream ended and a fresh engine marked for the next attempt |
+| 14c | **The connection** — the real widget, WebRTC first, the plain socket as the net | before any press the engine carries `use-rtc="true"` and `server-location="global"` (or `use-rtc="false"` under `DEMO_VEZA: "websocket"`), set on the element with the snippet's bytes untouched; a token the service refuses is named and the same attempt goes on over the plain socket within a second; a token never answered runs out the page's own eight-second clock; a token answered after the page has moved on, and the signalling socket it then opens, are ignored as an earlier attempt's; a signalling socket the service closes (code and reason named) and one that opens and sends a binary frame both end in the retry and a live session, with no first-frame alarm; terms accepted before a refused token are handed to the retried engine without the panel showing twice; a retried engine whose settings never arrive fails with a notice and the block stays; `"websocket"` asks for no token and dials `api.elevenlabs.io`; a reader who accepts the terms after ten seconds is not failed by a stale clock; a sheet left unanswered lets the microphone go after its wait; the fingerprint library is told not to phone home and nothing leaves for it; the engine carries a visitor id kept in the browser and the widget's own fingerprint-derived id is never written; a start button the dashboard renamed is found by its phone icon and the label pressed is printed, in every mode; the token is requested within a quarter second of the call event, the widget's 300 ms sleep gone; the service's per-turn gap is printed from a mocked transcript and reply, the tool the agent calls named and timed, and the control reads „Slušam”, then „Razmišljam…” once the service has the words, then „Slušam” again when the reply is ready; every live mode stops onto the end card with no timers, the native `WebSocket` and `fetch` back, the page's microphone stream ended and a fresh engine marked for the next attempt |
 | 15 | **Kontakt** — the laptop and the address | a plan's button lands under the nav with focus on the section, the laptop open and the copy button in view; shut → half → open sampled off the scrub, with the lid's projected height, the words, the deck's light and identity transforms asserted at each; the button copies, says „Kopirano" at the same width, announces once and reverts; the address is a `mailto:`; an instant jump to the bottom leaves it open; zero console errors |
 
 **Round 4 — content (`node .audit/copy-check.mjs`): 97 / 97 passed.** Every
