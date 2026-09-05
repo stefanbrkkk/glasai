@@ -314,7 +314,7 @@ ok('a human is always reachable — stated in copy', /Dovoljno je re(ć|c)i „o
 
 /* aria-label / title / alt must not contain generated Serbian beyond the declared set */
 const ARIA = await page.evaluate(`Array.from(document.querySelectorAll('[aria-label],[title],[alt]')).map(e => e.getAttribute('aria-label') || e.getAttribute('title') || e.getAttribute('alt'))`);
-const ALLOWED_ARIA = new Set(['GLAS AI', 'Meni', 'Slušam — prekini demo']);
+const ALLOWED_ARIA = new Set(['GLAS AI', 'Meni', 'Slušam — prekini demo', 'Uslovi korišćenja']);   /* the terms region's name, declared above */
 const strayAria = ARIA.filter(a => a && !ALLOWED_ARIA.has(a.trim()));
 ok('no generated Serbian in aria-label / title / alt', strayAria.length === 0, JSON.stringify(strayAria));
 
