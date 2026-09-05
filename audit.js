@@ -25,6 +25,9 @@ const EXE = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const SHOTS = path.join(ROOT, '.audit', 'shots');
 const FIX = path.join(ROOT, '.audit', 'fixtures');
 const NM = path.join(ROOT, '.audit', 'node_modules');
+/* the widget bundle the harness serves — the unpinned snippet resolves to npm's latest, so the harness keeps that */
+const WIDGET_VER = JSON.parse(fs.readFileSync(path.join(NM, '@elevenlabs/convai-widget-embed/package.json'), 'utf8')).version;
+const WIDGET_VER_RE = WIDGET_VER.replace(/\./g, '\\.');
 const WIDTHS = [360, 390, 414, 768, 1024, 1280, 1440, 1920];
 const QUICK = process.argv.includes('--quick');
 
@@ -1083,7 +1086,7 @@ const LAPTOP_ST = `(() => {
       });
       const page = await ctx.newPage(); const bag = [];
       watch(page, bag);
-      await page.addInitScript(() => { window.__glasDebug = true; });
+      await page.addInitScript(() => { window.__glasDebug = true; window.__glasConfig = { DEMO_VEZA: 'websocket' }; });   /* these rounds mock the plain socket; WebRTC has its own round */
       /* The engine now reaches a real socket, and this sandbox refuses it —
          which the page would now report within a second, resetting the very
          attempt these tests drive by hand. So the socket is mocked to open
@@ -1224,7 +1227,7 @@ const LAPTOP_ST = `(() => {
       const page = await ctx.newPage(); const bag = [], lines = [];
       watch(page, bag);
       page.on('console', m => { if (/\[glas\] demo:|ConversationalAI/.test(m.text())) lines.push(m.text()); });
-      await page.addInitScript(() => { window.__glasDebug = true; });
+      await page.addInitScript(() => { window.__glasDebug = true; window.__glasConfig = { DEMO_VEZA: 'websocket' }; });   /* these rounds mock the plain socket; WebRTC has its own round */
       if (mode === 'micdenied') await page.addInitScript(() => { const md = navigator.mediaDevices; Object.defineProperty(navigator, 'mediaDevices', { value: Object.assign(Object.create(md), { getUserMedia: () => Promise.reject(new DOMException('Permission denied', 'NotAllowedError')) }), configurable: true }); });
       if (mode === 'insecure') await page.addInitScript(() => { Object.defineProperty(window, 'isSecureContext', { value: false, configurable: true }); });
       /* a browser with site data blocked for this origin: storage that throws */
@@ -1261,8 +1264,8 @@ const LAPTOP_ST = `(() => {
       if (mode === 'handshake') {
         rec(14, 'the real engine, a fake microphone, a service that answers: the page goes live — „Slušam”, the clock running, the socket the widget opened seen by the page',
             st.live && st.label === 'Slušam' && /^00:(3[6-9]|40)$/.test(st.clock) && st.ws === 'WebSocket' && said(/microphone granted/) && said(/call event received/) && said(/socket open — the service accepted/) && said(/session live/), JSON.stringify({ st, lines }));
-        rec(14, 'the socket is the one the widget documents: wss api.elevenlabs.io /v1/convai/conversation?agent_id=…&source=widget&version=0.17.1, and the first thing sent is the initiation client data',
-            /^wss:\/\/api\.(us\.)?elevenlabs\.io\/v1\/convai\/conversation\?agent_id=agent_5701m14n57q9e25ryes2tg8tdjhd&source=widget&version=0\.17\.1$/.test(sock.url || '') && sock.first === 'conversation_initiation_client_data', JSON.stringify(sock));
+        rec(14, `the socket is the one the widget documents: wss api.elevenlabs.io /v1/convai/conversation?agent_id=…&source=widget&version=${WIDGET_VER}, and the first thing sent is the initiation client data`,
+            new RegExp('^wss:\\/\\/api\\.(us\\.)?elevenlabs\\.io\\/v1\\/convai\\/conversation\\?agent_id=agent_5701m14n57q9e25ryes2tg8tdjhd&source=widget&version=' + WIDGET_VER_RE + '$').test(sock.url || '') && sock.first === 'conversation_initiation_client_data', JSON.stringify({ sock, WIDGET_VER }));
         await page.click('#talk-btn');          /* the visitor stops it */
         await page.waitForTimeout(2200);
         const after = await page.evaluate(TALK_ST2);
@@ -1323,7 +1326,7 @@ const LAPTOP_ST = `(() => {
       page.on('console', m => { if (/\[glas\] demo:/.test(m.text())) lines.push(m.text()); });
       await page.route(/^https:\/\/site\.test\//, r => { const u = new URL(r.request().url()); const f = path.join(ROOT, u.pathname === '/' ? 'index.html' : u.pathname); if (!fs.existsSync(f)) return r.fulfill({ status: 404, body: '' }); r.fulfill({ status: 200, contentType: MIME[path.extname(f)] || 'application/octet-stream', body: fs.readFileSync(f) }); });
       await page.route('https://frame.test/wrap.html', r => r.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>wrap</title><style>body{margin:0}iframe{border:0;width:100vw;height:100vh}</style><iframe src="https://site.test/index.html"></iframe>' }));
-      await page.addInitScript(() => { window.__glasDebug = true; });
+      await page.addInitScript(() => { window.__glasDebug = true; window.__glasConfig = { DEMO_VEZA: 'websocket' }; });   /* these rounds mock the plain socket; WebRTC has its own round */
       const sock = { url: null };
       await page.routeWebSocket(/v1\/convai\/conversation/, ws => { sock.url = ws.url(); ws.onMessage(() => {}); });
       await page.goto('https://frame.test/wrap.html', { waitUntil: 'load' });
@@ -1344,6 +1347,74 @@ const LAPTOP_ST = `(() => {
           !!st && st.failOn && st.failText === 'Mikrofon je blokiran u pretraživaču — dozvolite ga za ovu stranicu i pokušajte ponovo.' && sock.url === null && said(/microphone refused for this page: NotAllowedError.*the page is inside a frame \(window\.top !== window\).*the microphone is disallowed by the host's Permissions-Policy/), JSON.stringify({ st, lines, frames: page.frames().map(f => f.url()) }));
       await ctx.close();
     }
+  }
+
+  head('14c · The connection — WebRTC as ElevenLabs\' own preview, the plain socket as the net');
+  {
+    const TALK_ST3 = `(() => { const g = id => document.getElementById(id); const t = g('talk'); const el = document.querySelector('elevenlabs-convai');
+      return { live: t.classList.contains('is-live'), ctl: g('talk-ctl').classList.contains('is-on'), card: g('talk-card').classList.contains('is-on'), terms: g('talk-terms').classList.contains('is-on'),
+        label: g('talk-label').textContent, failOn: g('talk-fail').classList.contains('is-on'), timers: (window.__glasTalkTimers || []).length, ws: window.WebSocket.name, fetchNative: window.fetch.name === 'fetch',
+        engines: document.querySelectorAll('elevenlabs-convai').length, useRtc: el && el.getAttribute('use-rtc') }; })()`;
+    for (const mode of ['rtc-token-500', 'rtc-signal-close', 'rtc-silent', 'rtc-terms', 'ws-config']) {
+      const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+      const cfg = { widget_config: { ...CFG_BASE } };
+      if (mode === 'rtc-terms') { cfg.widget_config.terms_html = '<p>Uslovi korišćenja demoa.</p>'; cfg.widget_config.terms_key = null; }
+      await wire(ctx);
+      const reqs = { token: 0 };
+      await ctx.route(/elevenlabs\.io/, r => { const u = r.request().url();
+        if (/\/v1\/convai\/agents\/[^/]+\/widget/.test(u)) return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(cfg) });
+        if (/\/v1\/convai\/conversation\/token/.test(u)) { reqs.token++; return /token-500|rtc-terms/.test(mode) ? r.fulfill({ status: 500, contentType: 'application/json', body: '{"detail":"nope"}' }) : r.fulfill({ status: 200, contentType: 'application/json', body: '{"token":"mock-token"}' }); }
+        r.fulfill({ status: 500, contentType: 'application/json', body: '{}' }); });
+      await ctx.grantPermissions(['microphone']);
+      const page = await ctx.newPage(); const bag = [], lines = [];
+      watch(page, bag);
+      page.on('console', m => { if (/\[glas\] demo:/.test(m.text())) lines.push(m.text()); });
+      await page.addInitScript(() => { window.__glasDebug = true; });
+      if (mode === 'ws-config') await page.addInitScript(() => { window.__glasConfig = { DEMO_VEZA: 'websocket' }; });
+      const sockets = [];
+      await page.routeWebSocket(/elevenlabs/, ws => { const u = ws.url(); const sig = /livekit|\/rtc\//.test(u); sockets.push(sig ? 'signalling' : 'conversation');
+        if (sig) { if (mode === 'rtc-signal-close') setTimeout(() => ws.close({ code: 4001, reason: 'room not found' }), 600); else ws.onMessage(() => {}); return; }
+        ws.onMessage(msg => { let m = {}; try { m = JSON.parse(String(msg)); } catch (e) {}
+          if (m.type === 'conversation_initiation_client_data') ws.send(JSON.stringify({ type: 'conversation_initiation_metadata', conversation_initiation_metadata_event: { conversation_id: 'conv_mock_' + mode, agent_output_audio_format: 'pcm_16000', user_input_audio_format: 'pcm_16000' } }));
+          else if (m.type === 'ping') ws.send(JSON.stringify({ type: 'pong', event_id: m.ping_event && m.ping_event.event_id })); }); });
+      await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
+      await page.waitForTimeout(2500);
+      const before = await page.evaluate(TALK_ST3);
+      const want = mode === 'ws-config' ? 'false' : 'true';
+      rec(14, `${mode}: before any press the engine carries use-rtc="${want}" — set by the page on the element, the snippet's bytes untouched`, before.useRtc === want && before.engines === 1, JSON.stringify(before));
+      await page.evaluate(SCROLL_TO + `(document.querySelector('#glas').getBoundingClientRect().top + window.scrollY)`);
+      await page.waitForTimeout(500);
+      await page.click('#talk-btn');
+      if (mode === 'rtc-terms') {
+        await page.waitForTimeout(1500);
+        const t = await page.evaluate(TALK_ST3);
+        rec(14, 'rtc-terms: the terms panel comes first, before any token is asked for', t.terms && reqs.token === 0, JSON.stringify({ t, reqs }));
+        await page.click('#talk-accept');
+      }
+      await page.waitForTimeout(mode === 'rtc-silent' ? 9000 : 3500);
+      const st = await page.evaluate(TALK_ST3);
+      const said = re => lines.some(l => re.test(l));
+      const count = re => lines.filter(l => re.test(l)).length;
+      if (mode === 'ws-config') {
+        rec(14, 'ws-config: DEMO_VEZA "websocket" — no token is asked for, the plain socket opens at once, live', st.live && reqs.token === 0 && sockets.join() === 'conversation' && said(/attempt begins over a plain WebSocket, as configured/) && said(/session live over a plain WebSocket/), JSON.stringify({ st, reqs, sockets, lines }));
+      } else if (mode === 'rtc-token-500') {
+        rec(14, 'a WebRTC token the service refuses: named at once, and the same attempt goes on over the plain socket within a second — live, one engine, marked use-rtc="false" for the retry', st.live && reqs.token === 1 && sockets.join() === 'conversation' && said(/attempt begins over WebRTC/) && said(/WebRTC token refused: HTTP 500/) && said(/the same attempt goes on over a plain WebSocket, once/) && said(/session live over a plain WebSocket/) && st.engines === 1 && st.useRtc === 'false', JSON.stringify({ st, reqs, sockets, lines }));
+      } else if (mode === 'rtc-signal-close') {
+        rec(14, 'a signalling socket the service closes: the code and reason named, the retry over the plain socket, live — and no false first-frame alarm on the binary channel', st.live && sockets.join() === 'signalling,conversation' && said(/WebRTC token issued/) && said(/WebRTC signalling closed, code 4001 — room not found/) && said(/the same attempt goes on over a plain WebSocket, once/) && said(/session live over a plain WebSocket/) && !said(/first frame from the service was not/), JSON.stringify({ st, sockets, lines }));
+      } else if (mode === 'rtc-silent') {
+        rec(14, 'signalling that opens and says nothing: the SDK gives up on its own within seconds, the page retries over the plain socket, live — no false first-frame alarm', st.live && sockets.join() === 'signalling,conversation' && said(/WebRTC signalling open/) && !said(/first frame from the service was not/) && said(/the same attempt goes on over a plain WebSocket, once/) && said(/session live over a plain WebSocket/), JSON.stringify({ st, sockets, lines }));
+      } else if (mode === 'rtc-terms') {
+        rec(14, 'terms accepted, then a refused token: the retried engine asks for the terms again and gets the visitor\'s earlier answer — the panel is shown once, and the call goes live', st.live && !st.terms && count(/asking the visitor to accept terms/) === 1 && said(/the retried engine asked for the terms again — the visitor's earlier answer stands/) && said(/session live over a plain WebSocket/), JSON.stringify({ st, lines }));
+      }
+      if (st.live) {
+        await page.click('#talk-btn'); await page.waitForTimeout(2200);
+        const after = await page.evaluate(TALK_ST3);
+        rec(14, `${mode}: stopped onto the end card — no timers, native WebSocket and fetch back, one fresh engine marked use-rtc="${want}" for the next attempt`, after.card && !after.live && after.timers === 0 && after.ws === 'WebSocket' && after.fetchNative && after.engines === 1 && after.useRtc === want, JSON.stringify(after));
+      }
+      rec(14, `${mode}: zero console errors from the page`, bag.filter(b => !(/token-500|rtc-terms/.test(mode) && /status of 500/.test(b))).length === 0, bag.slice(0, 3).join(' | '));
+      await ctx.close();
+    }
+    rec(14, `the harness serves widget ${WIDGET_VER} — what the unpinned snippet resolves to today (npm latest)`, /^\d+\.\d+\.\d+$/.test(WIDGET_VER), WIDGET_VER);
   }
 
   head('13 · Touch (Pixel 7) — no dead elements where hover is impossible');

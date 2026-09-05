@@ -18,7 +18,7 @@ browsers.
 
 ---
 
-## 1 · The three lines the client edits to go live
+## 1 · The four lines the client edits to go live
 
 At the very top of the `<script>` in `index.html`:
 
@@ -26,7 +26,8 @@ At the very top of the `<script>` in `index.html`:
 const CONFIG = {
   DEMO_TELEFON: "",   // npr. "+381 64 123 4567" — prazno = broj se nigde ne prikazuje
   DEMO_AUDIO:   "demo.mp3",   // prazno = plejer je u stanju „uskoro”
-  DEMO_LINK:    ""    // npr. "https://cal.com/glasai/15min" — gde vodi „Zakaži razgovor” posle demoa; prazno = na kontakt
+  DEMO_LINK:    "",   // npr. "https://cal.com/glasai/15min" — gde vodi „Zakaži razgovor” posle demoa; prazno = na kontakt
+  DEMO_VEZA:    "webrtc"   // kako se demo povezuje na ElevenLabs: "webrtc" (kao njihov pregled — brže; ne uspe li, stranica sama proba "websocket") ili "websocket"
 };
 ```
 
@@ -41,8 +42,10 @@ harness:
 | `DEMO_TELEFON` (shipped empty) | **absent.** The three slots — nav, menu, the laptop's screen — are removed; no chip, no placeholder, no dead `tel:`, and nothing on the page says „uskoro” | a live `tel:` link in the nav, the mobile menu and beside the copy button on the laptop's screen, showing the number exactly as typed |
 | `DEMO_AUDIO` (shipped filled) | **no `<audio>` element is constructed at all.** The player sits in a `uskoro` state — dashed ring, muted `Snimak uskoro`, `aria-disabled` — and pressing it runs the spectrum self-test instead of erroring | a real play/pause control named `Poslušaj agenta`; a Web Audio analyser drives the band's amplitude, the playhead walks the passband, and it settles back on `ended` |
 | `DEMO_LINK` (shipped empty) | the live demo's end card sends „Zakaži razgovor” to `#kontakt` | it goes to the booking page (`target="_blank"` for an absolute URL) |
+| `DEMO_VEZA` (shipped `"webrtc"`) | `"websocket"`: the demo talks to ElevenLabs over the plain socket only, the widget's own default | `"webrtc"` (or anything else): the demo talks over WebRTC, as ElevenLabs' own preview does, and if WebRTC yields no session the same attempt goes on over the plain socket, once — §3h |
 
 `DEMO_LINK` is a departure from §7's two values; §9 of this report explains why.
+`DEMO_VEZA` was added for the response-delay work (§3h) and is safe in either value.
 
 ---
 
@@ -733,6 +736,81 @@ help-centre article „Where can I locate the reason for my call failing?"
 standard's issue #5051 and Sentry's #2518 on muted rejections from
 cross-origin scripts; MDN on `getUserMedia` in insecure contexts.
 
+### 3h · The response delay — what it is, and the page's side of it
+
+Once the widget reached the agent, the owner's next report was speed: the
+greeting plays at once, but each answer takes two to three seconds, and
+ElevenLabs' own preview of the same agent answers faster than the widget on
+the site. A second research pass — seven lenses in parallel (the LLM, the
+voice model, turn taking, prompt and knowledge base, tools, the connection,
+and what other people measured), each re-checked by a fact-checker against
+the official documentation (a three-day-old mirror of ElevenLabs' own
+markdown export, and both shipped widget bundles downloaded from npm), then
+two summarisers and a brief — settled where the time goes and what belongs
+to whom.
+
+**Where the two to three seconds go.** The one measured turn in the owner's
+dashboard reads `LLM 2.3 s`, `Tool 402 ms`, and a voice time-to-first-byte
+of 145 to 256 ms. The language model is about four fifths of the wait; the
+calendar tool and the voice are already fast. That part lives entirely in
+the agent's settings, and the owner's guide (delivered separately) walks
+through it: the LLM dropdown and its thinking / reasoning settings, the
+workflow node's own LLM override, a Serbian soft-timeout phrase, the prompt
+length, RAG, and turn eagerness — with the exact labels the documentation
+uses and every unconfirmed label flagged as such.
+
+**Two things the page could do, and did.**
+
+- **The connection.** ElevenLabs' SDK defaults voice conversations to
+  WebRTC — that is what their preview uses — while the embedded widget,
+  left alone, forces a plain WebSocket (`use_rtc` defaults to false in both
+  0.17.1 and 0.18.0, verified in the bundles). No official source publishes
+  a millisecond difference, so none is promised here; what WebRTC brings
+  per the same sources is real-time media over UDP with a jitter buffer,
+  and ElevenLabs' own echo cancellation and noise removal — the difference
+  between the preview and the site as the owner experienced it. The page
+  now sets the widget's own `use-rtc` attribute on the element at boot,
+  before the first clone, so every engine carries it and the snippet's
+  bytes stay exactly as supplied. `DEMO_VEZA: "websocket"` turns it off.
+- **A net under it.** The widget has no fallback of its own: when the
+  WebRTC token request fails, the call simply fails (verified). So the page
+  watches that one request and the signalling socket, and when WebRTC
+  yields no session — a token refused, the signalling closed, or nothing
+  within eight seconds — the same attempt goes on over the plain socket,
+  once: the clocks re-armed, the engine replaced, the button pressed again,
+  the visitor's terms answer handed to the retried engine so the panel is
+  not shown twice, and a late close of the superseded socket ignored. Every
+  step prints its `[glas] demo:` line, and the socket watcher tells the
+  signalling channel (binary frames, never read) from the plain one (the
+  first frame read and named).
+- **The cap.** At forty seconds the page used to hang up half a second
+  after muting the visitor, if the agent happened to be silent — which,
+  with a two-to-three-second turn, it usually was. It now gives an agent
+  that has not begun the whole six-second grace and ends half a second
+  after one that has spoken goes quiet, which is what the grace was for.
+
+**What was left alone, on purpose.** The `server-location` attribute:
+ElevenLabs routes automatically between its USA, Netherlands and Singapore
+regions; the widget's values are `us` (which would pin Serbian callers to
+America) and two enterprise data-residency hosts the workspace is not on.
+The snippet's missing version pin: the snippet stays as supplied; the
+harness now serves npm's current release (0.18.0 at the time of writing)
+so it tests what the site actually gets, and the socket's version tag is
+read from that package rather than hard-coded.
+
+**Verified in round 14c** against the real 0.18.0 bundle and a mocked
+service (a token endpoint, a LiveKit-style signalling socket, the plain
+conversation socket): a refused token, a closed signalling socket, a
+silent signalling socket (the SDK gives up on its own within about five
+seconds), terms then a refused token, and the `"websocket"` setting — each
+ends live, stopped onto the end card, with no timers and the native
+constructors restored. What no sandbox can do is complete a real WebRTC
+media session: LiveKit's negotiation needs its real server, and
+elevenlabs.io is unreachable from here. The owner's first real call over
+WebRTC is therefore the one measurement left — the `[glas] demo:` lines
+say `session live over WebRTC` when it works, and `over a plain WebSocket`
+when the net caught it.
+
 ### 4 · What could **not** be verified, and how the rest was
 
 - **No conversation was ever held.** ElevenLabs' API and WebSocket are blocked
@@ -791,6 +869,7 @@ headless Chromium against the real file.
 | 13 | Touch (Pixel 7) | sway replaces cursor tilt, magnetism never engages, no pin, menu works by tap, the player answers a tap without erroring; the laptop stands open at the bottom, its button and address are real tap targets, a tap copies |
 | 14 | **The live demo** — the real widget bundle served locally, its config and avatar texture stubbed, the microphone granted, the session driven through the widget's own hook on a fake clock | ready only once the engine renders its button; engine never painted, never focusable; the page's button presses the engine's — one `elevenlabs-convai:call` carrying the four hooks; a change of mind while connecting leaves no timer; live → `00:30` at ten seconds with the rule at ¾; the wrap-up nudge at 31 s; at 40 s the mic is muted and the clock reads `00:00` but a speaking agent is not cut; half a second of silence ends it and the card takes the widget's place; zero timers, a frozen clock, one fresh engine; restart works; while live the control is named for what pressing it does, and past the cap it says it is finishing; an attempt the service accepts and never answers comes back after 12 s with the owner's notice, the address linked, and that notice stays; an early hang-up — which the widget never forwards — is noticed within a tick and ends on the card; an agent that never goes quiet is ended at 46 s; the card's number line only with `DEMO_TELEFON`, the booking link when `DEMO_LINK` is set; reduced motion still live; zero console errors in every state |
 | 14b | **The real widget against a mocked service** — the real bundle, its real SDK, a fake microphone, a Playwright-mocked ElevenLabs socket that speaks the protocol | eleven situations, each a fresh context: a handshake goes live and is stopped onto the end card; a refused handshake (1008) gives the owner's notice with the address linked within two seconds and the reason in the console; a quota close half a second in is named and shown with the owner's notice, not as a finished demo; the widget's terms sheet is met with the page's own panel — the owner's words in it, focus on them, no socket yet — and „Prihvatam" hands the answer to the widget, the socket opens and the page goes live, then stops onto the card; „Odustani" returns to the start with no socket, no timer, one fresh engine; a blocked microphone gives the visitor's notice and the error's name, and the notice is still there after the four seconds the generic one gets; an insecure page hides the demo; a first frame that is not the metadata is named the moment it arrives and the 12 s verdict says accepted-but-no-session; a handshake accepted and never answered gives the same verdict with `socket open` before it; site data blocked for the origin leaves the browser's own „Uncaught (in promise)" line and a verdict that points at it; the page framed by another origin without `allow="microphone"` gives the microphone notice and an owner's line naming the frame and the host's policy. The socket's URL, subprotocol and first message are asserted; the native WebSocket is restored and no timer is left in every mode |
+| 14c | **The connection** — the real widget, WebRTC first, the plain socket as the net | before any press the engine carries `use-rtc="true"` (or `"false"` under `DEMO_VEZA: "websocket"`), set on the element with the snippet's bytes untouched; a WebRTC token the service refuses is named and the same attempt goes on over the plain socket within a second; a signalling socket the service closes (code and reason named) and one that opens and says nothing both end in the retry and a live session, with no false first-frame alarm on the binary channel; terms accepted before a refused token are handed to the retried engine without the panel showing twice; `"websocket"` asks for no token at all; every mode stops onto the end card with no timers, the native `WebSocket` and `fetch` back and a fresh engine marked for the next attempt; the harness serves the version the unpinned snippet resolves to today |
 | 15 | **Kontakt** — the laptop and the address | a plan's button lands under the nav with focus on the section, the laptop open and the copy button in view; shut → half → open sampled off the scrub, with the lid's projected height, the words, the deck's light and identity transforms asserted at each; the button copies, says „Kopirano" at the same width, announces once and reverts; the address is a `mailto:`; an instant jump to the bottom leaves it open; zero console errors |
 
 **Round 4 — content (`node .audit/copy-check.mjs`): 97 / 97 passed.** Every
@@ -1047,6 +1126,16 @@ page's own film-grain overlay and I could not reproduce it as a straight edge.
 ## 8 · What I could not run, and why
 
 Stated plainly, because a false green tick means the bug ships.
+
+0. **A real WebRTC media session.** Round 14c drives the real widget to the
+   token request and the signalling socket and proves every way the net
+   catches a WebRTC attempt that yields no session — but completing the
+   media negotiation needs LiveKit's real server, and elevenlabs.io is
+   unreachable from this sandbox. The first real call from the owner's
+   browser is the measurement: the console reads `session live over
+   WebRTC` when it works, `session live over a plain WebSocket` when the
+   net caught it, and the reason in between. Either way the visitor gets a
+   call.
 
 1. **No real browser other than Chromium 141.** Everything below was reasoned
    about and written correctly, but **not executed**: Safari (WebKit) and
