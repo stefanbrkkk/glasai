@@ -2182,7 +2182,7 @@ html:not(.js) .faq-panel > div,
           <button class="talk-again" id="talk-again" type="button">Razgovaraj sa agentom</button>
         </div>
         <div class="talk-state talk-terms is-off" id="talk-terms">
-          <div class="talk-terms-body" id="talk-terms-body" tabindex="-1"></div>
+          <section class="talk-terms-body" id="talk-terms-body" tabindex="0" aria-label="Uslovi korišćenja"></section>
           <div class="talk-card-row">
             <button class="btn btn--primary btn--magnetic" id="talk-accept" type="button">Prihvatam</button>
             <button class="talk-again" id="talk-decline" type="button">Odustani</button>
@@ -3145,6 +3145,10 @@ var TALK_CONNECT_MAX_MS = 45000;   /* …while the browser's own microphone prom
 var TALK_TOO_SHORT_MS = 3000;   /* a session over this soon after it began never happened */
 var TALK_FAIL_MS = 4000;        /* how long the failure notice stays */
 var TALK_ENGINE_MS = 5000;      /* a fresh engine that never renders, after a run */
+var TALK_HUSH_MS = 2000;        /* at the cap, an agent that has made no sound by then has no sentence to finish */
+var TALK_TERMS_MIC_MS = 180000; /* how long an unanswered terms sheet may hold the microphone */
+/* a test harness may shorten a wait before boot; nothing in production does */
+if (window.__glasDebug && window.__glasTiming) (function (o) { var k; for (k in o) if (Object.prototype.hasOwnProperty.call(o, k) && /^TALK_/.test(k)) window[k] = o[k]; })(window.__glasTiming);
 function hangUp(c) {
   /* endSession() can reject (an already-closed AudioContext); nobody is
      listening for that, so it must not surface */
@@ -3169,6 +3173,13 @@ function initTalk() {
   var transport = TRANSPORT;                     /* the attempt's current one */
   function arm(el, t) { el.setAttribute("use-rtc", t === "webrtc" ? "true" : "false"); }
   arm(widget, transport);
+  /* ── the region ── left off, the widget is not routed by distance: its
+     default is „us” — api.us.elevenlabs.io for its settings and the WebRTC
+     token, wss://api.us.elevenlabs.io for the plain socket. „global” is
+     api.elevenlabs.io, the host ElevenLabs routes between its regions and
+     the SDK's own default. Set on the element, so the snippet stays exactly
+     as supplied, and before the first clone, so every engine carries it. */
+  widget.setAttribute("server-location", "global");
   var proto = widget.cloneNode(false);           /* a clean engine for every run */
 
   /* The one line the owner needs. Everything the engine swallows — a refused
@@ -3204,7 +3215,7 @@ function initTalk() {
     } else telSlot.parentNode.removeChild(telSlot);
   }
 
-  var state = "idle", conv = null, timers = [], startedAt = 0, ended = false, run = 0, stopping = false;
+  var state = "idle", conv = null, timers = [], startedAt = 0, ended = false, run = 0, stopping = false, meterMoved = false;
   function say(t) { if (status) status.textContent = t; }   /* the live region, state changes only */
   if (window.__glasDebug) window.__glasTalkTimers = timers;
   function later(fn, ms) { var id = setTimeout(function () { drop(id); fn(); }, ms); timers.push(id); return id; }
@@ -3380,16 +3391,36 @@ function initTalk() {
      second opening on some phones — and released then, or when the attempt
      ends, whichever comes first. */
   var held = null;
+  function stopStream(s) { var ts = s.getTracks(), i; for (i = 0; i < ts.length; i++) ts[i].stop(); }
   function release() {
     if (!held) return;
-    var ts = held.getTracks(), i;
-    for (i = 0; i < ts.length; i++) ts[i].stop();
+    stopStream(held);
     held = null;
   }
   keep(release);
-  function mic() {
-    return navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) { release(); held = stream; });
+  /* The answer can arrive after the attempt that asked is gone — a prompt
+     left open while the visitor changes their mind, or answered past the
+     ceiling. A stream nobody is waiting for is stopped here, not stored:
+     the tab must never hold the microphone with the block at rest. */
+  function mic(alive) {
+    return navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+      if (!alive()) { stopStream(stream); return; }
+      release(); held = stream;
+    });
   }
+  /* The SDK's plain-socket input ends on navigator.permissions.query({name:
+     "microphone"}) with nothing around it: a browser without that descriptor
+     (Firefox for a long time, Safari before 16) opens the socket, gets the
+     service's answer, and then throws on its way to the microphone — a
+     failure that is the browser's, not the service's. WebRTC's own path
+     guards the same call. Asked once, at boot; a query prompts for nothing. */
+  var micQuery = null;                            /* null while unknown, then true or false */
+  (function () {
+    try {
+      if (!(navigator.permissions && navigator.permissions.query)) { micQuery = false; return; }
+      navigator.permissions.query({ name: "microphone" }).then(function () { micQuery = true; }, function () { micQuery = false; });
+    } catch (err) { micQuery = false; }
+  })();
   /* why a microphone was refused, when the page can tell: a frame without
      the permission, or a policy on the host */
   function micPolicy() {
@@ -3419,22 +3450,34 @@ function initTalk() {
     if (typeof NativeWS !== "function") return;
     sawSocket = false; socketOpen = false; socketNote = "";
     function Watched(url, protocols) {
-      var u = String(url), ours = /elevenlabs\.io|\/v1\/convai\/conversation/.test(u), rtc = /livekit|\/rtc\/v1/.test(u), mine = transport, ws;
+      var u = String(url), host = (u.match(/^wss?:\/\/([^/?#:]+)/) || [])[1] || "";
+      var ours = /(^|\.)elevenlabs\.io$/.test(host) || /\/v1\/convai\/conversation/.test(u), rtc = /livekit|\/rtc\/v1/.test(u), ws;
+      /* a socket belongs to the leg its own kind names: signalling only while
+         the attempt is on WebRTC, the plain conversation socket only after the
+         fallback. A superseded engine cannot be stopped — the SDK has no
+         conversation to end yet — and its socket may open a moment after the
+         flip, so a leg captured at construction would call that one ours. */
+      function stale() { return rtc !== (transport === "webrtc") || myRun !== run; }
       try { ws = protocols === undefined ? new NativeWS(url) : new NativeWS(url, protocols); }
       catch (err) {
-        if (ours) diag("the browser refused to open the socket: " + ((err && err.name) || "") + (err && err.message ? " — " + err.message : "") + " (mixed content, or a content-security policy without connect-src wss://*.elevenlabs.io)");
+        if (ours) diag("the browser refused to open the socket: " + ((err && err.name) || "") + (err && err.message ? " — " + scrub(err.message) : "") + " (mixed content, or a content-security policy without connect-src wss://*.elevenlabs.io)");
         throw err;
       }
       if (!ours) return ws;
-      sawSocket = true;
+      if (!stale()) sawSocket = true;
       diag((rtc ? "WebRTC signalling socket opening to " : "socket opening to ") + u.replace(/\?.*/, "?…"));
-      ws.addEventListener("open", function () { socketOpen = true; release(); diag(rtc ? "WebRTC signalling open — the media connection is being negotiated" : "socket open — the service accepted the connection"); });
+      ws.addEventListener("open", function () {
+        if (stale()) { diag("an earlier " + (rtc ? "WebRTC signalling" : "socket") + " opened after its attempt had moved on — ignored"); return; }
+        socketOpen = true; release();
+        diag(rtc ? "WebRTC signalling open — the media connection is being negotiated" : "socket open — the service accepted the connection");
+      });
       /* the first frame of the plain socket: the SDK waits once, for the
          initiation metadata, and anything else leaves it waiting in silence.
          The signalling socket carries binary frames and is not read. */
       if (!rtc) {
         var firstFrame = function (e) {
           ws.removeEventListener("message", firstFrame);
+          if (stale()) return;
           var m = null, t;
           try { m = JSON.parse(String(e.data)); } catch (err) {}
           t = m && m.type;
@@ -3445,8 +3488,8 @@ function initTalk() {
       }
       ws.addEventListener("error", function () { diag(rtc ? "WebRTC signalling socket error — refused on the way (a firewall or a proxy between this page and livekit.rtc.elevenlabs.io)" : "socket error — the handshake was refused before the service answered (a firewall, a content-security policy, or the agent's allowlist)"); });
       ws.addEventListener("close", function (e) {
-        var note = "code " + e.code + (e.reason ? " — " + e.reason : "");
-        if (mine !== transport) { diag("the earlier " + (rtc ? "WebRTC signalling" : "socket") + " closed after the retry began (" + note + ") — ignored"); return; }
+        var note = "code " + e.code + (e.reason ? " — " + scrub(e.reason) : "");
+        if (stale()) { diag("the earlier " + (rtc ? "WebRTC signalling" : "socket") + " closed after its attempt had moved on (" + note + ") — ignored"); return; }
         socketNote = note;
         diag((rtc ? "WebRTC signalling closed, " : "socket closed, ") + socketNote);
         if (!(state === "connecting" && myRun === run)) return;
@@ -3461,6 +3504,9 @@ function initTalk() {
     window.WebSocket = Watched;
   }
   function unwatchSocket() { if (typeof NativeWS === "function" && window.WebSocket !== NativeWS) window.WebSocket = NativeWS; }
+  keep(unwatchSocket);
+  /* nothing that could be a credential reaches the console */
+  function scrub(t) { return String(t).replace(/(token|access_token|signed[_-]?url)=[^&\s]+/gi, "$1=…").slice(0, 300); }
   /* WebRTC begins with a token the service issues over HTTP; that request is
      the first thing that can be refused, and the widget keeps the answer to
      itself. For as long as the page is connecting it hands the engine a fetch
@@ -3472,18 +3518,17 @@ function initTalk() {
     window.fetch = function (input) {
       var u = String(input && input.url ? input.url : input), p = NativeFetch.apply(window, arguments);
       if (/\/v1\/convai\/conversation\/token/.test(u) && p && p.then) {
-        var mine = transport;
-        tokenAsked = true;
+        if (transport === "webrtc") tokenAsked = true;
         diag("WebRTC token requested");
         p.then(function (r) {
-          if (mine !== transport || !(state === "connecting" && myRun === run)) return;
+          if (transport !== "webrtc" || !(state === "connecting" && myRun === run)) return;
           if (r && r.ok) { diag("WebRTC token issued — the media connection can begin"); return; }
           var why = "the service would not issue a WebRTC token (HTTP " + (r && r.status) + ")";
           diag("WebRTC token refused: HTTP " + (r && r.status));
           if (!fallback(why)) fail(why, OWNER_NOTICE);
         }, function (err) {
-          if (mine !== transport || !(state === "connecting" && myRun === run)) return;
-          diag("WebRTC token request failed on the way: " + ((err && err.message) || err));
+          if (transport !== "webrtc" || !(state === "connecting" && myRun === run)) return;
+          diag("WebRTC token request failed on the way: " + scrub((err && err.message) || err));
           if (!fallback("the token request failed on the way")) fail("the WebRTC token request failed on the way");
         });
       }
@@ -3495,7 +3540,7 @@ function initTalk() {
 
   function start() {
     if (state !== "idle") return;
-    state = "connecting"; ended = false; stopping = false; conv = null; run++;
+    state = "connecting"; ended = false; stopping = false; conv = null; meterMoved = false; run++;
     cancel(failT); sub("note");
     label.textContent = "Povezujem…"; say("Povezujem…");
     btn.setAttribute("aria-busy", "true");        /* after the text, so nothing defers it */
@@ -3503,6 +3548,7 @@ function initTalk() {
     paint(TALK_CAP);                              /* the clock is reset while unseen */
     var myRun = run;
     function still() { return state === "connecting" && myRun === run; }
+    function alive() { return (state === "connecting" || state === "terms") && myRun === run; }   /* the microphone is kept through the terms */
     /* the attempt's own record: the microphone's answer, kept for as long as
        the visitor may be reading the terms, and the clocks it arms */
     transport = TRANSPORT;
@@ -3518,13 +3564,14 @@ function initTalk() {
         var s = (ms / 1000) + " s " + what;
         if (rtc) {
           fallback(!tokenAsked ? "no WebRTC token was requested within " + s + " — something inside the widget stopped it before it reached the network"
-                 : !sawSocket ? "the token came but no signalling socket was opened within " + s
+                 : !sawSocket ? "the token was requested but no signalling socket was opened within " + s + " — the token never came, or the SDK stopped before dialling"
                  : !socketOpen ? "the signalling socket never opened within " + s + " — held or refused on the way"
                  : "the signalling opened but no session began within " + s);
           return;
         }
         if (!sawSocket)  fail("no socket was opened within " + s + " — something inside the widget stopped it before it reached the network; the browser's own line above („Uncaught (in promise) …”), if there is one, names it — the widget is a cross-origin script, so the page cannot hear it itself");
         else if (!socketOpen) fail("a socket was opened but the service never accepted it within " + s + " — the handshake is being held or refused on the way (a firewall, a proxy, or a content-security policy between this page and api.elevenlabs.io)");
+        else if (micQuery === false) fail("the service accepted the socket and answered, but no session began within " + s + " — this browser has no „microphone” permission query (Firefox for a long time, Safari before 16) and the widget's plain-socket path ends on one; only WebRTC can carry a call here", OWNER_NOTICE);
         else fail("the service accepted the socket but no session began within " + s + " — the initiation was never answered", OWNER_NOTICE);
       }, ms));
     };
@@ -3535,7 +3582,7 @@ function initTalk() {
     watchSocket(myRun); watchFetch(myRun);
     /* the microphone: asked for first, so its answer is the page's; the clock
        for the rest starts only once that answer is in */
-    mic().then(function () {
+    mic(alive).then(function () {
       a.micDone = true;
       if (!still()) return;
       diag("microphone granted");
@@ -3553,24 +3600,29 @@ function initTalk() {
      never shows, its terms sheet, is looked for: when it comes the page shows
      the same terms itself and hands the answer back — and an engine retried
      within the same attempt gets the answer the visitor already gave. */
-  function pressEngine(a) {
+  function pressEngine(a, retry) {
     function live() { return state === "connecting" && a.run === run; }
-    var pressed = false, b = engineButton();
+    var pressed = false, b = engineButton(), h = a.press = { wait: 0, fold: 0, probe: 0 };
     if (b) { pressed = true; press(b); }
     else {
-      var wait = every(function () {
+      h.wait = every(function () {
         var b2 = engineButton();
         if (!b2 || pressed) return;
-        pressed = true; cancel(wait);
+        pressed = true; cancel(h.wait);
         press(b2);
       }, 120);
-      later(function () { if (!pressed && live()) { diag("hidden — a fresh engine never rendered its button within " + (TALK_ENGINE_MS / 1000) + " s"); reset(); fold(); } }, TALK_ENGINE_MS);
+      h.fold = later(function () {
+        if (pressed || !live()) return;
+        /* a retry inside an attempt the visitor is watching: the block stays and says so */
+        if (retry) { fail("the retried engine never rendered its button within " + (TALK_ENGINE_MS / 1000) + " s — its settings never arrived"); return; }
+        diag("hidden — a fresh engine never rendered its button within " + (TALK_ENGINE_MS / 1000) + " s"); reset(); fold();
+      }, TALK_ENGINE_MS);
     }
-    var probe = every(function () {
-      if (!live()) { cancel(probe); return; }
+    h.probe = every(function () {
+      if (!live()) { cancel(h.probe); return; }
       var sheet = termsSheet();
       if (!sheet) return;
-      cancel(probe);
+      cancel(h.probe);
       if (!a.termsOk) { askTerms(sheet); return; }
       var ok = acceptButton(sheet);
       if (!ok) { fail("the terms sheet was gone before the visitor's answer could be handed back"); return; }
@@ -3586,12 +3638,14 @@ function initTalk() {
     if (!a || a.run !== run || state !== "connecting" || transport !== "webrtc") return false;
     transport = "websocket";
     diag("WebRTC produced no session — " + why + "; the same attempt goes on over a plain WebSocket, once");
+    if (socketOpen) diag("the abandoned WebRTC attempt winds down on the SDK's own clock; until then its microphone capture and peer connection are still open — the widget cannot end a session it has not finished creating");
     while (a.clocks.length) cancel(a.clocks.pop());
+    if (a.press) { cancel(a.press.wait); cancel(a.press.fold); cancel(a.press.probe); }
     sawSocket = false; socketOpen = false; socketNote = ""; tokenAsked = false;
     freshEngine("websocket");
     a.ceiling("of the WebSocket retry");
     if (a.micDone && !a.micErr) a.clock("of the WebSocket retry");   /* a microphone still being asked for arms it when answered */
-    pressEngine(a);
+    pressEngine(a, true);
     return true;
   }
   /* ── the terms ── ElevenLabs' agents ship with „Require the caller to
@@ -3613,9 +3667,20 @@ function initTalk() {
     diag("the widget is asking the visitor to accept terms — „Require the caller to accept your terms” is on in the ElevenLabs widget settings; the page shows them and hands the answer back");
     termsBody.innerHTML = sheet.innerHTML;         /* the owner's own words, from the owner's own dashboard */
     btn.removeAttribute("aria-busy");
-    label.textContent = "Razgovaraj sa agentom"; say("");
+    label.textContent = "Razgovaraj sa agentom"; say(TERMS_SAY);
     show("terms", true);
+    /* the sheet waits as long as the visitor needs to read it — but one never
+       answered must not hold the microphone for the life of the page. The
+       panel stays and the answer is still taken; only the device is let go,
+       and the widget asks for it again itself if „Prihvatam” comes. */
+    var a = attempt, myRun = run;
+    if (a) a.clocks.push(later(function () {
+      if (state !== "terms" || run !== myRun || !held) return;
+      release();
+      diag("the terms went unanswered for " + (TALK_TERMS_MIC_MS / 1000) + " s — the microphone is let go; the widget asks for it again if the visitor accepts");
+    }, TALK_TERMS_MIC_MS));
   }
+  var TERMS_SAY = "Uslovi korišćenja: pročitajte ih i pritisnite „Prihvatam”.";
   if (accept) on(accept, "click", function () {
     if (state !== "terms") return;
     var a = attempt, ok = acceptButton(termsSheet());
@@ -3624,9 +3689,10 @@ function initTalk() {
     state = "connecting";
     btn.setAttribute("aria-busy", "true");
     label.textContent = "Povezujem…"; say("Povezujem…");
-    show("ctl");
+    show("ctl", true);                             /* the visitor was on „Prihvatam”; the control takes them */
     diag("terms accepted by the visitor — handed to the widget");
     ok.click();                                    /* the widget's own Accept: the call goes on from where it waited */
+    while (a.clocks.length) cancel(a.clocks.pop());   /* the visitor's reading time is not the connection's */
     a.ceiling("of accepting the terms");
     if (a.micErr) a.failMic(a.micErr);            /* refused while the terms were up: said now */
     else if (a.micDone) a.clock("of accepting the terms");
@@ -3687,7 +3753,11 @@ function initTalk() {
     /* the session's own state is the truth about whether it is still on —
        the widget keeps onDisconnect for itself, so it is read, not awaited */
     if (conv && conv.isOpen && !conv.isOpen()) { finish(); return; }
-    if (state === "live") paint(TALK_CAP - (performance.now() - startedAt) / 1000);
+    if (state !== "live") return;
+    paint(TALK_CAP - (performance.now() - startedAt) / 1000);
+    /* whether the output meter ever moves — over WebRTC it can read a flat
+       zero until the SDK's analyser is up, and forever if that fails */
+    if (!meterMoved) { try { if (conv && conv.getOutputVolume && conv.getOutputVolume() > 0.02) meterMoved = true; } catch (err) {} }
   }
   function capReached() {
     if (state !== "live") return;
@@ -3697,13 +3767,16 @@ function initTalk() {
     btn.removeAttribute("aria-label");
     /* the line closes to the visitor first; the agent may finish its sentence */
     try { if (conv && conv.setMicMuted) conv.setMicMuted(true); } catch (err) {}
-    var heard = false, quiet = 0;
+    var heard = false, quiet = 0, hush = TALK_HUSH_MS / 250;
     var hard = later(end, TALK_GRACE * 1000);     /* an agent still forming its sentence gets the whole grace */
     var watch = every(function () {
       var v = 0;
       try { v = conv && conv.getOutputVolume ? conv.getOutputVolume() : 0; } catch (err) { v = 0; }
-      if (v > 0.02) { heard = true; quiet = 0; }
-      else if (heard && ++quiet >= 2) { cancel(watch); cancel(hard); end(); }   /* half a second of silence, once it has spoken */
+      if (v > 0.02) { heard = true; quiet = 0; meterMoved = true; }
+      /* half a second of silence once it has spoken; two seconds of nothing
+         at all — an agent already finished — when the meter is known to
+         work; a meter that never moved cannot tell, and the grace stands */
+      else if (heard ? ++quiet >= 2 : (meterMoved && --hush <= 0)) { cancel(watch); cancel(hard); end(); }
     }, 250);
   }
   function end() {

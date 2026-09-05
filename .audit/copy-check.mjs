@@ -324,8 +324,8 @@ const DECLARED_EXTRA = ['Preskoči na sadržaj', 'Meni', 'Zatvori', 'Zaustavi', 
   'Slušam — prekini demo', 'Završavam…', 'Preostalo', 'Povezivanje nije uspelo — pokušajte ponovo.', '(otvara se u novom prozoru)',
   /* the microphone's three notices — the one place a visitor can act on a failed attempt */
   'Mikrofon je blokiran u pretraživaču — dozvolite ga za ovu stranicu i pokušajte ponovo.', 'Nije pronađen mikrofon.', 'Mikrofon je zauzet ili nedostupan — pokušajte ponovo.',
-  /* the terms panel's two answers, handed back to the widget's own sheet */
-  'Prihvatam', 'Odustani',
+  /* the terms panel's two answers, handed back to the widget's own sheet; the panel's name and what the live region says when it opens */
+  'Prihvatam', 'Odustani', 'Uslovi korišćenja', 'Uslovi korišćenja: pročitajte ih i pritisnite „Prihvatam”.',
   /* the notice for a failure only the owner can mend: no retry, the address instead */
   'Demo trenutno nije dostupan — zakažite razgovor.',
   /* the player's own name, once a recording exists: it plays the agent — „Poslušaj demo” is the hero link that scrolls here */
