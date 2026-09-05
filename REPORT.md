@@ -789,6 +789,14 @@ uses and every unconfirmed label flagged as such.
   that has not begun the whole six-second grace and ends half a second
   after one that has spoken goes quiet, which is what the grace was for.
 
+**One host fewer.** The widget derives a visitor id with the open-source
+FingerprintJS library, which on one page view in a thousand sends a usage
+ping to `m1.openfpcdn.io` (the harness met that one-in-a-thousand on run
+15). The library documents a flag to decline; the page sets it at boot on
+the visitor's behalf, so the demo touches no host beyond ElevenLabs' own.
+Worth a line in the site's privacy notice either way: the widget
+fingerprints the browser to tell visitors apart.
+
 **What was left alone, on purpose.** The `server-location` attribute:
 ElevenLabs routes automatically between its USA, Netherlands and Singapore
 regions; the widget's values are `us` (which would pin Serbian callers to

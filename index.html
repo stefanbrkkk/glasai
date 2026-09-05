@@ -2409,6 +2409,11 @@ const CONFIG = {
 };
 /* a test harness may set a value before boot; nothing in production does */
 if (window.__glasDebug && window.__glasConfig) (function (o) { var k; for (k in o) if (Object.prototype.hasOwnProperty.call(o, k)) CONFIG[k] = o[k]; })(window.__glasConfig);
+/* The ElevenLabs widget derives a visitor id with the open-source
+   FingerprintJS library, which on one page view in a thousand sends a usage
+   ping to m1.openfpcdn.io. The library documents this flag to decline; the
+   page sets it on the visitor's behalf, so no third host is ever touched. */
+window.__fpjs_d_m = true;
 /* ═══════════════════════════════════════════════════════════════════════════
    Ispod ovoga nema podešavanja.
    ═══════════════════════════════════════════════════════════════════════ */

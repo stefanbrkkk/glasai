@@ -1198,6 +1198,11 @@ const LAPTOP_ST = `(() => {
   }
 
   /* ── 14b · the real engine against a mocked service ────────────────── */
+  /* the widget config the mocked service serves, and ElevenLabs' own quota sentence — shared by 14b and 14c */
+  const CFG_BASE = { variant: 'full', placement: 'bottom-right', avatar: { type: 'orb', color_1: '#2792dc', color_2: '#9ce6e6' }, feedback_mode: 'none', language: 'sr',
+    mic_muting_enabled: false, transcript_enabled: true, text_input_enabled: true, default_expanded: false, always_expanded: false, dismissible: false,
+    text_contents: {}, language_presets: {}, disable_banner: false, text_only: false, supports_text_only: true };
+  const QUOTA = 'This request exceeds your quota of 33338. You have 5 credits remaining, while 100 credits are required for this request.';
   head('14b · The real widget, the real SDK, a mocked ElevenLabs socket — every way it can go');
   {
     /* The service, mocked at the socket: it speaks enough of the protocol for
@@ -1207,10 +1212,6 @@ const LAPTOP_ST = `(() => {
        own dashboard showed. Each mode is a fresh context; each asserts what
        the visitor sees, what the owner's console says, and what reached the
        socket. */
-    const CFG_BASE = { variant: 'full', placement: 'bottom-right', avatar: { type: 'orb', color_1: '#2792dc', color_2: '#9ce6e6' }, feedback_mode: 'none', language: 'sr',
-      mic_muting_enabled: false, transcript_enabled: true, text_input_enabled: true, default_expanded: false, always_expanded: false, dismissible: false,
-      text_contents: {}, language_presets: {}, disable_banner: false, text_only: false, supports_text_only: true };
-    const QUOTA = 'This request exceeds your quota of 33338. You have 5 credits remaining, while 100 credits are required for this request.';
     const TALK_ST2 = `(() => { const g = id => document.getElementById(id); const t = g('talk');
       return { ready: t.classList.contains('is-ready'), gone: t.classList.contains('is-gone'), live: t.classList.contains('is-live'), ctl: g('talk-ctl').classList.contains('is-on'), card: g('talk-card').classList.contains('is-on'),
         label: g('talk-label').textContent, failOn: g('talk-fail').classList.contains('is-on'), failText: g('talk-fail').textContent.trim(), clock: g('talk-clock').textContent,
