@@ -177,6 +177,9 @@ const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p);
 
 /* ── helpers run inside the page ──────────────────────────────────────── */
 const SCROLL_TO = `(y => { if (window.__glasLenis) window.__glasLenis.scrollTo(y, { immediate: true }); else window.scrollTo(0, y); })`;
+/* Lenis closes on its target by lerp, so the last pixel takes a while — a pointer aimed at a control before the page
+   stands still lands beside it. Wait for four unchanged samples of scrollY. */
+async function stillScroll(page) { let last = -1, same = 0; for (let i = 0; i < 60; i++) { await page.waitForTimeout(100); const y = await page.evaluate('Math.round(scrollY)'); if (y === last) { if (++same >= 4) return; } else { same = 0; last = y; } } }
 
 const OVERFLOW_PROBE = `(() => {
   const w = document.documentElement.clientWidth;
@@ -545,7 +548,7 @@ const LAPTOP_ST = `(() => {
     await page.waitForTimeout(2200);
     if (filled) {
       rec(7, 'filled: the recording is not fetched at boot — nothing has asked for it yet', audioReqs.length === 0, audioReqs.join(' | '));
-      await page.evaluate(SCROLL_TO + `(document.querySelector('#glas').getBoundingClientRect().top + window.scrollY)`); await page.waitForTimeout(400);
+      await page.evaluate(SCROLL_TO + `(document.querySelector('#glas').getBoundingClientRect().top + window.scrollY)`); await stillScroll(page);
       await page.hover('#play'); await page.waitForTimeout(500);
       rec(7, 'filled: it is fetched the moment someone reaches for the control', audioReqs.length === 1, String(audioReqs.length));
     }
@@ -630,11 +633,11 @@ const LAPTOP_ST = `(() => {
     await page.addInitScript(() => { window.__glasDebug = true; });
     await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
-    await page.evaluate(SCROLL_TO + `(document.querySelector('#glas').getBoundingClientRect().top + window.scrollY)`); await page.waitForTimeout(600);
+    await page.evaluate(SCROLL_TO + `(document.querySelector('#glas').getBoundingClientRect().top + window.scrollY)`); await stillScroll(page);
     const before = await page.evaluate(`({ label: document.querySelector('#play-label').textContent.trim(), empty: document.querySelector('#play').classList.contains('is-empty') })`);
-    await page.locator('#play').click({ force: true });
-    await page.waitForTimeout(1800);
-    const after = await page.evaluate(`({ label: document.querySelector('#play-label').textContent.trim(), empty: document.querySelector('#play').classList.contains('is-empty') })`);
+    await page.evaluate(`document.querySelector('#play').click()`);
+    let after = null;
+    for (let i = 0; i < 40; i++) { await page.waitForTimeout(150); after = await page.evaluate(`({ label: document.querySelector('#play-label').textContent.trim(), empty: document.querySelector('#play').classList.contains('is-empty') })`); if (after.empty) break; }
     rec(7, 'a missing recording is named for the owner in the console and the control says „Snimak uskoro” from then on — it was „Poslušaj agenta” until someone reached for it', lines.some(l => /the recording „nema\.mp3” will not play/.test(l)) && after.empty && after.label === 'Snimak uskoro' && before.label === 'Poslušaj agenta' && !before.empty, JSON.stringify({ before, after, lines }));
     rec(7, 'no console error escapes — the media error is caught and explained', bag.filter(b => !/nema\.mp3/.test(b)).length === 0, bag.slice(0, 3).join(' | '));
     await ctx.close();
