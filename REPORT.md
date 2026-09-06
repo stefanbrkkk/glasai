@@ -1198,7 +1198,7 @@ so the next pass does not re-open them — what was deliberately left alone.
   harness accepts and declines it against the real widget.
 - The widget fetches its avatar texture from `storage.googleapis.com`; the
   harness stubs it. In production that host is one more the page touches.
-- Everything else is run, not reasoned: **249 / 249 harness checks** (seventeen rounds — round 14 is the demo on a fake clock, 14b the real widget against a mocked service, 14c the connection with its fallback, 15 the contact section; see the table) and **97 / 97 content checks**.
+- Everything else is run, not reasoned: **293 / 293 harness checks** (twenty-three rounds — 0 is the file against itself, 4b the widget's script arriving late, 7b a missing recording, 10b print, 14 the demo on a fake clock, 14b the real widget against a mocked service, 14c the connection with its fallback, 15 the contact section; see the table) and **107 / 107 content checks**, green on three consecutive full runs after the polish pass.
 
 ### 5 · The calendar claim, and the percentages
 
@@ -1218,7 +1218,7 @@ decide there.
 
 ## 3 · Round 1 — final automated audit (`node audit.js`)
 
-**249 / 249 passed, all green — on the last two consecutive full runs.** Everything below was actually executed in
+**293 / 293 passed, all green — on the last three consecutive full runs (27, 28 and 29).** Everything below was actually executed in
 headless Chromium against the real file.
 
 | # | round | result |
@@ -1245,7 +1245,7 @@ headless Chromium against the real file.
 | 14c | **The connection** — the real widget, WebRTC first, the plain socket as the net | before any press the engine carries `use-rtc="true"` and `server-location="global"` (or `use-rtc="false"` under `DEMO_VEZA: "websocket"`), set on the element with the snippet's bytes untouched; a token the service refuses is named and the same attempt goes on over the plain socket within a second; a token never answered runs out the page's own eight-second clock; a token answered after the page has moved on, and the signalling socket it then opens, are ignored as an earlier attempt's; a signalling socket the service closes (code and reason named) and one that opens and sends a binary frame both end in the retry and a live session, with no first-frame alarm; terms accepted before a refused token are handed to the retried engine without the panel showing twice; a retried engine whose settings never arrive fails with a notice and the block stays; `"websocket"` asks for no token and dials `api.elevenlabs.io`; a reader who accepts the terms after ten seconds is not failed by a stale clock; a sheet left unanswered lets the microphone go after its wait; the fingerprint library is told not to phone home and nothing leaves for it; the engine carries a visitor id kept in the browser and the widget's own fingerprint-derived id is never written; a start button the dashboard renamed is found by its phone icon and the label pressed is printed, in every mode; the token is requested within a quarter second of the call event, the widget's 300 ms sleep gone; the service's per-turn gap is printed from a mocked transcript and reply, the tool the agent calls named and timed, and the control reads „Slušam”, then „Razmišljam…” once the service has the words, then „Slušam” again when the reply is ready; every live mode stops onto the end card with no timers, the native `WebSocket` and `fetch` back, the page's microphone stream ended and a fresh engine marked for the next attempt |
 | 15 | **Kontakt** — the laptop and the address | a plan's button lands under the nav with focus on the section, the laptop open and the copy button in view; shut → half → open sampled off the scrub, with the lid's projected height, the words, the deck's light and identity transforms asserted at each; the button copies, says „Kopirano" at the same width, announces once and reverts; the address is a `mailto:`; an instant jump to the bottom leaves it open; zero console errors |
 
-**Round 4 — content (`node .audit/copy-check.mjs`): 97 / 97 passed.** Every
+**Round 4 — content (`node .audit/copy-check.mjs`): 107 / 107 passed.** Every
 visible string diffed against §8/§6/§7 character for character (only NBSP is
 normalised, since §8 requires it before `€`), plus: no Cyrillic anywhere, no
 `30 %`/`85 %` published, meta/OG built only from §8 sentences, no generated
