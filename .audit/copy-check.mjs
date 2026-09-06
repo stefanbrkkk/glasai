@@ -75,6 +75,9 @@ const EXPECT = {
     start: 'Razgovaraj sa agentom',
     note:  'Govorite naglas — agent odgovara na srpskom. Traje četrdeset sekundi.',
     connecting: 'Povezujem…',
+    /* the two lines written once the demo's copy was delegated: the note for the wait, and what the microphone is for */
+    connNote: 'Veza se uspostavlja — obično traje nekoliko sekundi. Ako pregledač zatraži pristup mikrofonu, dozvolite ga.',
+    legal: 'Mikrofon se koristi samo tokom demo razgovora, koji obrađuje servis ElevenLabs.',
     live: 'Slušam',
     cardH: 'Demo je gotov.',
     cardP: 'Za pun razgovor zakažite petnaest minuta sa nama.',
@@ -200,6 +203,8 @@ eq('step bodies', (await T('.step p')).join('|'), EXPECT.steps.map(s => s[2]).jo
 eq('features h2', await T1('#mogucnosti h2'), EXPECT.featH2);
 eq('talk: button', await T1('#talk-label'), EXPECT.talk.start);
 eq('talk: note', await T1('#talk-note'), EXPECT.talk.note);
+eq('talk: the connecting note', await T1('#talk-conn'), EXPECT.talk.connNote);
+eq('talk: the privacy line under the control', await T1('#talk-legal'), EXPECT.talk.legal);
 eq('talk: failed-attempt notice (owner copy)', await T1('#talk-fail'), 'Povezivanje nije uspelo — pokušajte ponovo.');
 ok('talk: the clock has a name for AT and none for the eye', (await page.$eval('#talk-live', e => e.textContent)).trim().startsWith('Preostalo') && (await T1('#talk-live')).trim().startsWith('00:'));
 eq('talk: card heading', await T1('#talk-card h3'), EXPECT.talk.cardH);
@@ -274,8 +279,27 @@ const meta = await page.evaluate(`({
   ogType: (document.querySelector('meta[property="og:type"]')||{}).content,
   ogLoc: (document.querySelector('meta[property="og:locale"]')||{}).content,
   charset: (document.querySelector('meta[charset]')||{}).getAttribute ? document.querySelector('meta[charset]').getAttribute('charset') : '',
-  viewport: (document.querySelector('meta[name=viewport]')||{}).content
+  viewport: (document.querySelector('meta[name=viewport]')||{}).content,
+  icon: (document.querySelector('link[rel~="icon"]')||{}).href || '',
+  touch: (document.querySelector('link[rel="apple-touch-icon"]')||{}).getAttribute ? document.querySelector('link[rel="apple-touch-icon"]').getAttribute('href') : '',
+  canonical: (document.querySelector('link[rel="canonical"]')||{}).href || '',
+  ogUrl: (document.querySelector('meta[property="og:url"]')||{}).content,
+  ogImage: (document.querySelector('meta[property="og:image"]')||{}).content,
+  ogImageType: (document.querySelector('meta[property="og:image:type"]')||{}).content,
+  ogImageW: (document.querySelector('meta[property="og:image:width"]')||{}).content,
+  ogImageH: (document.querySelector('meta[property="og:image:height"]')||{}).content,
+  ogImageAlt: (document.querySelector('meta[property="og:image:alt"]')||{}).content,
+  twitter: (document.querySelector('meta[name="twitter:card"]')||{}).content,
+  robots: (document.querySelector('meta[name="robots"]')||{}).content
 })`);
+/* the head's assets: the two files the head names must exist at the sizes it declares */
+const png = f => { try { const d = fs.readFileSync(path.join(ROOT, f)); return d.slice(1, 4).toString() === 'PNG' ? [d.readUInt32BE(16), d.readUInt32BE(20)] : null; } catch (e) { return null; } };
+ok('a favicon is declared inline — an SVG data URI, no request', /^data:image\/svg\+xml/.test(meta.icon), meta.icon.slice(0, 40));
+ok('apple-touch-icon.png is referenced relatively and exists at 180×180', meta.touch === 'apple-touch-icon.png' && JSON.stringify(png('apple-touch-icon.png')) === '[180,180]', JSON.stringify({ href: meta.touch, size: png('apple-touch-icon.png') }));
+ok('canonical and og:url name the production origin', meta.canonical === 'https://glasai.online/' && meta.ogUrl === meta.canonical, JSON.stringify({ canonical: meta.canonical, ogUrl: meta.ogUrl }));
+ok('og:image is og.png on that origin, declared 1200×630 as PNG, and the file exists at that size', meta.ogImage === 'https://glasai.online/og.png' && meta.ogImageType === 'image/png' && meta.ogImageW === '1200' && meta.ogImageH === '630' && JSON.stringify(png('og.png')) === '[1200,630]', JSON.stringify({ image: meta.ogImage, size: png('og.png') }));
+ok('og:image:alt is the title — the client\'s H1, nothing composed', meta.ogImageAlt === 'GLAS AI — ' + EXPECT.h1, meta.ogImageAlt);
+ok('twitter:card = summary_large_image; robots allows the large preview', meta.twitter === 'summary_large_image' && /max-image-preview:large/.test(meta.robots || ''), JSON.stringify({ twitter: meta.twitter, robots: meta.robots }));
 ok('lang="sr-Latn"', meta.lang === 'sr-Latn', meta.lang);
 ok('charset utf-8', (meta.charset || '').toLowerCase() === 'utf-8', meta.charset);
 ok('viewport has viewport-fit=cover', /viewport-fit=cover/.test(meta.viewport || ''), meta.viewport);
@@ -303,6 +327,7 @@ ok('the AI disclosure is stated in the FAQ', /Da, na po(č|c)etku svakog poziva\
 ok('the AI disclosure is stated in the footer', /Agent na po(č|c)etku svakog poziva najavljuje da je ve(š|s)ta(č|c)ka inteligencija\./.test(html));
 ok('talk: the state labels exist only in the script, verbatim', /"Povezujem…"/.test(html) && /"Slušam"/.test(html));
 ok('talk: no SMS anywhere in the file — markup, comments, meta, script', !/sms/i.test(html));
+ok('talk: the start label exists once in the script, verbatim — one constant, two call sites', (html.match(/"Razgovaraj sa agentom"/g) || []).length === 1);
 /* the snippet as supplied, with one deliberate change: the bundle is pinned to
    the version the forty-second cap was verified against */
 /* the client's snippet, byte for byte — the one thing on this page that is
@@ -314,16 +339,19 @@ ok('a human is always reachable — stated in copy', /Dovoljno je re(ć|c)i „o
 
 /* aria-label / title / alt must not contain generated Serbian beyond the declared set */
 const ARIA = await page.evaluate(`Array.from(document.querySelectorAll('[aria-label],[title],[alt]')).map(e => e.getAttribute('aria-label') || e.getAttribute('title') || e.getAttribute('alt'))`);
-const ALLOWED_ARIA = new Set(['GLAS AI', 'Meni', 'Prekini demo', 'Uslovi korišćenja']);   /* the terms region's name, declared above */
+/* the names present on the idle page; the demo's runtime names („Slušam — Prekini demo”, „Razmišljam… — Prekini demo”) are asserted in audit.js's live rounds, which this scan cannot reach */
+const ALLOWED_ARIA = new Set(['GLAS AI', 'Meni', 'Prekini demo', 'Slušam — Prekini demo', 'Razmišljam… — Prekini demo', 'Uslovi korišćenja']);
 const strayAria = ARIA.filter(a => a && !ALLOWED_ARIA.has(a.trim()));
 ok('no generated Serbian in aria-label / title / alt', strayAria.length === 0, JSON.stringify(strayAria));
 
 /* every string that is NOT in §8 must be one of the declared exceptions */
-const DECLARED_EXTRA = ['Preskoči na sadržaj', 'Meni', 'Zatvori', 'Zaustavi', '21.40', '+381 6• ••• •••', '00:22', 'Agent', 'Pozivalac',
+const DECLARED_EXTRA = ['Preskoči na sadržaj', 'Meni', 'Snimak uskoro', 'Zaustavi', '21.40', '+381 6• ••• ••••', '00:20', '00:40', 'Agent', 'Pozivalac',
+  /* the note for the wait, and what the microphone is for — under the demo control */
+  'Veza se uspostavlja — obično traje nekoliko sekundi. Ako pregledač zatraži pristup mikrofonu, dozvolite ga.', 'Mikrofon se koristi samo tokom demo razgovora, koji obrađuje servis ElevenLabs.',
   /* the live demo's own words, written once its copy was delegated: a stop name, an ending, a clock label, a failed attempt, a new-window hint */
   'Prekini demo', 'Razmišljam…', 'Završavam…', 'Preostalo', 'Povezivanje nije uspelo — pokušajte ponovo.', '(otvara se u novom prozoru)',
   /* the microphone's three notices — the one place a visitor can act on a failed attempt */
-  'Mikrofon je blokiran u pretraživaču — dozvolite ga za ovu stranicu i pokušajte ponovo.', 'Nije pronađen mikrofon.', 'Mikrofon je zauzet ili nedostupan — pokušajte ponovo.',
+  'Mikrofon je blokiran u pregledaču — dozvolite ga za ovu stranicu i pokušajte ponovo.', 'Nije pronađen mikrofon.', 'Mikrofon je zauzet ili nedostupan — pokušajte ponovo.',
   /* the terms panel's two answers, handed back to the widget's own sheet; the panel's name and what the live region says when it opens */
   'Prihvatam', 'Odustani', 'Uslovi korišćenja', 'Uslovi korišćenja: pročitajte ih i pritisnite „Prihvatam”.',
   /* the notice for a failure only the owner can mend: no retry, the address instead */
@@ -332,6 +360,9 @@ const DECLARED_EXTRA = ['Preskoči na sadržaj', 'Meni', 'Zatvori', 'Zaustavi', 
   'Poslušaj agenta',
   /* the contact section, written for the client's address: an eyebrow, a heading, the address, a button and what it says once pressed */
   'KONTAKT', 'Pišite nam.', 'support@glasai.online', 'Kopiraj adresu', 'Kopirano', 'Adresa je kopirana.'];
+ok('every declared extra still exists in the file — the list is a record, not a wish',
+   DECLARED_EXTRA.every(x => !/[A-Za-zčćšžđ]/.test(x) || html.includes(x)),
+   DECLARED_EXTRA.filter(x => /[A-Za-zčćšžđ]/.test(x) && !html.includes(x)).join(' · '));
 console.log(`\n  \x1b[2mDeclared non-§8 UI strings (a11y names the brief does not supply): ${DECLARED_EXTRA.filter(x => /[a-zA-Zčćšžđ]/.test(x)).join(', ')}\x1b[0m`);
 
 console.log(`\n${'─'.repeat(72)}\n  ${checks - fails}/${checks} content checks passed${fails ? `   \x1b[31m${fails} FAILING\x1b[0m` : '   \x1b[32mall green\x1b[0m'}\n${'─'.repeat(72)}\n`);

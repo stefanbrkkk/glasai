@@ -35,8 +35,8 @@ fs.mkdirSync(SHOTS, { recursive: true });
 
 /* 0.4 s of silence — a real decodable file, so the filled CONFIG path is not
    quietly testing a media error instead of the player. */
-function silentWav() {
-  const rate = 8000, n = rate * 0.4, b = Buffer.alloc(44 + n * 2);
+function silentWav(secs = 0.4) {
+  const rate = 8000, n = rate * secs, b = Buffer.alloc(44 + n * 2);
   b.write('RIFF', 0); b.writeUInt32LE(36 + n * 2, 4); b.write('WAVE', 8);
   b.write('fmt ', 12); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22);
   b.writeUInt32LE(rate, 24); b.writeUInt32LE(rate * 2, 28); b.writeUInt16LE(2, 32); b.writeUInt16LE(16, 34);
@@ -241,6 +241,24 @@ const LAPTOP_ST = `(() => {
   /* a fake microphone, always granted: the engine takes one before it opens its socket */
   const browser = await chromium.launch({ executablePath: EXE, args: ['--font-render-hinting=none', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] });
 
+  /* ── 0 · the file against itself ─────────────────────────────────────── */
+  head('0 · Static — the file against itself');
+  {
+    const src = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    const style = src.slice(src.indexOf('<style>'), src.indexOf('</style>'));
+    const script = src.slice(src.lastIndexOf('<script>'));
+    const written = new Set(); const re = /classList\.(?:add|remove|toggle)\(\s*"([^"]+)"/g; let m;
+    while ((m = re.exec(script))) written.add(m[1]);
+    /* `is-done` is read by this harness (rounds 13 and 15), not by a rule */
+    const DOCUMENTED = new Set(['is-done']);
+    const orphan = Array.from(written).filter(c => !DOCUMENTED.has(c) && !new RegExp('\\.' + c + '(?![\\w-])').test(style));
+    rec(0, 'every class the script writes has a rule in the stylesheet, or a documented reader', orphan.length === 0, orphan.join(', ') || written.size + ' classes written');
+    rec(0, 'the skip link is revealed by plain :focus too, for engines without :focus-visible', /\.skip:focus,\s*\.skip:focus-visible/.test(style));
+    rec(0, 'the gutter token, the skip link and the footer carry the safe-area insets (viewport-fit=cover is opted into)', /--gut:\s*max\(clamp\([^)]*\),\s*env\(safe-area-inset-left/.test(style) && /\.skip \{[^}]*env\(safe-area-inset-top/.test(style) && /\.footer \{[^}]*env\(safe-area-inset-bottom/.test(style));
+    rec(0, 'the laptop lid rotates through a fallback --lid, for engines without @property', (style.match(/rotateX\(var\(--lid, 0deg\)\)/g) || []).length === 2 && !/var\(--lid\)/.test(style));
+    rec(0, 'the head writes the vendor logger\'s level before the widget\'s script can run', /localStorage\.setItem\("loglevel:livekit", "WARN"\)/.test(src) && src.indexOf('loglevel:livekit') < src.indexOf('<elevenlabs-convai'));
+  }
+
   /* ── 1 · console cleanliness ─────────────────────────────────────────── */
   head('1 · Console — normal load, network idle + 5 s of animation');
   {
@@ -248,9 +266,14 @@ const LAPTOP_ST = `(() => {
     await wire(ctx);
     const page = await ctx.newPage(); const bag = [];
     watch(page, bag);
+    /* the hero's opening state, sampled every frame from before the first paint */
+    await page.addInitScript(() => { window.__ops = []; const f = () => { const e = document.querySelector('.hero .lede'); if (e) window.__ops.push(getComputedStyle(e).opacity); if (!window.__glasHeroDone || window.__ops.length < 300) requestAnimationFrame(f); }; requestAnimationFrame(f); });
     await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
     await page.waitForTimeout(5000);
     rec(1, 'zero console errors / pageerrors / unhandled rejections', bag.length === 0, bag.slice(0, 4).join(' | '));
+    const ops = await page.evaluate('window.__ops');
+    let seen = false, erased = false; for (const o of ops) { const v = parseFloat(o); if (v > 0.9) seen = true; if (seen && v < 0.1) erased = true; }
+    rec(1, 'the hero is never painted and then erased: the lede opens closed and is only ever revealed', ops.length > 10 && !erased && parseFloat(ops[ops.length - 1]) > 0.98, JSON.stringify({ samples: ops.length, first: ops[0], last: ops[ops.length - 1] }));
     const libs = await page.evaluate(`({gsap: !!window.gsap, st: !!window.ScrollTrigger, lenis: !!window.Lenis, lenisLive: !!window.__glasLenis, motion: document.documentElement.classList.contains('js-motion'), loop: document.documentElement.classList.contains('js-loop')})`);
     rec(1, 'GSAP + ScrollTrigger + Lenis all active', libs.gsap && libs.st && libs.lenis && libs.lenisLive, JSON.stringify(libs));
     await ctx.close();
@@ -308,8 +331,9 @@ const LAPTOP_ST = `(() => {
   {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
     await wire(ctx, { blockCdn: true });
-    const page = await ctx.newPage(); const bag = [];
-    watch(page, bag);
+    const page = await ctx.newPage(); const bag = [], lines4 = [];
+    watch(page, bag); page.on('console', m => { if (/\[glas\] demo:/.test(m.text())) lines4.push(m.text()); });
+    await page.addInitScript(() => { window.__glasDebug = true; });
     await page.goto(base + '/index.html', { waitUntil: 'load' });
     await page.waitForTimeout(4000);
     const st = await page.evaluate(`({
@@ -338,6 +362,7 @@ const LAPTOP_ST = `(() => {
     const talk = await page.evaluate(`({ gone: document.querySelector('#talk').classList.contains('is-gone'), ready: document.querySelector('#talk').classList.contains('is-ready'),
       talkVisible: document.querySelector('#talk').offsetHeight > 0 })`);
     rec(4, 'the live-demo block folds away when its engine never arrives — no dead button, no empty box', talk.gone && !talk.ready && !talk.talkVisible, JSON.stringify(talk));
+    rec(4, 'the fold names its reason — the script never ran — rather than „never rendered”', lines4.some(l => /hidden — the page finished loading and the widget's script \(unpkg\.com\) never ran/.test(l)), lines4.filter(l => /hidden/.test(l)).join(' | '));
     rec(4, 'still zero console errors after the fold', bag.length === 0, bag.slice(0, 3).join(' | '));
     await page.evaluate(SCROLL_TO + `(document.body.scrollHeight)`);
     await page.waitForTimeout(900);
@@ -347,11 +372,31 @@ const LAPTOP_ST = `(() => {
     await ctx.close();
   }
 
+  /* ── 4b · the engine's script arrives late ────────────────────────────── */
+  head('4b · The widget\'s script is slow to arrive — the demo waits for it');
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    await wire(ctx);
+    await ctx.route(/unpkg\.com/, r => setTimeout(() => r.fulfill({ status: 200, contentType: 'text/javascript; charset=utf-8', body: fs.readFileSync(path.join(NM, '@elevenlabs/convai-widget-embed/dist/index.js')) }), 10000));
+    const page = await ctx.newPage(); const bag = [], lines = [];
+    watch(page, bag); page.on('console', m => { if (/\[glas\] demo:/.test(m.text())) lines.push(m.text()); });
+    await page.addInitScript(() => { window.__glasDebug = true; });
+    const t0 = Date.now();
+    await page.goto(base + '/index.html', { waitUntil: 'domcontentloaded' });
+    let st = null; for (let i = 0; i < 64; i++) { await page.waitForTimeout(250); st = await page.evaluate(`({ ready: document.getElementById('talk').classList.contains('is-ready'), gone: document.getElementById('talk').classList.contains('is-gone') })`); if (st.ready || st.gone) break; }
+    rec(4, 'a bundle that takes ten seconds to arrive — longer than the eight-second render budget — still ends in a live demo block, not a folded one', st.ready && !st.gone && !lines.some(l => /hidden —/.test(l)), JSON.stringify({ st, after: Date.now() - t0, lines: lines.filter(l => /hidden/.test(l)) }));
+    rec(4, 'zero console errors while waiting', bag.length === 0, bag.slice(0, 3).join(' | '));
+    await ctx.close();
+  }
+
   /* ── 5 · reduced motion ──────────────────────────────────────────────── */
   head('5 · prefers-reduced-motion: reduce');
   {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' });
     await wire(ctx);
+    /* the recording, for the meter: a four-second silent file, so the playhead has room to move */
+    await ctx.route('**/index.html', async r => { const res = await r.fetch(); r.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: (await res.text()).replace(/DEMO_AUDIO: *"[^"]*"/, 'DEMO_AUDIO: "demo.wav"') }); });
+    await ctx.route('**/demo.wav', r => r.fulfill({ status: 200, contentType: 'audio/wav', body: silentWav(4) }));
     const page = await ctx.newPage(); const bag = [];
     watch(page, bag);
     await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
@@ -376,6 +421,35 @@ const LAPTOP_ST = `(() => {
     rec(5, 'phone rests in the booked state', a.bubbles && a.confirm !== 'none' && parseFloat(a.confirmOp) > 0.9 && a.incoming === 'hidden');
     const lap5 = await page.evaluate(LAPTOP_ST);
     rec(5, 'the laptop is open and still — nothing scrubbed, nothing hidden', lap5.identity && lap5.lidRatio >= 0.99 && lap5.progress === null && lap5.uiShown, JSON.stringify(lap5));
+    /* the industry strip cannot scroll, so it must set as a list — here and on a phone */
+    const strip = async () => page.evaluate(`(() => { const runs = Array.from(document.querySelectorAll('.marquee-run')); const vis = runs[0], dup = runs[1]; const vp = document.querySelector('.marquee-vp');
+      return { fits: vis.scrollWidth <= vis.clientWidth, text: vis.innerText.toUpperCase(), docOk: document.documentElement.scrollWidth === document.documentElement.clientWidth, mask: getComputedStyle(vp).maskImage || getComputedStyle(vp).webkitMaskImage, dup: getComputedStyle(dup).display, dupHidden: dup.getAttribute('aria-hidden') }; })()`);
+    const EIGHT = ['STOMATOLOŠKE ORDINACIJE', 'FRIZERSKI I KOZMETIČKI SALONI', 'AUTO SERVISI', 'PRIVATNE KLINIKE', 'FIZIOTERAPEUTI', 'AGENCIJE ZA NEKRETNINE', 'RESTORANI', 'ADVOKATSKE KANCELARIJE'];
+    const s1280 = await strip();
+    await page.setViewportSize({ width: 412, height: 900 }); await page.waitForTimeout(500);
+    const s412 = await strip();
+    await page.setViewportSize({ width: 1280, height: 900 }); await page.waitForTimeout(500);
+    const stripOk = s => s.fits && s.docOk && s.mask === 'none' && EIGHT.every(x => s.text.includes(x));
+    rec(5, 'the industry strip is readable with motion off — all eight, no overflow, no mask — at 1280 and at 412', stripOk(s1280) && stripOk(s412), JSON.stringify({ s1280: { ...s1280, text: undefined }, s412: { ...s412, text: undefined } }));
+    rec(5, 'its duplicate run stays in the DOM, aria-hidden and out of view', s1280.dup === 'none' && s1280.dupHidden === 'true' && s412.dup === 'none');
+    /* the meter under reduced motion: the playhead moves, the bars do not; a stop restores the rest */
+    await page.evaluate(SCROLL_TO + `(document.querySelector('#glas').getBoundingClientRect().top + window.scrollY)`);
+    await page.waitForTimeout(800);
+    const meter = await page.evaluate(`(async () => {
+      const c = document.querySelector('canvas[data-band="voice"]'), cx = c.getContext('2d'), btn = document.querySelector('#play');
+      const grab = () => cx.getImageData(0, 0, c.width, c.height).data;
+      const cols = (a, b) => { const out = []; for (let x = 0; x < c.width; x++) { let d = false; for (let y = 0; y < c.height && !d; y++) { const i = (y * c.width + x) * 4; if (a[i] !== b[i] || a[i+1] !== b[i+1] || a[i+2] !== b[i+2] || a[i+3] !== b[i+3]) d = true; } if (d) out.push(x); } return out; };
+      const span = xs => xs.length ? { from: xs[0], to: xs[xs.length - 1], n: xs.length } : { n: 0 };
+      const sleep = ms => new Promise(r => setTimeout(r, ms));
+      const rest0 = grab(); await sleep(700); const rest1 = grab();
+      btn.click(); await sleep(400); const a = grab(); await sleep(1600); const b = grab();
+      const playing = btn.classList.contains('is-playing');
+      btn.click(); await sleep(900); const after = grab();
+      return { w: c.width, restDrift: span(cols(rest0, rest1)), restVsA: span(cols(rest0, a)), aVsB: span(cols(a, b)), playing, afterVsRest: span(cols(rest0, after)), label: document.querySelector('#play-label').textContent.trim() };
+    })()`);
+    rec(5, 'at rest the meter is still: two captures 0.7 s apart are identical', meter.restDrift.n === 0, JSON.stringify(meter.restDrift));
+    rec(5, 'while the recording plays only the playhead moves: 1.6 s apart, every changed column lies inside the passband to the right of where the playhead was, and every bar to its left is untouched', meter.playing && meter.aVsB.n > 100 && meter.aVsB.from >= meter.restVsA.from && meter.aVsB.to <= meter.restVsA.to, JSON.stringify({ restVsA: meter.restVsA, aVsB: meter.aVsB }));
+    rec(5, 'stopping the recording restores the resting meter exactly, without a scroll', meter.afterVsRest.n === 0 && meter.label === 'Poslušaj agenta', JSON.stringify({ afterVsRest: meter.afterVsRest, label: meter.label }));
     rec(5, 'zero console errors', bag.length === 0, bag.slice(0, 3).join(' | '));
     await page.screenshot({ path: path.join(SHOTS, 'reduced-motion.png'), fullPage: true });
     await ctx.close();
@@ -465,10 +539,16 @@ const LAPTOP_ST = `(() => {
       r.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body });
     });
     if (filled) await ctx.route('**/demo.wav', r => r.fulfill({ status: 200, contentType: 'audio/wav', body: silentWav() }));
-    const page = await ctx.newPage(); const bag = [];
-    watch(page, bag);
+    const page = await ctx.newPage(); const bag = [], audioReqs = [];
+    watch(page, bag); page.on('request', q => { if (/demo\.wav/.test(q.url())) audioReqs.push(q.url()); });
     await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
     await page.waitForTimeout(2200);
+    if (filled) {
+      rec(7, 'filled: the recording is not fetched at boot — nothing has asked for it yet', audioReqs.length === 0, audioReqs.join(' | '));
+      await page.evaluate(SCROLL_TO + `(document.querySelector('#glas').getBoundingClientRect().top + window.scrollY)`); await page.waitForTimeout(400);
+      await page.hover('#play'); await page.waitForTimeout(500);
+      rec(7, 'filled: it is fetched the moment someone reaches for the control', audioReqs.length === 1, String(audioReqs.length));
+    }
     const rest = await page.evaluate(`(() => { const p = document.querySelector('#play');
       return { disabled: p.getAttribute('aria-disabled'), cursor: getComputedStyle(p).cursor, border: getComputedStyle(p).borderStyle,
                label: document.querySelector('#play-label').textContent.trim() }; })()`);
@@ -535,6 +615,28 @@ const LAPTOP_ST = `(() => {
       rec(7, 'filled: zero console errors', bag.length === 0, bag.slice(0, 3).join(' | '));
       await page.screenshot({ path: path.join(SHOTS, 'config-filled.png'), fullPage: false });
     }
+    await ctx.close();
+  }
+
+  /* ── 7b · a recording that will not load ─────────────────────────────── */
+  head('7b · CONFIG names a recording the server does not have');
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    await wire(ctx);
+    await ctx.route('**/index.html', async r => { const res = await r.fetch(); r.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: (await res.text()).replace(/DEMO_AUDIO: *"[^"]*"/, 'DEMO_AUDIO: "nema.mp3"') }); });
+    await ctx.route('**/nema.mp3', r => r.fulfill({ status: 404, contentType: 'text/plain', body: 'no' }));
+    const page = await ctx.newPage(); const bag = [], lines = [];
+    watch(page, bag); page.on('console', m => { if (/\[glas\] demo:/.test(m.text())) lines.push(m.text()); });
+    await page.addInitScript(() => { window.__glasDebug = true; });
+    await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1500);
+    await page.evaluate(SCROLL_TO + `(document.querySelector('#glas').getBoundingClientRect().top + window.scrollY)`); await page.waitForTimeout(600);
+    const before = await page.evaluate(`({ label: document.querySelector('#play-label').textContent.trim(), empty: document.querySelector('#play').classList.contains('is-empty') })`);
+    await page.locator('#play').click({ force: true });
+    await page.waitForTimeout(1800);
+    const after = await page.evaluate(`({ label: document.querySelector('#play-label').textContent.trim(), empty: document.querySelector('#play').classList.contains('is-empty') })`);
+    rec(7, 'a missing recording is named for the owner in the console and the control says „Snimak uskoro” from then on — it was „Poslušaj agenta” until someone reached for it', lines.some(l => /the recording „nema\.mp3” will not play/.test(l)) && after.empty && after.label === 'Snimak uskoro' && before.label === 'Poslušaj agenta' && !before.empty, JSON.stringify({ before, after, lines }));
+    rec(7, 'no console error escapes — the media error is caught and explained', bag.filter(b => !/nema\.mp3/.test(b)).length === 0, bag.slice(0, 3).join(' | '));
     await ctx.close();
   }
 
@@ -694,7 +796,17 @@ const LAPTOP_ST = `(() => {
         iconOnly: iconOnly.length,
         burgerName: (document.querySelector('#burger') || {}).textContent,
         marqueeDup: document.querySelectorAll('.marquee-run[aria-hidden="true"]').length,
-        imgs: document.querySelectorAll('img').length
+        imgs: document.querySelectorAll('img').length,
+        regions: document.querySelectorAll('section[aria-label], section[aria-labelledby], [role="region"]').length,
+        articles: document.querySelectorAll('article').length,
+        lists: document.querySelectorAll('ul, ol').length,
+        statuses: document.querySelectorAll('[role="status"]').length,
+        priceH3: Array.from(document.querySelectorAll('.price')).every(p => !!p.querySelector('h3')),
+        heads: Array.from(document.querySelectorAll('h2, h3')).map(h => h.textContent.trim()),
+        describedby: document.querySelector('#talk-btn').getAttribute('aria-describedby'),
+        termsRole: document.querySelector('#talk-terms-body').getAttribute('role') + '/' + document.querySelector('#talk-terms-body').tagName,
+        gut: getComputedStyle(document.documentElement).getPropertyValue('--gut').trim(),
+        pad: getComputedStyle(document.querySelector('.container')).paddingLeft
       };
     })()`);
     rec(10, 'lang="sr-Latn"', a.lang === 'sr-Latn', a.lang);
@@ -707,6 +819,11 @@ const LAPTOP_ST = `(() => {
     rec(10, 'no unnamed icon-only buttons', a.iconOnly === 0);
     rec(10, 'marquee duplicate is aria-hidden', a.marqueeDup === 1);
     rec(10, 'zero <img> — every visual is CSS / SVG / canvas', a.imgs === 0);
+    rec(10, 'no region or article landmark anywhere — the FAQ answers and the terms box are groups, not landmarks — and nine lists', a.regions === 0 && a.articles === 0 && a.lists === 9 && a.termsRole === 'group/DIV', JSON.stringify({ regions: a.regions, articles: a.articles, lists: a.lists, terms: a.termsRole }));
+    rec(10, 'every card grid names its cards: an h3 in each plan; „Za koga” and the three plan names are in the outline', a.priceH3 && ['Za koga', 'Starter', 'Professional', 'Enterprise'].every(h => a.heads.includes(h)), JSON.stringify(a.heads));
+    rec(10, 'role="status" appears nowhere — the two live regions are aria-live spans', a.statuses === 0, String(a.statuses));
+    rec(10, 'the demo control is described by the idle note before anything is pressed', a.describedby === 'talk-note', a.describedby);
+    rec(10, 'the gutter token computes through its max() to the same 48 px padding where the insets are zero', /^max\(clamp\(/.test(a.gut) && a.pad === '48px', JSON.stringify({ gut: a.gut, pad: a.pad }));
 
     // accordion behaviour
     await page.locator('#faq-q3').click();
@@ -716,41 +833,110 @@ const LAPTOP_ST = `(() => {
       p1: document.querySelector('#faq-p1').getBoundingClientRect().height})`);
     rec(10, 'accordion: opening one closes the other', acc.open === 1 && acc.p3 > 20 && acc.p1 < 2, JSON.stringify(acc));
 
+    /* every anchor lands under the stuck nav — from anywhere on the page, the top included.
+       Lenis approaches its target by lerp, so the last pixel takes a while: wait for the scroll to stand still */
+    const settled = async () => { let last = -1, same = 0; for (let i = 0; i < 60; i++) { await page.waitForTimeout(100); const y = await page.evaluate('Math.round(scrollY)'); if (y === last) { if (++same >= 4) return; } else { same = 0; last = y; } } };
+    const landings = {};
+    for (const id of ['kako-radi', 'mogucnosti', 'glas', 'cene', 'pitanja']) {
+      await page.evaluate(`document.querySelector('a.nav-link[href="#${id}"]').click()`);
+      await settled();
+      landings[id] = await page.evaluate(`Math.round(document.getElementById('${id}').getBoundingClientRect().top)`);
+    }
+    await page.evaluate(SCROLL_TO + `(0)`); await settled();
+    await page.evaluate(`document.querySelector('a.nav-link[href="#pitanja"]').click()`); await settled();
+    landings.pitanjaFromTop = await page.evaluate(`Math.round(document.getElementById('pitanja').getBoundingClientRect().top)`);
+    const navH = await page.evaluate(`Math.round(document.getElementById('nav').getBoundingClientRect().height)`);
+    rec(10, 'the five nav anchors land 24 px under the stuck nav, and an anchor pressed from the top of the page lands on the same pixel as one pressed mid-page', Object.values(landings).every(t => Math.abs(t - (navH + 24)) <= 2), JSON.stringify({ landings, navH }));
+    await page.evaluate(`document.querySelector('#nav .wordmark').click()`); await settled();
+    const w1 = await page.evaluate(`({ y: Math.round(scrollY), op: getComputedStyle(document.querySelector('.hero-copy')).opacity })`);
+    await page.evaluate(SCROLL_TO + `(document.querySelector('#pitanja').getBoundingClientRect().top + scrollY)`); await settled();
+    await page.evaluate(`document.querySelector('footer .wordmark').click()`); await settled();
+    const w2 = await page.evaluate(`({ y: Math.round(scrollY), op: getComputedStyle(document.querySelector('.hero-copy')).opacity })`);
+    rec(10, 'both wordmarks — the page\'s only „back to top” — return to the top of the document with the hero at full opacity, not 292 px inside a faded pin', w1.y <= 2 && w2.y <= 2 && w1.op === '1' && w2.op === '1', JSON.stringify({ nav: w1, footer: w2 }));
+
     // focus ring — driven by real Tab presses so :focus-visible actually applies
     await page.evaluate(`window.scrollTo(0,0)`);
     await page.waitForTimeout(400);
     await page.locator('body').click({ position: { x: 5, y: 5 } });
-    const noRing = [], order = [];
-    for (let i = 0; i < 34; i++) {
+    /* the resting box-shadow of every control, so a ring has to be a change, not a decoration */
+    await page.evaluate(`window.__rest = new Map(Array.from(document.querySelectorAll('a[href], button, [tabindex]')).map(el => [el, getComputedStyle(el).boxShadow]))`);
+    const noRing = [], order = []; let playRing = null;
+    for (let i = 0; i < 40; i++) {
       await page.keyboard.press('Tab');
       const f = await page.evaluate(`(() => {
         const el = document.activeElement;
         if (!el || el === document.body) return null;
         const cs = getComputedStyle(el);
-        const ring = (cs.boxShadow && cs.boxShadow !== 'none') || (cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) > 0);
+        const rest = (window.__rest && window.__rest.get(el)) || 'none';
+        const ring = (cs.boxShadow && cs.boxShadow !== 'none' && cs.boxShadow !== rest) || (cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) > 0);
         const insideClosedPanel = !!el.closest('.faq-panel:not([data-open])') || !!(el.closest('#menu') && document.querySelector('#menu').hidden);
-        return { tag: el.tagName, cls: (el.className || '').toString().trim().split(/\\s+/)[0], ring, insideClosedPanel, txt: (el.textContent||'').trim().slice(0,24) };
+        return { tag: el.tagName, cls: (el.className || '').toString().trim().split(/\\s+/)[0], ring, insideClosedPanel, txt: (el.textContent||'').trim().slice(0,24), id: el.id, rest, shadow: cs.boxShadow };
       })()`);
       if (!f) break;
       order.push(f.tag + '.' + f.cls);
       if (!f.ring) noRing.push(f.tag + '.' + f.cls);
       if (f.insideClosedPanel) noRing.push('TRAPPED:' + f.tag + '.' + f.cls);
+      if (f.id === 'play') playRing = { rest: f.rest, focused: f.shadow };
     }
-    rec(10, 'a designed focus ring on every tab stop', noRing.length === 0, noRing.length ? JSON.stringify(noRing.slice(0,6)) : order.length + ' tab stops walked');
+    rec(10, 'a designed focus ring on every tab stop — one that differs from the control\'s resting shadow', noRing.length === 0, noRing.length ? JSON.stringify(noRing.slice(0,6)) : order.length + ' tab stops walked');
+    rec(10, 'the play control\'s keyboard ring is not its decorative halo: focused and resting box-shadows differ', !!playRing && playRing.rest !== playRing.focused && playRing.focused.length > playRing.rest.length, JSON.stringify(playRing));
     rec(10, 'focus never lands in a closed panel or the hidden menu', !noRing.some(x => x.startsWith('TRAPPED')));
 
     // mobile menu open → resize to desktop → page must not stay locked
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(500);
+    const burger = await page.evaluate(`(() => { const b = document.querySelector('#burger'), s = b.querySelector('span[aria-hidden]'); const rb = b.getBoundingClientRect(), rs = s.getBoundingClientRect(); return { dx: +Math.abs((rb.left + rb.right) / 2 - (rs.left + rs.right) / 2).toFixed(2), dy: +Math.abs((rb.top + rb.bottom) / 2 - (rs.top + rs.bottom) / 2).toFixed(2) }; })()`);
+    rec(10, 'the burger\'s icon is centred in its button', burger.dx < 1 && burger.dy < 1.5, JSON.stringify(burger));
     await page.locator('#burger').click();
     await page.waitForTimeout(600);
     const openState = await page.evaluate(`({exp: document.querySelector('#burger').getAttribute('aria-expanded'), lock: document.body.style.overflow, focus: document.activeElement.className})`);
     rec(10, 'mobile menu opens and moves focus inside', openState.exp === 'true' && openState.lock === 'hidden' && /menu-link/.test(openState.focus), JSON.stringify(openState));
+    /* the trap: Tab from the last control lands on the burger, Shift+Tab from the burger on the last control, and a full cycle never reaches the page behind */
+    await page.evaluate(`document.querySelector('.menu-foot .btn').focus()`);
+    await page.keyboard.press('Tab'); const t1 = await page.evaluate(`document.activeElement.id`);
+    await page.keyboard.press('Shift+Tab'); const t2 = await page.evaluate(`document.activeElement.textContent.trim()`);
+    const cycle = []; for (let i = 0; i < 7; i++) { await page.keyboard.press('Tab'); cycle.push(await page.evaluate(`document.activeElement === document.body ? 'BODY' : (document.activeElement.id || document.activeElement.className.split(' ')[0])`)); }
+    rec(10, 'Tab from „Zakaži demo” lands on the burger, Shift+Tab from the burger returns to it, and seven Tabs never leave the overlay for the skip link, the wordmark or the body', t1 === 'burger' && t2 === 'Zakaži demo' && cycle.every(c => c === 'burger' || c === 'menu-link' || c === 'btn') && cycle.includes('burger'), JSON.stringify({ t1, t2, cycle }));
+    /* a short viewport: the menu scrolls, and every item can be reached */
+    const reach = async (w, h) => { await page.setViewportSize({ width: w, height: h }); await page.waitForTimeout(500); return page.evaluate(`(() => { const m = document.getElementById('menu'); const cs = getComputedStyle(m); const first = m.querySelector('.menu-link').getBoundingClientRect().top; m.scrollTop = 9999; const last = Array.from(m.querySelectorAll('.btn')).pop().getBoundingClientRect().bottom; m.scrollTop = 0; return { open: m.classList.contains('is-open'), overflowY: cs.overflowY, scrolls: m.scrollHeight > m.clientHeight, firstTop: Math.round(first), lastBottom: Math.round(last), nav: Math.round(document.getElementById('nav').getBoundingClientRect().height), vh: innerHeight }; })()`); };
+    const r1 = await reach(812, 375), r2 = await reach(900, 500);
+    const reachOk = r => r.open && r.overflowY === 'auto' && r.scrolls && r.firstTop >= r.nav && r.lastBottom <= r.vh;
+    rec(10, 'in a short landscape viewport (812×375, 900×500) the open menu scrolls: the first link starts below the nav and „Zakaži demo” can be scrolled onto the screen', reachOk(r1) && reachOk(r2), JSON.stringify({ r1, r2 }));
+    await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(500);
+    /* Escape: the closing menu leaves the tab order at once, not when its fade ends */
+    await page.keyboard.press('Escape'); await page.waitForTimeout(40); await page.keyboard.press('Tab');
+    const esc = await page.evaluate(`({ inMenu: !!document.activeElement.closest('#menu'), inert: document.getElementById('menu').inert, exp: document.querySelector('#burger').getAttribute('aria-expanded') })`);
+    rec(10, 'Escape closes the menu and the very next Tab lands on the page, not inside the fading overlay — the menu is inert the moment it closes', !esc.inMenu && esc.inert === true && esc.exp === 'false', JSON.stringify(esc));
+    await page.locator('#burger').click(); await page.waitForTimeout(600);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.waitForTimeout(900);
     const unlocked = await page.evaluate(`({lock: document.body.style.overflow, exp: document.querySelector('#burger').getAttribute('aria-expanded'), hidden: document.querySelector('#menu').hidden})`);
     rec(10, 'resizing to desktop unlocks the page and closes the menu', unlocked.lock === '' && unlocked.exp === 'false', JSON.stringify(unlocked));
     rec(10, 'zero console errors', bag.length === 0, bag.slice(0, 3).join(' | '));
+    await ctx.close();
+  }
+
+  /* ── 10b · print ─────────────────────────────────────────────────────── */
+  head('10b · Print — nothing hidden, nothing dark');
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    await wire(ctx);
+    const page = await ctx.newPage(); const bag = [];
+    watch(page, bag);
+    await page.goto(base + '/index.html', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1500);
+    await page.emulateMedia({ media: 'print' });
+    await page.waitForTimeout(400);
+    const pr = await page.evaluate(`(() => { const cs = e => getComputedStyle(e);
+      return { hidden: Array.from(document.querySelectorAll('[data-reveal],[data-hero],[data-fx]')).filter(e => cs(e).opacity === '0' || cs(e).visibility === 'hidden').length,
+               faq: Array.from(document.querySelectorAll('.faq-panel > div')).every(d => cs(d).visibility === 'visible'), faqN: document.querySelectorAll('.faq-panel > div').length,
+               bg: cs(document.body).backgroundColor, text: cs(document.body).color, btn: cs(document.querySelector('.btn--primary')).color, skip: cs(document.querySelector('.skip')).display }; })()`);
+    const pdf = await page.pdf({ printBackground: false, format: 'A4' });
+    const pages = (pdf.toString('latin1').match(/\/Type\s*\/Page\b(?!s)/g) || []).length;
+    rec(10, 'print: no reveal, hero or card is left at opacity 0 — all three reveal paths are neutralised', pr.hidden === 0, String(pr.hidden));
+    rec(10, 'print: every FAQ answer is visible, the tokens are black on white, the amber button prints as dark amber and the skip link is gone', pr.faq && pr.faqN === 8 && pr.bg === 'rgb(255, 255, 255)' && pr.text === 'rgb(0, 0, 0)' && pr.btn !== 'rgb(255, 255, 255)' && pr.skip === 'none', JSON.stringify(pr));
+    rec(10, 'print: the page sets in about six A4 pages — as many as the copy needs, none blank', pages >= 5 && pages <= 7, pages + ' pages');
+    rec(10, 'print: zero console errors', bag.length === 0, bag.slice(0, 3).join(' | '));
     await ctx.close();
   }
 
@@ -1118,7 +1304,7 @@ const LAPTOP_ST = `(() => {
       const hooks = await page.evaluate(FAKE); await page.clock.runFor(100);
       st = await page.evaluate(TALK_ST);
       rec(14, 'a connected session goes live: „Slušam”, the clock at 00:40, the rule full', hooks && st.live && st.label === 'Slušam' && st.clock === '00:40' && st.rule === 'scaleX(1)' && st.liveOn && !st.noteOn, JSON.stringify(st));
-      rec(14, 'while live the control is named for what pressing it does — and for nothing about the state, which the visible word carries', (await page.getAttribute('#talk-btn', 'aria-label')) === 'Prekini demo');
+      rec(14, 'while live the control\'s name leads with the word it shows, then says what pressing it does (2.5.3 Label in Name)', (await page.getAttribute('#talk-btn', 'aria-label')) === 'Slušam — Prekini demo', await page.getAttribute('#talk-btn', 'aria-label'));
       await page.clock.runFor(10000); st = await page.evaluate(TALK_ST);
       rec(14, 'ten seconds in: 00:30, the rule three-quarters', st.clock === '00:30' && /scaleX\(0\.7[45]/.test(st.rule), JSON.stringify({ clock: st.clock, rule: st.rule }));
       await page.clock.runFor(21500);
@@ -1252,7 +1438,7 @@ const LAPTOP_ST = `(() => {
     for (const mode of ['handshake', 'refused', 'quota', 'terms', 'terms-decline', 'micdenied', 'insecure', 'errorfirst', 'hangpending', 'storage']) {
       const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
       const cfg = { widget_config: { ...CFG_BASE } };
-      if (mode === 'terms' || mode === 'terms-decline') { cfg.widget_config.terms_html = '<p>Uslovi korišćenja demoa.</p>'; cfg.widget_config.terms_key = null; }
+      if (mode === 'terms' || mode === 'terms-decline') { cfg.widget_config.terms_html = '<p>Uslovi korišćenja demoa.</p>' + (mode === 'terms' ? '<p><a href="https://example.com/politika">Politika</a> <a href="/uslovi">Uslovi</a> <a href="#glas">Vrh</a></p>' : ''); cfg.widget_config.terms_key = null; }
       await wire(ctx);
       await ctx.route(/elevenlabs\.io/, r => { if (/\/v1\/convai\/agents\/[^/]+\/widget/.test(r.request().url())) return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(cfg) }); r.fulfill({ status: 500, contentType: 'application/json', body: '{}' }); });
       await ctx.grantPermissions(['microphone']);
@@ -1308,8 +1494,10 @@ const LAPTOP_ST = `(() => {
         rec(14, 'a session the service closes for the quota half a second in: named for the owner, and the visitor sees the owner\'s notice with the address, not a finished demo', st.failOn && st.failText === 'Demo trenutno nije dostupan — zakažite razgovor.' && st.failLink && !st.card && !st.live && st.label === 'Razgovaraj sa agentom' && said(/session live/) && said(/socket closed, code 1008 — This request exceeds your quota/) && said(/failed — the session ended \d+ ms after it began/), JSON.stringify({ st, lines }));
       } else if (mode === 'terms' || mode === 'terms-decline') {
         rec(14, `${mode}: the widget's terms sheet is met with the page's own panel within two seconds — the owner's words in it, focus on them, no socket opened yet`,
-            st.terms && !st.ctl && !st.live && st.termsText === 'Uslovi korišćenja demoa.' && st.focus === 'talk-terms-body' && sock.url === null && said(/asking the visitor to accept terms/), JSON.stringify({ st, sock }));
+            st.terms && !st.ctl && !st.live && st.termsText.startsWith('Uslovi korišćenja demoa.') && st.focus === 'talk-terms-body' && sock.url === null && said(/asking the visitor to accept terms/), JSON.stringify({ st, sock }));
         if (mode === 'terms') {
+          const tl = await page.evaluate(`(() => { const tb = document.getElementById('talk-terms-body'); return { role: tb.getAttribute('role'), tag: tb.tagName, regions: document.querySelectorAll('section[aria-label], section[aria-labelledby], [role="region"]').length, links: Array.from(tb.querySelectorAll('a')).map(a => [a.getAttribute('href'), a.target, a.rel, !!a.querySelector('.vh')]) }; })()`);
+          rec(14, 'the owner\'s links inside the terms open elsewhere — absolute and root-relative alike get target=_blank, rel=noopener and the new-window hint; a same-page fragment is left alone — and the box is a group, not a landmark', tl.role === 'group' && tl.tag === 'DIV' && tl.regions === 0 && tl.links.length === 3 && tl.links[0][1] === '_blank' && tl.links[0][2] === 'noopener' && tl.links[0][3] && tl.links[1][1] === '_blank' && tl.links[1][2] === 'noopener' && tl.links[1][3] && !tl.links[2][1] && !tl.links[2][2] && !tl.links[2][3], JSON.stringify(tl));
           await page.click('#talk-accept');
           await page.waitForTimeout(2600);
           const st2 = await page.evaluate(TALK_ST2);
@@ -1338,8 +1526,8 @@ const LAPTOP_ST = `(() => {
       } else if (mode === 'micdenied') {
         await page.waitForTimeout(4600);
         const stHold = await page.evaluate(TALK_ST2);
-        rec(14, 'a microphone notice the visitor can act on stays until the next attempt — it does not step aside after four seconds like the generic one', stHold.failOn && stHold.failText === 'Mikrofon je blokiran u pretraživaču — dozvolite ga za ovu stranicu i pokušajte ponovo.' && stHold.ctl && stHold.label === 'Razgovaraj sa agentom', JSON.stringify(stHold));
-        rec(14, 'a blocked microphone: the visitor is told to allow it, the owner\'s console names the error, and no socket is opened', st.failOn && st.failText === 'Mikrofon je blokiran u pretraživaču — dozvolite ga za ovu stranicu i pokušajte ponovo.' && sock.url === null && said(/microphone refused for this page: NotAllowedError/), JSON.stringify({ st, lines }));
+        rec(14, 'a microphone notice the visitor can act on stays until the next attempt — it does not step aside after four seconds like the generic one', stHold.failOn && stHold.failText === 'Mikrofon je blokiran u pregledaču — dozvolite ga za ovu stranicu i pokušajte ponovo.' && stHold.ctl && stHold.label === 'Razgovaraj sa agentom', JSON.stringify(stHold));
+        rec(14, 'a blocked microphone: the visitor is told to allow it, the owner\'s console names the error, and no socket is opened', st.failOn && st.failText === 'Mikrofon je blokiran u pregledaču — dozvolite ga za ovu stranicu i pokušajte ponovo.' && sock.url === null && said(/microphone refused for this page: NotAllowedError/), JSON.stringify({ st, lines }));
       }
       const stEnd = await page.evaluate(TALK_ST2);
       rec(14, `${mode}: the native WebSocket is restored and no timer is left`, stEnd.ws === 'WebSocket' && (mode === 'handshake' || mode === 'terms' || stEnd.timers <= 1), JSON.stringify({ ws: stEnd.ws, timers: stEnd.timers }));
@@ -1376,7 +1564,7 @@ const LAPTOP_ST = `(() => {
       }
       const said = re => lines.some(l => re.test(l));
       rec(14, 'framed by another origin without allow="microphone": the visitor sees the microphone notice, and the owner\'s line says the page is inside a frame and that the host\'s policy disallows the microphone — no socket',
-          !!st && st.failOn && st.failText === 'Mikrofon je blokiran u pretraživaču — dozvolite ga za ovu stranicu i pokušajte ponovo.' && sock.url === null && said(/microphone refused for this page: NotAllowedError.*the page is inside a frame \(window\.top !== window\).*the microphone is disallowed by the host's Permissions-Policy/), JSON.stringify({ st, lines, frames: page.frames().map(f => f.url()) }));
+          !!st && st.failOn && st.failText === 'Mikrofon je blokiran u pregledaču — dozvolite ga za ovu stranicu i pokušajte ponovo.' && sock.url === null && said(/microphone refused for this page: NotAllowedError.*the page is inside a frame \(window\.top !== window\).*the microphone is disallowed by the host's Permissions-Policy/), JSON.stringify({ st, lines, frames: page.frames().map(f => f.url()) }));
       await ctx.close();
     }
   }
@@ -1414,7 +1602,8 @@ const LAPTOP_ST = `(() => {
       await ctx.grantPermissions(['microphone']);
       const page = await ctx.newPage(); const bag = [], lines = [], at = {};
       watch(page, bag);
-      page.on('console', m => { const t = m.text(); if (/\[glas\] demo:/.test(t)) { lines.push(t); if (/call event received/.test(t) && !at.call) at.call = Date.now(); if (/WebRTC token requested/.test(t) && !at.token) at.token = Date.now(); } });
+      const vendor = [];
+      page.on('console', m => { const t = m.text(); if (/\[glas\] demo:/.test(t)) { lines.push(t); if (/call event received/.test(t) && !at.call) at.call = Date.now(); if (/WebRTC token requested/.test(t) && !at.token) at.token = Date.now(); } else if (m.type() !== 'error' && (/livekit/i.test(t) || t.length > 600)) vendor.push(t.slice(0, 90)); });
       await page.addInitScript(() => { window.__glasDebug = true; });
       if (/^ws-/.test(mode)) await page.addInitScript(() => { window.__glasConfig = { DEMO_VEZA: 'websocket' }; });
       if (mode === 'ws-terms-idle') await page.addInitScript(() => { window.__glasTiming = { TALK_TERMS_MIC_MS: 1500 }; });
@@ -1442,6 +1631,7 @@ const LAPTOP_ST = `(() => {
       rec(14, `${mode}: before any press the engine carries use-rtc="${want}", server-location="global" and a visitor id kept in the browser — set by the page on the element, the snippet's bytes untouched`, before.useRtc === want && before.region === 'global' && before.engines === 1 && /^[0-9a-f-]{36}$|^v-/.test(before.userId || '') && before.userId === before.stored, JSON.stringify(before));
       await page.evaluate(SCROLL_TO + `(document.querySelector('#glas').getBoundingClientRect().top + window.scrollY)`);
       await page.waitForTimeout(500);
+      if (mode === 'rtc-terms') await page.evaluate(`(() => { const t = document.getElementById('talk'); window.__hs = []; const f = () => { window.__hs.push(t.offsetHeight); if (window.__hs.length < 2400) requestAnimationFrame(f); }; requestAnimationFrame(f); })()`);
       await page.click('#talk-btn');
       const said = re => lines.some(l => re.test(l));
       const count = re => lines.filter(l => re.test(l)).length;
@@ -1466,10 +1656,11 @@ const LAPTOP_ST = `(() => {
       let labels = null;
       if (mode === 'ws-config') {
         /* the control's word through the mocked turn: „Slušam” at first, „Razmišljam…” once the service has the words, „Slušam” again when the reply is ready */
-        await page.waitForTimeout(600);  const l0 = await page.evaluate(`document.getElementById('talk-label').textContent`);   /* live, before the transcript (~1.2 s) */
-        await page.waitForTimeout(850);  const l1 = await page.evaluate(`document.getElementById('talk-label').textContent`);   /* after the transcript, before the reply (~2.0 s) */
+        const NAME = `document.getElementById('talk-btn').getAttribute('aria-label')`;
+        await page.waitForTimeout(600);  const l0 = await page.evaluate(`document.getElementById('talk-label').textContent`), n0 = await page.evaluate(NAME), d0 = await page.evaluate(`document.getElementById('talk-btn').getAttribute('aria-describedby')`);   /* live, before the transcript (~1.2 s) */
+        await page.waitForTimeout(850);  const l1 = await page.evaluate(`document.getElementById('talk-label').textContent`), n1 = await page.evaluate(NAME);   /* after the transcript, before the reply (~2.0 s) */
         await page.waitForTimeout(900);  const l2 = await page.evaluate(`document.getElementById('talk-label').textContent`);   /* after the reply */
-        labels = { l0, l1, l2, thinkingClassNow: await page.evaluate(`document.getElementById('talk').classList.contains('is-thinking')`) };
+        labels = { l0, l1, l2, n0, n1, d0, thinkingClassNow: await page.evaluate(`document.getElementById('talk').classList.contains('is-thinking')`) };
         await page.waitForTimeout(1150);
       } else await page.waitForTimeout(mode === 'rtc-slow-config' ? 9000 : /^(rtc-silent|rtc-token-hang)$/.test(mode) ? 12500 : mode === 'rtc-token-slow' ? 14000 : 3500);
       const st = await page.evaluate(TALK_ST3);
@@ -1481,6 +1672,7 @@ const LAPTOP_ST = `(() => {
         rec(14, 'the service\'s own gap is printed per turn: from the caller\'s transcript to the agent\'s reply, in milliseconds', said(/turn 1: the service had your words → the agent's reply was ready [5-9]\d\d ms later/), JSON.stringify(lines));
         rec(14, 'the tool the agent calls is named, and its answer timed', said(/turn 1: the agent is calling google_calendar_check_availability/) && said(/turn 1: google_calendar_check_availability answered [2-7]\d\d ms later/), JSON.stringify(lines));
         rec(14, 'the control reads „Slušam” before the turn, „Razmišljam…” once the service has the words, and „Slušam” again when the reply is ready — with the thinking class gone', labels && labels.l0 === 'Slušam' && labels.l1 === 'Razmišljam…' && labels.l2 === 'Slušam' && labels.thinkingClassNow === false && st.label === 'Slušam', JSON.stringify(labels));
+        rec(14, 'the live control names itself with the word it shows (2.5.3), listening and thinking alike, then says what pressing it does — and is described by the clock, not the idle note', labels && labels.n0 === 'Slušam — Prekini demo' && labels.n1 === 'Razmišljam… — Prekini demo' && labels.d0 === 'talk-live', JSON.stringify({ n0: labels && labels.n0, n1: labels && labels.n1, d0: labels && labels.d0 }));
       } else if (mode === 'rtc-token-hang') {
         rec(14, 'a token request the service never answers: the page\'s own eight-second clock names it and the same attempt goes on over the plain socket — live', st.live && reqs.token === 1 && said(/the token was requested but no signalling socket was opened within 8 s/) && said(/the same attempt goes on over a plain WebSocket, once/) && said(/session live over a plain WebSocket/) && !said(/failed —/), JSON.stringify({ st, reqs, lines }));
       } else if (mode === 'rtc-token-slow') {
@@ -1506,6 +1698,15 @@ const LAPTOP_ST = `(() => {
         const micGone = await page.evaluate(`window.__glasStreams.length > 0 && window.__glasStreams[0].getTracks().every(x => x.readyState === 'ended')`);
         rec(14, `${mode}: stopped onto the end card — no timers, native WebSocket and fetch back, the page's microphone stream ended, one fresh engine marked use-rtc="${want}" for the next attempt`, st.live && after.card && !after.live && after.timers === 0 && after.ws === 'WebSocket' && after.fetchNative && micGone && after.engines === 1 && after.useRtc === want && after.region === 'global', JSON.stringify({ wasLive: st.live, after, micGone }));
       }
+      if (mode === 'rtc-terms') {
+        const hs = await page.evaluate(`window.__hs`);
+        const runs = []; for (const h of hs) { const r = runs[runs.length - 1]; if (r && r.h === h) r.n++; else runs.push({ h, n: 1 }); }
+        /* plateaus are states; what lies between two plateaus is a swap, and a swap has to be a ramp inside its two ends */
+        const plateaus = runs.map((r, i) => ({ ...r, i })).filter(r => r.n >= 12);
+        const swaps = []; for (let k = 1; k < plateaus.length; k++) { const p = plateaus[k - 1], q = plateaus[k]; if (p.h === q.h) continue; const between = runs.slice(p.i + 1, q.i).map(r => r.h); const lo = Math.min(p.h, q.h), hi = Math.max(p.h, q.h); const path = [p.h].concat(between, [q.h]); swaps.push({ from: p.h, to: q.h, steps: between.length, overshoot: between.some(h => h < lo || h > hi), maxJump: Math.max.apply(null, path.map((h, j) => j ? Math.abs(h - path[j - 1]) : 0)) }); }
+        rec(14, 'rtc-terms: every swap of the block — control → terms, terms → control, control → end card — is a ramp of frames inside its two heights, never a snap and never an overshoot', swaps.length >= 3 && swaps.every(s => s.steps >= 4 && !s.overshoot && s.maxJump <= Math.max(12, Math.abs(s.to - s.from) / 2)), JSON.stringify({ swaps, runs: runs.map(r => r.h + 'x' + r.n).join(' ') }));
+      }
+      if (/^rtc-/.test(mode)) rec(14, `${mode}: the vendor SDK's connection narration is silent — no livekit line, nothing over 600 characters — while the page's own „[glas] demo:” lines are all there`, vendor.length === 0 && lines.length >= 6, JSON.stringify({ vendor: vendor.slice(0, 3), pageLines: lines.length }));
       /* the widget's own line when an element is removed while its settings are still on the way — the page replaces the engine on purpose there */
       rec(14, `${mode}: the start button was found by its phone icon, never pressed by position`, said(/the widget's start button pressed — „/) && !said(/by position/), lines.filter(l => /start button/.test(l)).join(' | '));
       rec(14, `${mode}: zero console errors from the page`, bag.filter(b => !(/token-500|rtc-terms|rtc-slow-config/.test(mode) && /status of 500/.test(b)) && !(mode === 'rtc-slow-config' && /Cannot fetch config .* aborted/.test(b))).length === 0, bag.slice(0, 3).join(' | '));

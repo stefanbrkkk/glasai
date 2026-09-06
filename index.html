@@ -12,9 +12,31 @@
 <meta property="og:type" content="website">
 <meta property="og:locale" content="sr_RS">
 <meta property="og:site_name" content="GLAS AI">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%23070A12'/%3E%3Ccircle%20cx='16'%20cy='16'%20r='6.5'%20fill='%23FFB454'/%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="canonical" href="https://glasai.online/">
+<meta property="og:url" content="https://glasai.online/">
+<meta property="og:image" content="https://glasai.online/og.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="GLAS AI — Nijedan poziv ne ostaje bez odgovora.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
 
-<script>document.documentElement.className = "js";</script>
+<script>document.documentElement.className = "js";
+/* The demo widget bundles livekit-client, which narrates every connection at
+   loglevel's `info` — one of its lines carries the whole base64 join request,
+   about two thousand characters, and pushes this page's own „[glas] demo:”
+   lines off the screen. loglevel reads its level from localStorage when a
+   logger is built and livekit only ever calls setDefaultLevel, which yields to
+   a stored value — so a level written here, before the widget's async script
+   can run, wins for the `livekit` logger and every logger built from it. WARN
+   keeps the SDK's warnings and drops the narration; set the key to DEBUG in
+   devtools to get every SDK line back. */
+try { if (!localStorage.getItem("loglevel:livekit")) localStorage.setItem("loglevel:livekit", "WARN"); } catch (err) {}</script>
 
+<link rel="preconnect" href="https://unpkg.com">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700..800&family=Instrument+Sans:wght@400..600&family=JetBrains+Mono:wght@400;600&display=swap&subset=latin,latin-ext">
@@ -59,7 +81,6 @@ a { color: inherit; text-decoration: none; }
   --signal-hi:  #FFD9A0;
   --signal-dim: rgba(255,180,84,0.12);
   --machine:    #56C8DA;
-  --machine-hi: #A8E6F0;   /* cyan text on a cyan-tinted surface, nothing else */
   --machine-dim:rgba(86,200,218,0.10);
   --confirm:    #6FD48A;
   --glow:       rgba(255,180,90,0.22);
@@ -81,7 +102,7 @@ a { color: inherit; text-decoration: none; }
   --track-mono: 0.14em;
 
   /* space */
-  --gut:       clamp(1.25rem, 4vw, 3rem);
+  --gut:       max(clamp(1.25rem, 4vw, 3rem), env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));   /* viewport-fit=cover: nothing under a phone's sensor housing */
   --sect-pad:  clamp(4rem, 6.6vw, 7rem);
   --stack-sm:  clamp(0.75rem, 1.4vw, 1rem);
   --stack-md:  clamp(1.25rem, 2.2vw, 1.75rem);
@@ -135,7 +156,10 @@ html.lenis, html.lenis body { height: auto; }
 @media (prefers-reduced-motion: no-preference) {
   html:not(.lenis) { scroll-behavior: smooth; }
 }
-html { scroll-padding-top: calc(var(--nav-h) + 1.5rem); }
+/* every anchor is read under the stuck nav, twelve pixels shorter than the
+   one at the top of the page — the padding is set for that one, and the
+   script's own offset measures it (navOffset) */
+html { scroll-padding-top: calc(var(--nav-h) - 12px + 1.5rem); }
 
 ::selection { background: var(--signal); color: var(--ink); }
 
@@ -145,7 +169,7 @@ html { scroll-padding-top: calc(var(--nav-h) + 1.5rem); }
   border-radius: var(--r-sm);
 }
 .skip {
-  position: fixed; top: 0.5rem; left: 0.5rem; z-index: 200;
+  position: fixed; top: max(0.5rem, env(safe-area-inset-top, 0px)); left: max(0.5rem, env(safe-area-inset-left, 0px)); z-index: 200;
   padding: 0.7rem 1.1rem;
   font-family: var(--f-mono); font-size: var(--t-xs);
   letter-spacing: var(--track-mono); text-transform: uppercase;
@@ -154,7 +178,10 @@ html { scroll-padding-top: calc(var(--nav-h) + 1.5rem); }
   transform: translateY(-160%);
   transition: transform var(--d-micro) var(--ease);
 }
-.skip:focus-visible { transform: translateY(0); box-shadow: 0 0 0 2px var(--ink), 0 0 0 4px var(--signal-hi); }
+/* :focus as well — a browser without :focus-visible (Safari before 15.4) drops
+   the rule and the first Tab lands on a link parked off-screen; the link is
+   unclickable, so :focus is only ever reached from the keyboard */
+.skip:focus, .skip:focus-visible { transform: translateY(0); box-shadow: 0 0 0 2px var(--ink), 0 0 0 4px var(--signal-hi); }
 
 .container { width: 100%; max-width: var(--maxw); margin-inline: auto; padding-inline: var(--gut); }
 .section { position: relative; padding-block: var(--sect-pad); }
@@ -164,7 +191,7 @@ html { scroll-padding-top: calc(var(--nav-h) + 1.5rem); }
 }
 
 /* ─── 4 · TYPE ──────────────────────────────────────────────────────────── */
-.eyebrow {
+.eyebrow, .marquee-label {
   font-family: var(--f-mono);
   font-size: var(--t-xs);
   font-weight: 600;
@@ -173,7 +200,7 @@ html { scroll-padding-top: calc(var(--nav-h) + 1.5rem); }
   color: var(--signal);
   display: flex; align-items: center; gap: 0.7em;
 }
-.eyebrow::before {
+.eyebrow::before, .marquee-label::before {
   content: ""; width: 1.75rem; height: 1px; flex: none;
   background: linear-gradient(90deg, transparent, var(--signal));
   transform: scaleX(var(--rule, 1));
@@ -507,32 +534,36 @@ h3 {
   border: 1px solid var(--line); border-radius: var(--r-sm);
   cursor: pointer;
 }
-.burger span {
+.burger span[aria-hidden] {
   display: block; position: relative;
   width: 1.05rem; height: 1px; background: var(--text);
   transition: transform 320ms var(--ease), opacity 180ms linear;
 }
-.burger span::before, .burger span::after {
+.burger span[aria-hidden]::before, .burger span[aria-hidden]::after {
   content: ""; position: absolute; left: 0; width: 100%; height: 1px; background: var(--text);
   transition: transform 320ms var(--ease);
 }
-.burger span::before { top: -6px; }
-.burger span::after  { top: 6px; }
-[aria-expanded="true"].burger span { transform: rotate(45deg); }
-[aria-expanded="true"].burger span::before { transform: translateY(6px) rotate(-90deg); }
-[aria-expanded="true"].burger span::after  { opacity: 0; transform: translateY(-6px); }
+.burger span[aria-hidden]::before { top: -6px; }
+.burger span[aria-hidden]::after  { top: 6px; }
+[aria-expanded="true"].burger span[aria-hidden] { transform: rotate(45deg); }
+[aria-expanded="true"].burger span[aria-hidden]::before { transform: translateY(6px) rotate(-90deg); }
+[aria-expanded="true"].burger span[aria-hidden]::after  { opacity: 0; transform: translateY(-6px); }
 
 .menu {
   position: fixed; inset: 0; z-index: 99;
   background: var(--ink);
-  display: flex; flex-direction: column; justify-content: center;
+  display: flex; flex-direction: column;
+  /* a short viewport scrolls the menu instead of losing its ends: the list
+     and the foot carry auto margins, which centre where there is room and
+     collapse where there is not — in every engine, unlike `safe center` */
+  overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
   padding: calc(var(--nav-h) + 2rem) var(--gut) 3rem;
   visibility: hidden; opacity: 0;
   transition: opacity 340ms var(--ease), visibility 0s linear 340ms;
 }
 .menu[hidden] { display: none; }
 .menu.is-open { visibility: visible; opacity: 1; transition-delay: 0s; }
-.menu-list { display: flex; flex-direction: column; gap: 0.35rem; }
+.menu-list { display: flex; flex-direction: column; gap: 0.35rem; margin-top: auto; }
 .menu-link {
   font-family: var(--f-display); font-weight: 700;
   font-size: clamp(1.9rem, 9vw, 2.75rem);
@@ -540,10 +571,10 @@ h3 {
   padding: 0.24em 0;
   border-bottom: 1px solid var(--line-soft);
   opacity: 0; transform: translateY(1.1rem);
-  transition: opacity 420ms var(--ease), transform 420ms var(--ease);
+  transition: opacity var(--d-mid) var(--ease), transform var(--d-mid) var(--ease);
 }
 .menu.is-open .menu-link { opacity: 1; transform: none; }
-.menu-foot { margin-top: 2.5rem; display: flex; flex-direction: column; gap: 0.9rem; align-items: flex-start; }
+.menu-foot { margin-top: 2.5rem; margin-bottom: auto; display: flex; flex-direction: column; gap: 0.9rem; align-items: flex-start; }
 .menu-foot > * { width: 100%; justify-content: center; }
 .menu.is-open .menu-link { transition-delay: calc(60ms + var(--i, 0) * 55ms); }
 @media (prefers-reduced-motion: reduce) {
@@ -568,6 +599,14 @@ h3 {
   gap: clamp(2rem, 5vw, 4.5rem);
 }
 .hero-copy { display: flex; flex-direction: column; gap: var(--stack-md); max-width: 38rem; }
+/* The intro is played from JavaScript, but the hero paints before JavaScript
+   runs — on every link measured, first paint precedes DOMContentLoaded — so
+   setting the opening state there erases copy that is already on screen. It
+   starts closed here, at parse time; boot() opens it in the same task that
+   hands it to GSAP, and no-JS and reduced motion never see the rule at all. */
+@media (prefers-reduced-motion: no-preference) {
+  .js .hero.is-armed [data-hero] { opacity: 0; }
+}
 .hero h1 { max-width: 12ch; }
 .hero .lede { max-width: 46ch; }
 .hero-cta { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.4rem; }
@@ -1107,6 +1146,11 @@ h3 {
   border-color: var(--signal);
   box-shadow: 0 0 0 0.6rem rgba(255,180,84,0.05);
 }
+/* the resting halo is decoration; the keyboard ring has to read as one */
+.play:not([aria-disabled="true"]):not(.is-empty):focus-visible {
+  box-shadow: var(--focus), 0 0 0 0.6rem rgba(255,180,84,0.05);
+}
+.play:is([aria-disabled="true"], .is-empty):focus-visible { box-shadow: var(--focus); }
 @media (hover: hover) and (pointer: fine) {
   .play:not([aria-disabled="true"]):not(.is-empty):hover { background: var(--signal); color: var(--ink); border-color: var(--signal); }
 }
@@ -1115,11 +1159,13 @@ h3 {
   letter-spacing: var(--track-mono); text-transform: uppercase;
   color: var(--muted); text-align: center;
   padding: 0.5em 0.85em;
-  background: var(--ink);
-  border: 1px dashed var(--line-soft);   /* the same hairline every „uskoro" wears */
+  background: transparent;
+  border: 1px dashed transparent;
   border-radius: var(--r-sm);
   white-space: nowrap;
 }
+/* only the „uskoro” states wear the hairline every pending thing on the page wears */
+.play:is([aria-disabled="true"], .is-empty) + .play-label { border-color: var(--line-soft); }
 .play .ico-pause { display: none; }
 .play.is-scanning { color: var(--signal); border-color: var(--signal); border-style: solid; opacity: 1; }
 .play.is-scanning::after {
@@ -1217,6 +1263,9 @@ h3 {
 .talk-fail { color: var(--muted-hi); }      /* a notice, in the same voice, a shade up */
 .talk-fail a { color: var(--signal); text-decoration: underline; text-underline-offset: 0.2em; text-decoration-color: color-mix(in srgb, var(--signal) 55%, transparent); }
 @media (hover: hover) and (pointer: fine) { .talk-fail a:hover { text-decoration-color: var(--signal); } }
+/* what the microphone is for and who hears it — one line, in the smallest
+   voice, under whichever note is up */
+.talk-legal { font-size: var(--t-xs); line-height: 1.5; color: var(--muted); max-width: 46ch; margin-top: -0.2rem; text-wrap: balance; }
 .talk-live { display: flex; flex-direction: column; align-items: center; gap: 0.6rem; width: min(100%, 22rem); }
 .talk-clock {
   font-family: var(--f-mono); font-size: var(--t-sm); font-weight: 600;
@@ -1274,19 +1323,12 @@ h3 {
   border-block: 1px solid var(--line-soft);
   overflow: hidden;
 }
+/* an eyebrow (the rules are shared above) that spans the container: a
+   heading in the outline, set as the label it is */
 .marquee-label {
+  line-height: inherit;
   width: 100%; max-width: var(--maxw); margin: 0 auto clamp(0.75rem, 1.6vw, 1.1rem);
   padding-inline: var(--gut);
-  font-family: var(--f-mono); font-size: var(--t-xs); font-weight: 600;
-  letter-spacing: var(--track-mono); text-transform: uppercase;
-  color: var(--signal);
-  display: flex; align-items: center; gap: 0.7em;
-}
-.marquee-label::before {
-  content: ""; width: 1.75rem; height: 1px; flex: none;
-  background: linear-gradient(90deg, transparent, var(--signal));
-  transform: scaleX(var(--rule, 1));
-  transform-origin: left center;
 }
 .marquee-vp {
   overflow: hidden;                          /* the mask box, so it cannot tile */
@@ -1365,6 +1407,7 @@ h3 {
   white-space: nowrap;
 }
 .price-name {
+  line-height: inherit;                     /* a heading in the outline, a label on the card */
   font-family: var(--f-mono); font-size: var(--t-xs); font-weight: 600;
   letter-spacing: var(--track-mono); text-transform: uppercase;
   color: var(--muted);
@@ -1504,11 +1547,18 @@ html:not(.js) .faq-panel > div,
   position: relative;
   width: 100%;
   display: flex; justify-content: center;
-  font-size: calc(min(46rem, 100vw - 2 * var(--gut)) / 46);
-  font-size: min(1rem, calc(100cqw / 46));
+  font-size: min(1rem, calc(0.92 * (min(100vw, 1240px) - 2 * var(--gut)) / 46));
   perspective: 190em;
   perspective-origin: 50% 0%;
 }
+/* The container-query em below is the real rule; the two media rules above
+   it reproduce the column's arithmetic for the engines that drop the cqw line
+   (Safari 15, Chromium before 105). 0.92 / 0.90 are .laptop-col's
+   padding-inline; 1.25/2.15 is its share of the contact grid; 1240px is
+   --maxw. The last declaration wins wherever cqw parses. */
+@media (min-width: 1024px) { .laptop-stage { font-size: min(1rem, calc(0.90 * 1.25 / 2.15 * (min(100vw, 1240px) - 2 * var(--gut) - clamp(2rem, 5vw, 5rem)) / 46)); } }
+@media (min-width: 1321px) { .laptop-stage { font-size: min(1rem, calc(1.25 / 2.15 * (min(100vw, 1240px) - 2 * var(--gut) - clamp(2rem, 5vw, 5rem)) / 46)); } }
+.laptop-stage { font-size: min(1rem, calc(100cqw / 46)); }
 .laptop {
   position: relative;
   width: min(46em, 100%);
@@ -1520,7 +1570,7 @@ html:not(.js) .faq-panel > div,
   -webkit-backface-visibility: hidden;
           backface-visibility: hidden;
 }
-.laptop-lid { position: relative; transform: rotateX(var(--lid)); }
+.laptop-lid { position: relative; transform: rotateX(var(--lid, 0deg)); }
 .laptop-front, .laptop-back { border-radius: 1.1em 1.1em 0.55em 0.55em; }
 .laptop-front {
   position: relative;
@@ -1538,7 +1588,7 @@ html:not(.js) .faq-panel > div,
 }
 .laptop-back {
   position: absolute; left: 0; right: 0; top: 0; height: calc(100% - 6.8em);   /* the lid's box */
-  transform: rotateX(var(--lid)) rotateY(180deg);
+  transform: rotateX(var(--lid, 0deg)) rotateY(180deg);
   display: grid; place-items: center;
   background: linear-gradient(160deg, #3b332b 0%, #1c1813 48%, #2a241d 100%);
   box-shadow: 0 0 0 1px rgba(255,205,150,0.18);
@@ -1669,7 +1719,7 @@ html:not(.js) .faq-panel > div,
 }
 
 /* ─── 19 · FOOTER ───────────────────────────────────────────────────────── */
-.footer { border-top: 1px solid var(--line-soft); padding-block: clamp(2.5rem, 5vw, 4rem); }
+.footer { border-top: 1px solid var(--line-soft); padding-block: clamp(2.5rem, 5vw, 4rem) calc(clamp(2.5rem, 5vw, 4rem) + env(safe-area-inset-bottom, 0px)); }
 .footer-top { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem clamp(1rem, 3vw, 2.25rem); }
 .footer-nav { display: flex; flex-wrap: wrap; gap: 0.4rem clamp(1rem, 2.5vw, 1.8rem); margin-right: auto; }
 .footer-nav li { display: contents; }
@@ -1690,7 +1740,7 @@ html:not(.js) .faq-panel > div,
   font-family: var(--f-mono); font-size: var(--t-xs);
   letter-spacing: 0.06em;
   color: var(--muted);
-  max-width: 66ch;
+  max-width: 48em;                          /* 66ch under-measured: ch ignores the tracking, and the line orphaned its last word */
   text-transform: none;
 }
 .footer-legal .footer-mark { display: flex; align-items: center; gap: 0.5em; color: var(--muted); }
@@ -1714,11 +1764,6 @@ html:not(.js) .faq-panel > div,
   animation-play-state: paused !important;
 }
 
-/* the demo number, once there is one, needs room in the nav; below this
-   width the CTA carries the nav alone and the number lives in the menu */
-@media (max-width: 1180px) {
-  .nav-actions .btn--nav.btn--ghost { display: none; }
-}
 
 /* ─── 21 · RESPONSIVE ───────────────────────────────────────────────────── */
 @media (max-width: 1080px) {
@@ -1727,8 +1772,9 @@ html:not(.js) .faq-panel > div,
 }
 @media (max-width: 980px) {
   .feat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .price-grid { grid-template-columns: 1fr; max-width: 34rem; margin-inline: auto; }
-  .price--hi { top: 0; order: -1; }
+  .price-grid { grid-template-columns: 1fr; max-width: 34rem; margin-inline: 0; }   /* on the container's rail, like every other block */
+  .price-note { max-width: 34rem; margin-inline: 0; }
+  .price--hi { top: 0; }                    /* stacked, the plans read in order: Starter first, then the one that includes it */
   .problem-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 900px) {
@@ -1738,7 +1784,8 @@ html:not(.js) .faq-panel > div,
 
   .hero { min-height: 0; padding-top: calc(var(--nav-h) + clamp(2rem, 7vh, 3.5rem)); }
   .hero-grid { grid-template-columns: 1fr; gap: clamp(2.75rem, 8vw, 4rem); }
-  .hero-copy { max-width: 40ch; }
+  .hero-copy { max-width: 34rem; }           /* the single-column hero takes the measure the two-column one has */
+  .hero h1   { max-width: 16ch; }            /* the 12ch cap belongs to the two-column desktop hero */
   .band--hero {
     left: 0; top: auto; bottom: 0; transform: none; height: 7.5rem; opacity: 0.55;
     -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
@@ -1757,6 +1804,7 @@ html:not(.js) .faq-panel > div,
 @media (max-width: 620px) {
   .feat-grid { grid-template-columns: 1fr; }
   .stat-row { grid-template-columns: 1fr; }
+  .stat { padding-inline: 0; }              /* the first-and-last trims belong to the three-column row */
   .microstats { flex-direction: column; gap: 0; }
   .footer-legal { flex-direction: column; align-items: flex-start; }
 }
@@ -1774,7 +1822,13 @@ html:not(.js) .faq-panel > div,
     scroll-behavior: auto !important;
   }
   .glow--a, .glow--b { animation: none; }
-  .marquee-track { animation: none; }
+  /* the strip cannot scroll, so it sets as a centred, wrapped list: the
+     duplicate run goes, the mask goes, and the loop separator with it */
+  .marquee-vp { overflow: visible; -webkit-mask-image: none; mask-image: none; }
+  .marquee-track { display: block; width: auto; animation: none; }
+  .marquee-track .marquee-run + .marquee-run { display: none; }
+  .marquee-run { display: block; white-space: normal; text-align: center; line-height: 1.9; padding-right: 0; padding-inline: var(--gut); }
+  .marquee-run b:last-child { display: none; }
   .phone-float { animation: none; }
   .cursor-glow { display: none; }
   .talk-rule i { transition: none; }
@@ -1808,8 +1862,22 @@ html:not(.js) .faq-panel > div,
   .eyebrow, .marquee-label { --rule: 1 !important; }
   .ln { overflow: visible !important; }
   .li { transform: none !important; }
+  /* paper: the dark tokens become ink on white, every reveal is shown, and
+     nothing that only makes sense on a screen prints */
+  :root {
+    --ink: #fff; --ink-2: #fff; --surface: #fff;
+    --text: #000; --muted: #3f3f3f; --muted-hi: #1a1a1a;
+    --signal: #7a4800; --signal-hi: #5c3600; --machine: #00505f;
+    --line: #9a9a9a; --line-soft: #c9c9c9; --line-hard: #6a6a6a;
+    --glow: transparent; --signal-dim: transparent; --machine-dim: transparent;
+  }
   body { background: #fff; color: #000; }
+  [data-reveal], [data-hero], [data-fx] { opacity: 1 !important; transform: none !important; }
+  .btn--primary, .price-badge { color: var(--signal); background: transparent; }
+  .skip { display: none !important; }
+  .hero { min-height: 0 !important; }
   .faq-panel { grid-template-rows: 1fr !important; }
+  .faq-panel > div { visibility: visible !important; transition: none !important; }
 }
 </style>
 </head>
@@ -1859,7 +1927,7 @@ html:not(.js) .faq-panel > div,
 <main id="sadrzaj">
 
 <!-- ══ 1 · HERO ═════════════════════════════════════════════════════════ -->
-<section class="hero" id="hero" data-freeze>
+<section class="hero is-armed" id="hero" data-freeze>
   <div class="glow glow--a" aria-hidden="true"></div>
   <div class="glow glow--b" aria-hidden="true"></div>
   <div class="cursor-glow" id="cursor-glow" aria-hidden="true"></div>
@@ -2040,21 +2108,21 @@ html:not(.js) .faq-panel > div,
       </div>
 
       <ol class="steps-list">
-        <li class="step" data-step="0" data-reveal>
+        <li class="step" data-reveal>
           <span class="step-n" aria-hidden="true">01</span>
           <div class="step-body">
             <h3 class="step-title">Poziv stiže</h3>
             <p>Agent se javlja za manje od dve sekunde. Uvek istim tonom — ljubaznim.</p>
           </div>
         </li>
-        <li class="step" data-step="1" data-reveal>
+        <li class="step" data-reveal>
           <span class="step-n" aria-hidden="true">02</span>
           <div class="step-body">
             <h3 class="step-title">Razgovor teče prirodno</h3>
             <p>Razume pitanja, odgovara na srpskom, hrvatskom ili bosanskom i zna kada poziv treba da preusmeri na vas.</p>
           </div>
         </li>
-        <li class="step" data-step="2" data-reveal>
+        <li class="step" data-reveal>
           <span class="step-n" aria-hidden="true">03</span>
           <div class="step-body">
             <h3 class="step-title">Termin je u kalendaru</h3>
@@ -2166,14 +2234,16 @@ html:not(.js) .faq-panel > div,
           </button>
           <div class="talk-sub">
             <p class="talk-note is-on" id="talk-note">Govorite naglas — agent odgovara na srpskom. Traje četrdeset sekundi.</p>
+            <p class="talk-note" id="talk-conn">Veza se uspostavlja — obično traje nekoliko sekundi. Ako pregledač zatraži pristup mikrofonu, dozvolite ga.</p>
             <p class="talk-note talk-fail" id="talk-fail">Povezivanje nije uspelo — pokušajte ponovo.</p>
             <div class="talk-live" id="talk-live" aria-hidden="true">
               <span class="vh">Preostalo </span><span class="talk-clock num" id="talk-clock">00:40</span>
               <span class="talk-rule"><i id="talk-rule"></i></span>
             </div>
           </div>
+          <p class="talk-legal" id="talk-legal">Mikrofon se koristi samo tokom demo razgovora, koji obrađuje servis ElevenLabs.</p>
         </div>
-        <div class="talk-state talk-card is-off" id="talk-card" role="status">
+        <div class="talk-state talk-card is-off" id="talk-card">
           <h3 tabindex="-1">Demo je gotov.</h3>
           <p>Za pun razgovor zakažite petnaest minuta sa nama.</p>
           <div class="talk-card-row">
@@ -2183,17 +2253,20 @@ html:not(.js) .faq-panel > div,
           <button class="talk-again" id="talk-again" type="button">Razgovaraj sa agentom</button>
         </div>
         <div class="talk-state talk-terms is-off" id="talk-terms">
-          <section class="talk-terms-body" id="talk-terms-body" tabindex="0" aria-label="Uslovi korišćenja"></section>
+          <div class="talk-terms-body" id="talk-terms-body" role="group" tabindex="0" aria-label="Uslovi korišćenja"></div>
           <div class="talk-card-row">
             <button class="btn btn--primary btn--magnetic" id="talk-accept" type="button">Prihvatam</button>
             <button class="talk-again" id="talk-decline" type="button">Odustani</button>
           </div>
         </div>
         <div class="talk-engine" id="talk-engine" aria-hidden="true" inert>
-          <!-- The ElevenLabs snippet, exactly as supplied. The forty-second cap
-               drives this widget through its `elevenlabs-convai:call` event and
-               was verified against version 0.17.1; if a future release changes
-               that, pin the URL to @0.17.1 and the cap is safe again. -->
+          <!-- The ElevenLabs snippet, exactly as supplied — the URL is unpinned,
+               so whatever release is current loads here. The forty-second cap
+               drives this widget through its `elevenlabs-convai:call` event; the
+               order it relies on is undocumented but unchanged across 0.17.1 and
+               0.18.0, and was last verified against 0.18.0 (REPORT.md §3h, round
+               14c). If a future release breaks the cap, re-verify — do not pin the
+               URL: copy-check.mjs asserts this snippet as a literal. -->
           <elevenlabs-convai agent-id="agent_5701m14n57q9e25ryes2tg8tdjhd"></elevenlabs-convai><script src="https://unpkg.com/@elevenlabs/convai-widget-embed" async type="text/javascript"></script>
         </div>
       </div>
@@ -2205,7 +2278,7 @@ html:not(.js) .faq-panel > div,
 
 <!-- ══ 6 · ZA KOGA ══════════════════════════════════════════════════════ -->
 <section class="marquee" id="za-koga" data-freeze>
-  <p class="marquee-label">Za koga</p>
+  <h2 class="marquee-label">Za koga</h2>
   <div class="marquee-vp">
   <div class="marquee-track" id="marquee-track">
     <p class="marquee-run">Stomatološke ordinacije <b>·</b> Frizerski i kozmetički saloni <b>·</b> Auto servisi <b>·</b> Privatne klinike <b>·</b> Fizioterapeuti <b>·</b> Agencije za nekretnine <b>·</b> Restorani <b>·</b> Advokatske kancelarije <b>·</b></p>
@@ -2226,9 +2299,9 @@ html:not(.js) .faq-panel > div,
       <h2 data-lines>Jednostavno kao i sam agent.</h2>
     </div>
 
-    <div class="price-grid">
-      <article class="price" data-fx="plan">
-        <p class="price-name">Starter</p>
+    <ul class="price-grid">
+      <li class="price" data-fx="plan">
+        <h3 class="price-name">Starter</h3>
         <p class="price-fig"><span>99&nbsp;€</span> <span class="price-per">/ mesečno</span></p>
         <ul class="price-list">
           <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.6 9.4 17.5 19.5 7"/></svg>Do 200 poziva mesečno</li>
@@ -2237,11 +2310,11 @@ html:not(.js) .faq-panel > div,
           <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.6 9.4 17.5 19.5 7"/></svg>Osnovni izveštaji</li>
         </ul>
         <a class="btn btn--ghost btn--magnetic" href="#kontakt">Započni</a>
-      </article>
+      </li>
 
-      <article class="price price--hi" data-fx="plan">
+      <li class="price price--hi" data-fx="plan">
         <p class="price-badge">Najpopularniji</p>
-        <p class="price-name">Professional</p>
+        <h3 class="price-name">Professional</h3>
         <p class="price-fig"><span>199&nbsp;€</span> <span class="price-per">/ mesečno</span></p>
         <ul class="price-list">
           <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.6 9.4 17.5 19.5 7"/></svg>Do 600 poziva mesečno</li>
@@ -2250,10 +2323,10 @@ html:not(.js) .faq-panel > div,
           <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.6 9.4 17.5 19.5 7"/></svg>Prioritetna podrška</li>
         </ul>
         <a class="btn btn--primary btn--magnetic" href="#kontakt">Zakaži demo</a>
-      </article>
+      </li>
 
-      <article class="price" data-fx="plan">
-        <p class="price-name">Enterprise</p>
+      <li class="price" data-fx="plan">
+        <h3 class="price-name">Enterprise</h3>
         <p class="price-fig"><span>Po dogovoru</span></p>
         <ul class="price-list">
           <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.6 9.4 17.5 19.5 7"/></svg>Neograničeni pozivi</li>
@@ -2262,8 +2335,8 @@ html:not(.js) .faq-panel > div,
           <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.6 9.4 17.5 19.5 7"/></svg>Ugovor o nivou usluge (SLA)</li>
         </ul>
         <a class="btn btn--ghost btn--magnetic" href="#kontakt">Kontaktiraj nas</a>
-      </article>
-    </div>
+      </li>
+    </ul>
 
     <p class="price-note" data-reveal data-lines>Podešavanje za sedam dana. Bez ugovorne obaveze — otkažite bilo kad.</p>
   </div>
@@ -2280,35 +2353,35 @@ html:not(.js) .faq-panel > div,
     <div class="faq-list" id="faq" data-reveal>
       <div class="faq-item">
         <h3><button class="faq-q" type="button" id="faq-q1" aria-expanded="true" aria-controls="faq-p1">Da li agent kaže da je veštačka inteligencija?<svg class="faq-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9.5 6 6 6-6"/></svg></button></h3>
-        <section class="faq-panel" id="faq-p1" aria-labelledby="faq-q1" data-open="true"><div><p>Da, na početku svakog poziva. To je zakonska obaveza i mi je ne zaobilazimo. U praksi ne smeta — ljudi žele brz odgovor i termin, a ne da pogađaju s kim razgovaraju.</p></div></section>
+        <div class="faq-panel" id="faq-p1" data-open="true"><div><p>Da, na početku svakog poziva. To je zakonska obaveza i mi je ne zaobilazimo. U praksi ne smeta — ljudi žele brz odgovor i termin, a ne da pogađaju s kim razgovaraju.</p></div></div>
       </div>
       <div class="faq-item">
         <h3><button class="faq-q" type="button" id="faq-q2" aria-expanded="false" aria-controls="faq-p2">Da li agent zvuči robotski?<svg class="faq-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9.5 6 6 6-6"/></svg></button></h3>
-        <section class="faq-panel" id="faq-p2" aria-labelledby="faq-q2"><div><p>Koristi najnoviju generaciju glasovne sinteze za srpski jezik — prirodne pauze, intonaciju i naglasak. Poslušajte demo i procenite sami.</p></div></section>
+        <div class="faq-panel" id="faq-p2"><div><p>Koristi najnoviju generaciju glasovne sinteze za srpski jezik — prirodne pauze, intonaciju i naglasak. Poslušajte demo i procenite sami.</p></div></div>
       </div>
       <div class="faq-item">
         <h3><button class="faq-q" type="button" id="faq-q3" aria-expanded="false" aria-controls="faq-p3">Šta ako agent ne zna odgovor?<svg class="faq-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9.5 6 6 6-6"/></svg></button></h3>
-        <section class="faq-panel" id="faq-p3" aria-labelledby="faq-q3"><div><p>Iskreno kaže da će proveriti, zapiše poruku ili odmah prebaci poziv na vas — nikada ne izmišlja.</p></div></section>
+        <div class="faq-panel" id="faq-p3"><div><p>Iskreno kaže da će proveriti, zapiše poruku ili odmah prebaci poziv na vas — nikada ne izmišlja.</p></div></div>
       </div>
       <div class="faq-item">
         <h3><button class="faq-q" type="button" id="faq-q4" aria-expanded="false" aria-controls="faq-p4">Mogu li da tražim da razgovaram sa čovekom?<svg class="faq-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9.5 6 6 6-6"/></svg></button></h3>
-        <section class="faq-panel" id="faq-p4" aria-labelledby="faq-q4"><div><p>U svakom trenutku. Dovoljno je reći „operater” i poziv ide na vaš broj.</p></div></section>
+        <div class="faq-panel" id="faq-p4"><div><p>U svakom trenutku. Dovoljno je reći „operater” i poziv ide na vaš broj.</p></div></div>
       </div>
       <div class="faq-item">
         <h3><button class="faq-q" type="button" id="faq-q5" aria-expanded="false" aria-controls="faq-p5">Kako se povezuje sa mojim kalendarom?<svg class="faq-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9.5 6 6 6-6"/></svg></button></h3>
-        <section class="faq-panel" id="faq-p5" aria-labelledby="faq-q5"><div><p>Radi sa Google kalendarom. Celo podešavanje radimo mi.</p></div></section>
+        <div class="faq-panel" id="faq-p5"><div><p>Radi sa Google kalendarom. Celo podešavanje radimo mi.</p></div></div>
       </div>
       <div class="faq-item">
         <h3><button class="faq-q" type="button" id="faq-q6" aria-expanded="false" aria-controls="faq-p6">Da li radi na hrvatskom i bosanskom?<svg class="faq-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9.5 6 6 6-6"/></svg></button></h3>
-        <section class="faq-panel" id="faq-p6" aria-labelledby="faq-q6"><div><p>Da. Razume i odgovara na sva tri jezika i prilagođava se sagovorniku.</p></div></section>
+        <div class="faq-panel" id="faq-p6"><div><p>Da. Razume i odgovara na sva tri jezika i prilagođava se sagovorniku.</p></div></div>
       </div>
       <div class="faq-item">
         <h3><button class="faq-q" type="button" id="faq-q7" aria-expanded="false" aria-controls="faq-p7">Koliko traje podešavanje?<svg class="faq-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9.5 6 6 6-6"/></svg></button></h3>
-        <section class="faq-panel" id="faq-p7" aria-labelledby="faq-q7"><div><p>Obično pet do sedam dana od prvog razgovora do prvog primljenog poziva.</p></div></section>
+        <div class="faq-panel" id="faq-p7"><div><p>Obično pet do sedam dana od prvog razgovora do prvog primljenog poziva.</p></div></div>
       </div>
       <div class="faq-item">
         <h3><button class="faq-q" type="button" id="faq-q8" aria-expanded="false" aria-controls="faq-p8">Šta se dešava sa snimcima razgovora?<svg class="faq-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9.5 6 6 6-6"/></svg></button></h3>
-        <section class="faq-panel" id="faq-p8" aria-labelledby="faq-q8"><div><p>Čuvaju se bezbedno i dostupni su samo vama, u skladu sa propisima o zaštiti podataka o ličnosti.</p></div></section>
+        <div class="faq-panel" id="faq-p8"><div><p>Čuvaju se bezbedno i dostupni su samo vama, u skladu sa propisima o zaštiti podataka o ličnosti.</p></div></div>
       </div>
     </div>
   </div>
@@ -2402,7 +2475,7 @@ html:not(.js) .faq-panel > div,
 /* ═══════════════════════════════════════════════════════════════════════════
    ——— PODESI OVDE ——— Jedina četiri mesta koja menjaš kad budeš spreman. ———
    ═══════════════════════════════════════════════════════════════════════ */
-const CONFIG = {
+var CONFIG = {
   DEMO_TELEFON: "",   // npr. "+381 64 123 4567" — prazno = broj se nigde ne prikazuje
   DEMO_AUDIO:   "demo.mp3",   // prazno = plejer je u stanju „uskoro”
   DEMO_LINK:    "",   // npr. "https://cal.com/glasai/15min" — gde vodi „Zakaži razgovor” posle demoa; prazno = na kontakt
@@ -2480,7 +2553,7 @@ function withBag(local, fn) {
   try { return fn(); } finally { bag = prev; }
 }
 function dispose(list) {
-  while (list.length) { try { list.pop()(); } catch (e) {} }
+  while (list.length) { try { list.pop()(); } catch (e) { console.warn("[glas] teardown threw", e); } }
 }
 /* One page-level visibility listener; every module registers its own policy. */
 var onHiddenChange = [];
@@ -3130,7 +3203,7 @@ function initBands() {
    attaches its own callbacks and receives the live Conversation. From there
    it can end the call, mute the line and read the output level, which is
    everything the forty-second cap needs. Of the callbacks the page attaches,
-   the widget (0.17.1) keeps onConversationCreated, onConnect and onError but
+   the widget (0.17.1 and 0.18.0) keeps onConversationCreated, onConnect and onError but
    replaces onDisconnect with its own — so the end of a session is read from
    the Conversation itself (isOpen()), on the page's clock, and the hook is
    kept only in case a later version forwards it. Every attempt that ends
@@ -3139,7 +3212,9 @@ function initBands() {
 var TALK_CAP = 40;              /* seconds — the hard cap, not a suggestion */
 var TALK_GRACE = 6;             /* how long after the cap a sentence may finish */
 var TALK_NUDGE = 31;            /* when the agent is told to wrap up */
-var TALK_READY_MS = 8000;       /* how long to wait for the engine before folding */
+var TALK_READY_MS = 8000;       /* how long the engine has to render, once its script has run */
+var TALK_SCRIPT_MS = 30000;     /* how long the engine's script itself may take to arrive */
+var TALK_SCRIPT_GRACE_MS = 3000; /* …and how long it gets after the page has finished loading */
 var TALK_CONNECT_MS = 12000;    /* how long „Povezujem…” may last once the microphone is settled */
 var TALK_RTC_MS = 8000;         /* how long WebRTC may take before the same attempt tries the plain socket */
 var TALK_CONNECT_MAX_MS = 45000;   /* …while the browser's own microphone prompt is open */
@@ -3216,6 +3291,18 @@ function initTalk() {
      contact section — never nowhere */
   var link = String(CONFIG.DEMO_LINK || "").trim();
   if (book) {
+    /* Cal.com and Calendly show a booking link without its scheme („cal.com/…”);
+       pasted that way the browser reads it as a path on this page, and the
+       card's only button lands on a 404 of the owner's own making */
+    if (link && !/^(https?:|\/|#|mailto:|tel:)/i.test(link)) {
+      if (/^[^\/\s?#]+\.[^\/\s?#]+/.test(link)) {
+        diag("CONFIG.DEMO_LINK („" + link + "”) has no scheme — read as „https://" + link + "”; write it with https:// so this is not a guess");
+        link = "https://" + link;
+      } else {
+        diag("CONFIG.DEMO_LINK („" + link + "”) is not an address a browser can open — „Zakaži razgovor” falls back to the contact section");
+        link = "";
+      }
+    }
     if (link) { book.href = link; if (/^https?:/i.test(link)) openElsewhere(book); }
     else book.href = "#kontakt";
   }
@@ -3250,8 +3337,8 @@ function initTalk() {
      re-measured afterwards, because the voice section just changed size. */
   var swapT = 0;
   var SWAP_MS = 460;                            /* --d-mid, and a frame to spare */
-  function settle(h1, done) {
-    root.style.height = root.offsetHeight + "px";
+  function settle(h0, h1, done) {
+    root.style.height = h0 + "px";              /* the outgoing height, measured before anything moved */
     void root.offsetHeight;                     /* commit the start value */
     root.style.height = h1 + "px";              /* the transition carries it */
     clearTimeout(swapT);
@@ -3269,10 +3356,11 @@ function initTalk() {
     for (k in panels) if (panels[k] && panels[k] !== into) others.push(panels[k]);
     var off = function (p) { return p.classList.contains("is-off"); };
     if (into.classList.contains("is-on") && others.every(off)) return;
-    into.classList.remove("is-off"); others.forEach(function (p) { p.classList.remove("is-off"); });
+    var h0 = root.offsetHeight;                 /* the outgoing height, before anything moves */
+    into.classList.remove("is-off");
     var h1 = into.offsetHeight;
     into.classList.add("is-on"); others.forEach(function (p) { p.classList.remove("is-on"); });
-    settle(h1, function () { others.forEach(function (p) { p.classList.add("is-off"); }); });
+    settle(h0, h1, function () { others.forEach(function (p) { p.classList.add("is-off"); }); });
     /* the control the visitor was on is leaving; put them on the next one —
        but only if they were on it */
     if (focus && root.contains(document.activeElement)) {
@@ -3290,16 +3378,20 @@ function initTalk() {
     btn.style.minWidth = Math.ceil(btn.getBoundingClientRect().width) + "px";
   }
   on(window, "resize", debounce(sizePill, 200), { passive: true });
-  var fail$ = $("#talk-fail");
+  var fail$ = $("#talk-fail"), conn$ = $("#talk-conn");
   function sub(which) {
     note.classList.toggle("is-on", which === "note");
+    if (conn$) conn$.classList.toggle("is-on", which === "conn");
     live.classList.toggle("is-on", which === "live");
     if (fail$) fail$.classList.toggle("is-on", which === "fail");
     if (which === "live") live.removeAttribute("aria-hidden"); else live.setAttribute("aria-hidden", "true");
+    /* the description follows the line that is showing — a hidden note that is
+       referenced directly is still read out */
+    btn.setAttribute("aria-describedby", which === "fail" ? "talk-fail" : which === "live" ? "talk-live" : which === "conn" ? "talk-conn" : "talk-note");
   }
   /* the words the control needs and the brief did not supply: a stop name for
      the live control, an ending that is not „listening”, a failed attempt */
-  var STOP_NAME = "Prekini demo", ENDING = "Završavam…", FAILED = "Povezivanje nije uspelo — pokušajte ponovo.";
+  var START_NAME = "Razgovaraj sa agentom", STOP_NAME = "Prekini demo", ENDING = "Završavam…", FAILED = "Povezivanje nije uspelo — pokušajte ponovo.";
   var THINKING = "Razmišljam…";                 /* the visible word while the agent forms its answer */
   /* a failure only the owner can mend — the quota, the allowlist, a closed
      socket — is not one to retry; the visitor is pointed at the address */
@@ -3313,7 +3405,7 @@ function initTalk() {
     fail$.appendChild(a); fail$.appendChild(document.createTextNode("."));
   }
   /* and the three the microphone can need — the one place a visitor can act */
-  var MIC_DENIED = "Mikrofon je blokiran u pretraživaču — dozvolite ga za ovu stranicu i pokušajte ponovo.";
+  var MIC_DENIED = "Mikrofon je blokiran u pregledaču — dozvolite ga za ovu stranicu i pokušajte ponovo.";
   var MIC_NONE = "Nije pronađen mikrofon.";
   var MIC_BUSY = "Mikrofon je zauzet ili nedostupan — pokušajte ponovo.";
   var failT = 0;
@@ -3322,9 +3414,6 @@ function initTalk() {
     clock.textContent = "00:" + (s < 10 ? "0" : "") + s;
     rule.style.transform = "scaleX(" + (Math.max(0, Math.min(TALK_CAP, left)) / TALK_CAP).toFixed(4) + ")";
   }
-  /* The start button, by its name where it has one — under some dashboard
-     settings (text input on, expanded by default) it is not the first button
-     in the widget — and by position only as a fallback. */
   /* The start button, by its phone icon — the one thing about it the
      dashboard cannot rename (the icon is a named slot inside the button,
      in the widget's open shadow tree) — then by its name, and by position
@@ -3369,19 +3458,47 @@ function initTalk() {
   /* ── the block shows only once the engine can actually be driven ── */
   var readyPoll = every(function () {
     if (!engineButton()) return;
-    cancel(readyPoll); cancel(readyNet);
+    cancel(readyPoll); cancel(readyNet); cancel(readyCap);
     root.classList.add("is-ready");
     ctl.classList.remove("is-off");
     sizePill();
     var h1 = ctl.offsetHeight;
     ctl.classList.add("is-on");
-    settle(h1);                                    /* grows in from nothing */
+    settle(0, h1);                                 /* grows in from nothing */
   }, 250);
-  var readyNet = later(function () {
-    cancel(readyPoll);
-    diag("hidden — the widget never rendered within " + (TALK_READY_MS / 1000) + " s: its script (unpkg.com) or its settings (api.elevenlabs.io) did not load, or the agent is not public");
+  /* The eight seconds are the engine's own: they measure the widget rendering,
+     not unpkg delivering it. The bundle is close to half a megabyte gzipped —
+     on a congested mobile link it alone outlasts that budget, and folding the
+     block then hides a demo that is merely late. So the clock starts when the
+     custom element is defined. A script that never ran at all is caught by
+     the load event — an async script holds that event open, so this cannot
+     fire early on a slow link — and by the outer cap behind it. */
+  var readyNet = 0, readyCap = 0;
+  function foldEngine(why) {
+    if (root.classList.contains("is-ready") || root.classList.contains("is-gone")) return;
+    cancel(readyPoll); cancel(readyNet); cancel(readyCap);
+    diag("hidden — " + why);
     root.classList.add("is-gone");                 /* nothing was ever shown */
-  }, TALK_READY_MS);
+  }
+  function armReady() {
+    if (readyNet || root.classList.contains("is-ready") || root.classList.contains("is-gone")) return;
+    cancel(readyCap);
+    readyNet = later(function () {
+      foldEngine("the widget never rendered within " + (TALK_READY_MS / 1000) + " s of its script running: its settings (api.elevenlabs.io) did not load, or the agent is not public");
+    }, TALK_READY_MS);
+  }
+  function scriptSettled() {
+    later(function () {
+      if (window.customElements && customElements.get("elevenlabs-convai")) return;
+      foldEngine("the page finished loading and the widget's script (unpkg.com) never ran");
+    }, tune("TALK_SCRIPT_GRACE_MS", TALK_SCRIPT_GRACE_MS));
+  }
+  readyCap = later(function () {
+    foldEngine("the widget's script (unpkg.com) never ran within " + (tune("TALK_SCRIPT_MS", TALK_SCRIPT_MS) / 1000) + " s");
+  }, tune("TALK_SCRIPT_MS", TALK_SCRIPT_MS));
+  if (document.readyState === "complete") scriptSettled(); else on(window, "load", scriptSettled);
+  if (window.customElements && customElements.whenDefined) customElements.whenDefined("elevenlabs-convai").then(armReady, armReady);
+  else armReady();
 
   /* ── the engine's one public hook. Every callback is bound to the engine
         and the run that raised it: a session that lands late — after the
@@ -3612,7 +3729,7 @@ function initTalk() {
   function start() {
     if (state !== "idle") return;
     state = "connecting"; ended = false; stopping = false; conv = null; meterMoved = false; run++;
-    cancel(failT); sub("note");
+    cancel(failT); sub("conn");                   /* the note for the wait, not the one for the talk */
     label.textContent = "Povezujem…"; say("Povezujem…");
     btn.setAttribute("aria-busy", "true");        /* after the text, so nothing defers it */
     window.addEventListener("unhandledrejection", onReject);
@@ -3737,8 +3854,13 @@ function initTalk() {
     state = "terms";
     diag("the widget is asking the visitor to accept terms — „Require the caller to accept your terms” is on in the ElevenLabs widget settings; the page shows them and hands the answer back");
     termsBody.innerHTML = sheet.innerHTML;         /* the owner's own words, from the owner's own dashboard */
+    /* the owner's words can carry the owner's links; a navigation from here
+       would take the half-built attempt and the held microphone with it */
+    $$("a[href]", termsBody).forEach(function (a) {
+      if ((a.getAttribute("href") || "").charAt(0) !== "#") openElsewhere(a);
+    });
     btn.removeAttribute("aria-busy");
-    label.textContent = "Razgovaraj sa agentom"; say(TERMS_SAY);
+    label.textContent = START_NAME; say(TERMS_SAY);
     show("terms", true);
     /* the sheet waits as long as the visitor needs to read it — but one never
        answered must not hold the microphone for the life of the page. The
@@ -3813,7 +3935,7 @@ function initTalk() {
     if (transport === "webrtc") later(roundTrip, 2000);
     btn.removeAttribute("aria-busy");
     label.textContent = "Slušam"; say("Slušam");
-    btn.setAttribute("aria-label", STOP_NAME);      /* the visible word, and what pressing it does */
+    btn.setAttribute("aria-label", label.textContent + " — " + STOP_NAME);   /* the visible word leads the name (2.5.3), then what pressing it does */
     root.classList.add("is-live");
     paint(TALK_CAP); sub("live");
     every(tick, 250);
@@ -3869,6 +3991,7 @@ function initTalk() {
     cancel(thinkT); thinkT = 0;
     root.classList.toggle("is-thinking", !!on);
     label.textContent = on ? THINKING : "Slušam";
+    btn.setAttribute("aria-label", label.textContent + " — " + STOP_NAME);
     if (on) thinkT = later(function () { thinking(false); }, TALK_THINK_MS);
   }
   function capReached() {
@@ -3901,7 +4024,7 @@ function initTalk() {
   function fold() {
     /* an engine that will not come back: the block leaves the way it came */
     root.classList.remove("is-ready");
-    settle(0, function () { root.classList.add("is-gone"); });
+    settle(root.offsetHeight, 0, function () { root.classList.add("is-gone"); });
   }
   function reset(failed, notice) {
     ended = true; stopTimers(); unwatchSocket(); unwatchFetch(); release();
@@ -3913,7 +4036,7 @@ function initTalk() {
     state = "idle"; conv = null;
     root.classList.remove("is-live"); root.classList.remove("is-ending"); root.classList.remove("is-thinking");
     btn.removeAttribute("aria-busy"); btn.removeAttribute("aria-label");
-    label.textContent = "Razgovaraj sa agentom";
+    label.textContent = START_NAME;
     if (failed) {
       /* an attempt that went nowhere says so, briefly, and steps aside */
       var words = notice || FAILED;
@@ -3998,6 +4121,9 @@ function initContact() {
   function show(ok) {
     if (!ok) { select(); return; }
     clearTimeout(hold);
+    /* nothing styles this: the confirmation the visitor sees is the face swap
+       on the next line. It is the copied state made observable, and the
+       harness reads it (audit.js rounds 13 and 15). */
     btn.classList.add("is-done");
     idle.classList.remove("is-on"); done.classList.add("is-on");
     if (status) status.textContent = "Adresa je kopirana.";
@@ -4066,13 +4192,17 @@ function initDemoAudio() {
   }
 
   audioEl = new Audio();
-  audioEl.preload = "metadata";
+  audioEl.preload = "none";
   audioEl.src = src;
   if (window.__glasDebug) window.__glasAudio = audioEl;    /* the harness reads its clock */
   btn.removeAttribute("aria-disabled");
   btn.classList.remove("is-empty");
   label.textContent = PLAY_NAME;
   vh.textContent = PLAY_NAME;
+  /* the clip is fetched when someone reaches for it, not at boot */
+  var warmed = false;
+  function warm() { if (warmed) return; warmed = true; try { audioEl.load(); } catch (e) {} }
+  on(btn, "pointerenter", warm); on(btn, "focus", warm);
 
   var actx = null, analyser = null, data = null, sampling = 0;
   function connect() {
@@ -4089,7 +4219,11 @@ function initDemoAudio() {
   }
   function sample() {
     if (!voiceBand) return;
-    if (analyser && data) {
+    /* Under reduced motion the meter must not answer the level: the bars keep
+       their resting height and only the playhead moves — a progress readout,
+       not an animation. The FFT goes with it. */
+    if (!voiceBand.animate) { voiceBand.drive = 0; }
+    else if (analyser && data) {
       analyser.getByteFrequencyData(data);
       var sum = 0;
       for (var i = 0; i < data.length; i++) sum += data[i];
@@ -4124,7 +4258,14 @@ function initDemoAudio() {
   function stopSampling() {
     if (sampling) { cancelAnimationFrame(sampling); sampling = 0; }
     root.classList.remove("js-audio");
-    if (voiceBand) { voiceBand.drive = 0; voiceBand.reveal = 1; voiceBand.audioOwned = false; }
+    try { if (navigator.audioSession) navigator.audioSession.type = "auto"; } catch (e) {}   /* the playback claim handed back (Safari) */
+    if (voiceBand) {
+      voiceBand.drive = 0; voiceBand.reveal = 1; voiceBand.audioOwned = false;
+      /* the band ticker is the only thing that repaints this canvas, and under
+         reduced motion it skips it — so the reset has to draw itself, or the
+         meter is left on the frame the last sample painted */
+      if (!voiceBand.animate) { voiceBand.settle(); voiceBand.draw(); }
+    }
   }
 
   /* A seven-second clip has no use for pause-and-resume: pressed while it
@@ -4134,6 +4275,13 @@ function initDemoAudio() {
   function rewind() { try { audioEl.currentTime = 0; } catch (e) {} }
   demoSweep = function () { if (audioEl.paused) btn.click(); };
   on(btn, "click", function () {
+    if (audioEl.error) {                       /* nothing to play — perform the line instead */
+      if (voiceBand && voiceBand.sweepT < 0) {
+        btn.classList.add("is-scanning");
+        voiceBand.sweep(1.9, function () { btn.classList.remove("is-scanning"); });
+      }
+      return;
+    }
     if (audioEl.paused) {
       connect();
       if (actx && actx.state === "suspended") actx.resume();
@@ -4143,6 +4291,7 @@ function initDemoAudio() {
     } else { audioEl.pause(); rewind(); }
   });
   on(audioEl, "play", function () {
+    try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch (e) {}   /* heard past the ring/silent switch (Safari) */
     if (voiceBand) voiceBand.audioOwned = true;
     /* the scroll probe's cursor is a second, unrelated playhead while a
        recording is running — it stands down until the clip is over */
@@ -4161,7 +4310,15 @@ function initDemoAudio() {
     label.textContent = PLAY_NAME; vh.textContent = PLAY_NAME;
     stopSampling();
   });
-  on(audioEl, "error", function () { stopSampling(); });
+  on(audioEl, "error", function () {
+    stopSampling();
+    if (btn.classList.contains("is-empty")) return;         /* said once */
+    var e = audioEl.error;
+    try { console.warn("[glas] demo: the recording „" + src + "” will not play (" + (e ? "MediaError " + e.code : "no error object") + ") — check CONFIG.DEMO_AUDIO; the control falls back to the line's own self-test"); } catch (err) {}
+    btn.classList.remove("is-playing");
+    btn.classList.add("is-empty");
+    label.textContent = "Snimak uskoro"; vh.textContent = "Snimak uskoro";
+  });
   keep(function () {
     demoSweep = null;
     stopSampling();
@@ -4189,7 +4346,7 @@ function initMenu() {
   /* the burger renders as the visible close control on top of the overlay, so
      it is part of the trap even though it lives outside the dialog */
   function trapItems() {
-    return $$(FOCUSABLE, menu).filter(function (el) { return el.offsetParent !== null; }).concat([burger]);
+    return [burger].concat($$(FOCUSABLE, menu).filter(function (el) { return el.offsetParent !== null; }));   /* the burger precedes the menu in the DOM, so it is the trap's first stop, not its last */
   }
 
   function setOpen(next) {
@@ -4199,7 +4356,7 @@ function initMenu() {
     clearTimeout(closeTimer);
     if (open) {
       lastFocus = document.activeElement;
-      menu.hidden = false;
+      menu.hidden = false; menu.inert = false;
       void menu.offsetWidth;                 /* flush, so the transition plays */
       menu.classList.add("is-open");
       void menu.offsetWidth;                 /* flush again: focus() needs the
@@ -4211,6 +4368,7 @@ function initMenu() {
       if (first) first.focus();
     } else {
       menu.classList.remove("is-open");
+      menu.inert = true;                     /* out of the tab order at once, not when the fade ends */
       document.body.style.overflow = "";
       behind.forEach(function (el) { el.inert = false; el.removeAttribute("aria-hidden"); });
       if (window.__glasLenis) window.__glasLenis.start();
@@ -4623,7 +4781,6 @@ function initReveals(gsap, ScrollTrigger, motion) {
    the original text is kept on the node and the split is rebuilt from it.
    Only ever applied to plain-text elements; NBSP is preserved, so `SRBIJA·`
    stays one token and a separator can still never start a line.             */
-var lineHosts = [];
 function splitLines(el) {
   var txt = el.__lineText || (el.__lineText = el.textContent);
   el.textContent = txt;                       /* measure the real thing */
@@ -4676,7 +4833,6 @@ function unsplitLines(el) {
 function initLineReveals(gsap, ScrollTrigger) {
   var hosts = $$("[data-lines]").filter(function (el) { return !el.closest("#hero"); });
   if (!hosts.length) return null;
-  lineHosts = hosts;
   var kills = [], dead = false, net = 0;
 
   function build() {
@@ -4747,7 +4903,6 @@ function initLineReveals(gsap, ScrollTrigger) {
       unsplitLines(el);
       el.__shown = false; el.__lineST = null;
     });
-    lineHosts = [];
   };
 }
 
@@ -4915,8 +5070,12 @@ function initHero(gsap, onDone) {
     if (typeof onDone === "function") tl.call(onDone, null, 1.15);
   }
 
-  var fonts = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
-  var timeout = new Promise(function (res) { setTimeout(res, 1200); });
+  /* the two faces the hero sets in, asked for by name — fonts.ready waits for
+     every face on the page, and the blank hole before the intro is that wait */
+  var fonts = (document.fonts && document.fonts.load)
+    ? Promise.all([document.fonts.load('800 4rem "Bricolage Grotesque"'), document.fonts.load('400 1rem "Instrument Sans"')])
+    : Promise.resolve();
+  var timeout = new Promise(function (res) { setTimeout(res, 400); });
   Promise.race([fonts, timeout]).then(run, run);
   var net = setTimeout(function () {                        /* hard safety net */
     if (dead || window.__glasHeroDone) return;
@@ -4947,7 +5106,7 @@ function initJourney(gsap, ScrollTrigger, tilt) {
        through an unreadable brown as it fades, and a scrub lets the reader
        park there. Hold the copy legible, then let it go quickly. */
     .fromTo(copy, { opacity: 1, y: 0 },
-            { opacity: 0, y: -38, duration: 0.6, ease: "power2.in" }, 0.22);
+            { opacity: 0, y: -38, duration: 0.78, ease: "power2.in" }, 0.22);
   if (band) tl.to(band, { opacity: 0.15, duration: 0.7 }, 0.2);
 
   var st = ScrollTrigger.create({
@@ -5214,7 +5373,6 @@ function initVoiceProbe(gsap, ScrollTrigger) {
     onRefresh: function () { frameW = frame.clientWidth || 1; },
     onUpdate: function (self) {
       var p = self.progress;
-      if (window.__glasDebug) window.__glasProbeP = p;
 
       /* The probe's x is the same 0..1 axis the canvas draws on, so comparing
          it against X_LO/X_HI — which are positions on that axis, not scroll
@@ -5375,11 +5533,21 @@ function initLenis(gsap, ScrollTrigger) {
 }
 
 function navOffset() {
-  var nav = $("#nav");                       /* measured, so `is-stuck` counts */
-  var h = nav ? nav.getBoundingClientRect().height : 0;
+  var nav = $("#nav"), h = 0;
+  if (nav) {
+    /* Every destination is read under the stuck nav, which is twelve pixels
+       shorter than the one at the top of the page. So it is measured as
+       stuck — with its transition held, or the measure would catch the
+       height it is leaving — or an anchor pressed from the top lands that
+       much lower than the same anchor pressed from anywhere else. */
+    var loose = !nav.classList.contains("is-stuck");
+    if (loose) { nav.style.transition = "none"; nav.classList.add("is-stuck"); }
+    h = nav.getBoundingClientRect().height;
+    if (loose) { nav.classList.remove("is-stuck"); void nav.offsetHeight; nav.style.transition = ""; }
+  }
   if (!h) {
     var v = parseFloat(getComputedStyle(root).getPropertyValue("--nav-h"));
-    h = isFinite(v) ? v : 74;
+    h = (isFinite(v) ? v : 74) - 12;
   }
   return h + 24;                             /* == the CSS scroll-padding-top */
 }
@@ -5395,7 +5563,11 @@ function initAnchors() {
     if (!target) return;
     if (window.__glasLenis) {
       e.preventDefault();
-      window.__glasLenis.scrollTo(target, { offset: -navOffset() });
+      /* a pinned section is wrapped by ScrollTrigger; its own rect no longer
+         reports where the document holds it — the spacer does */
+      var dest = target, par = target.parentNode;
+      if (par && par.classList && par.classList.contains("pin-spacer")) dest = par;
+      window.__glasLenis.scrollTo(dest, { offset: -navOffset() });
       /* Lenis swallows the native jump, so the history entry is ours to write */
       if (window.history && history.pushState) {
         try { history.pushState(null, "", id); } catch (err) {}
@@ -5512,6 +5684,10 @@ function initMotionSystem(gsap, ScrollTrigger) {
 
 function boot() {
   window.__glasBooted = true;
+  /* the hero's opening state was set in CSS at parse time; it is released
+     here, in the same task that hands the intro to GSAP — or, with no GSAP,
+     simply shown */
+  var heroSec = $("#hero"); if (heroSec) heroSec.classList.remove("is-armed");
   document.addEventListener("visibilitychange", function () {
     var hidden = document.hidden;
     for (var i = onHiddenChange.length - 1; i >= 0; i--) {

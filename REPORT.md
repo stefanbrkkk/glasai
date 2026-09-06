@@ -23,7 +23,7 @@ browsers.
 At the very top of the `<script>` in `index.html`:
 
 ```js
-const CONFIG = {
+var CONFIG = {
   DEMO_TELEFON: "",   // npr. "+381 64 123 4567" — prazno = broj se nigde ne prikazuje
   DEMO_AUDIO:   "demo.mp3",   // prazno = plejer je u stanju „uskoro”
   DEMO_LINK:    "",   // npr. "https://cal.com/glasai/15min" — gde vodi „Zakaži razgovor” posle demoa; prazno = na kontakt
@@ -304,7 +304,7 @@ Each one, and the reasoning:
 
 | decision | what was done | why |
 |---|---|---|
-| a stop name for the live control | while live the button's accessible name is `Slušam — prekini demo`; the visible word stays `Slušam` as specified | a visitor tabbing back to the only control must hear what pressing it does; the visible text is inside the name, so 2.5.3 Label in Name holds |
+| a stop name for the live control | while live the button's accessible name is `Slušam — Prekini demo` (and `Razmišljam… — Prekini demo` while the agent forms its answer); the visible word stays `Slušam` as specified | a visitor tabbing back to the only control must hear what pressing it does; the visible text leads the name, so 2.5.3 Label in Name holds. **Correction (§3i):** until the polish pass the code set the name to `Prekini demo` alone — this row described the intent, not the file, and the harness had pinned the wrong value. Round 14 and 14c now assert the full name, listening and thinking alike |
 | an honest ending | after the cap the label reads `Završavam…` — same shape as `Povezujem…` — instead of `Slušam` while the visitor's line is already muted | `Slušam` ("I'm listening") was literally false for up to six seconds; the ellipsis form the client chose for connecting was the obvious sibling |
 | a name for the clock | a visually hidden `Preostalo` precedes `00:40` | a screen reader reads "Preostalo 00:35" on demand; nothing changes for the eye |
 | a failed attempt | if an attempt never connects, the note slot shows `Povezivanje nije uspelo — pokušajte ponovo.` for four seconds and steps aside; it is announced once | a visitor who denied the microphone, or whose network dropped, was seeing the button silently revert and could only assume the demo was broken. This is not an error *state*: nothing is left on screen, and the widget-failed-to-load path still folds quietly as required |
@@ -946,6 +946,240 @@ WebRTC is therefore the one measurement left — the `[glas] demo:` lines
 say `session live over WebRTC` when it works, and `over a plain WebSocket`
 when the net caught it.
 
+### 3i · The polish pass — twelve lenses, one file
+
+The client's last ask was to work on the site itself: research across code
+quality, animations, design, functionality and the other key areas, confirm
+every finding, fix all of it, and audit again. Twelve research agents each
+took one lens — CSS, JavaScript, markup, animations, visual design,
+conversion design, functionality, performance, accessibility, SEO and the
+head, Serbian copy, cross-browser behaviour and console noise — against the
+file and against the page as Chromium renders it. Every finding then went to
+an independent agent whose brief was to refute it with a measurement; what
+survived (seventy-five findings confirmed or downgraded, eleven the verifiers
+found that the researchers had missed) was written into two fix plans, and
+the plans were applied by hand, item by item, each one checked in the browser
+before the next. This section records what was wrong, what was done, and —
+so the next pass does not re-open them — what was deliberately left alone.
+
+1. **Three keyboard defects the earlier rounds had recorded as passing.** The
+   play control had no keyboard ring at all: `:focus-visible` lost `box-shadow`
+   to the amber halo of a higher-specificity rule, and the round-10 check
+   tested only that a focused element *had* a shadow, which the decorative
+   halo satisfied. The check now compares the focused shadow against the same
+   control's resting shadow, and names the play control in its own line. The
+   menu's focus trap leaked forward: the burger had been appended to the trap
+   (§3d, round 9), but it precedes the menu in the DOM, so the trap's "last"
+   item was never the forward end and Tab from „Zakaži demo” reached the skip
+   link and the wordmark behind the overlay; the burger is now the trap's
+   first stop and round 10 walks the whole cycle. And an earlier lint pass
+   had turned the eight FAQ answers into named `<section>`s — eight `region`
+   landmarks in a screen reader's landmark list, for eight accordion panels;
+   they are plain groups again, as is the terms box, and no `region` or
+   `article` landmark remains anywhere. Two more were found in the same
+   vein: the live control's accessible name was `Prekini demo` while the
+   visible word was `Slušam` — a 2.5.3 Label-in-Name failure this report's
+   own §3b had described as conformant — so the name now leads with the
+   visible word (`Slušam — Prekini demo`, `Razmišljam… — Prekini demo`); the
+   control's `aria-describedby` pointed at the idle note whatever line was
+   showing beneath it, and now follows the line; and the closing menu kept
+   six focusable controls for the 340 ms of its fade after the page behind it
+   was made live again, so a Tab right after Escape landed inside it — the
+   menu is `inert` the moment it closes.
+
+2. **Anchors.** Under ScrollTrigger the pinned hero's own rect is not where
+   the document holds it — the pin spacer is — so both wordmarks, the page's
+   only "back to top", landed 292 px inside a hero faded to 22 %; anchors now
+   scroll to the spacer when there is one. Separately, the nav is 74 px at
+   the top of the page and 62 px once stuck, and the anchor offset was
+   measured at press time — so the first anchor pressed from the top landed
+   12 px lower than the same anchor pressed from anywhere else. The offset
+   now measures the nav as stuck, with its transition held for the
+   measurement, and `scroll-padding-top` (the no-Lenis path) is set to the
+   same number. Round 10 asserts all five anchors, from mid-page and from
+   the top, within two pixels of one another.
+
+3. **The demo block's height swap.** `settle()` measured the tallest panel
+   rather than the outgoing one, so the swap into the terms panel snapped
+   65 px in one direction and overshot in the other before easing back. It
+   takes two heights now, and round 14c samples the block every frame through
+   control → terms → control → end card and requires a ramp inside its two
+   ends — never a snap, never an overshoot.
+
+4. **Print.** The print block had never neutralised the reveal system or the
+   dark tokens: four of six pages came out blank. There are three reveal paths
+   (`[data-reveal]`, `[data-hero]`, and `[data-fx]` for the card reveals — the
+   third is the one a first attempt missed), a light token set is now applied
+   under `print`, the FAQ answers are forced visible, the amber button prints
+   as dark amber, the skip link and the demo engine are gone. Round 10b
+   renders the PDF and checks all of it.
+
+5. **Reduced motion.** Three things moved for a visitor who had asked for no
+   motion. The meter answered the recording's level and ran an FFT sixty times
+   a second for it; the amplitude now freezes at rest and only the playhead —
+   a progress readout, not decoration — walks the passband, and stopping the
+   recording repaints the resting frame instead of leaving the canvas on its
+   last sample until it scrolled out of view. The industry strip, whose
+   animation lives in a `no-preference` query, simply froze mid-word: 1 532 px
+   of content in a 412 px viewport with `overflow: hidden`, six of the eight
+   industries gone and the mask eating the first letter of the first; it now
+   sets as a centred, wrapped list. What was *not* shipped: an invisible
+   tap-to-pause on the strip, because `pointerdown` fires at the start of every
+   swipe that begins over it and an undiscoverable control is not a mechanism.
+
+6. **The hero painted itself and then erased it.** The intro's opening state
+   was set from JavaScript on `DOMContentLoaded`, and on every connection
+   measured the first paint lands before that — so every load drew the
+   eyebrow, headline, lede, buttons, microstats and phone, wiped them for
+   about half a second, and played them back in (on a fast desktop: visible
+   from ~50 ms, erased at ~260 ms, back at ~735 ms). The opening state now lives in CSS at
+   parse time (`.hero.is-armed`, under `no-preference` only) and `boot()`
+   releases it in the same task that hands the intro to GSAP — or, with no
+   GSAP, simply shows it. The font gate before the intro asks for the two
+   faces the hero sets in by name, with a 400 ms cap, instead of waiting for
+   every face on the page for up to 1 200 ms. One consequence is stated
+   rather than hidden: Chrome's largest-contentful-paint no longer counts a
+   paint the page threw away, so the number moves later — to the moment the
+   lede is genuinely there. Round 1 samples the lede every frame from before
+   the first paint and fails on any visible → hidden sequence.
+
+7. **The live demo was being deleted on slow links.** The eight-second
+   readiness clock started at boot and so measured unpkg delivering a bundle
+   of close to half a megabyte gzipped, not the widget rendering; below about
+   500 kbps it always lost, the block folded, and nothing ever unfolds it. The
+   clock now starts when the custom element is defined; a script that never
+   ran at all is caught three seconds after the load event (an async script
+   holds that event open, so a slow link cannot trip it early) and by a
+   thirty-second cap behind it. Round 4b serves the bundle ten seconds late
+   and gets a live block; round 4 still gets the fold when the script is
+   blocked, now with the reason named. The 1.5 MB download itself was **not**
+   deferred, deliberately: doing it requires splitting the client's snippet
+   line, which `copy-check` asserts as one literal. The measured prize, for
+   the owner to weigh: total blocking time 1 110 → 689 ms on a 4×-throttled
+   phone, first-visit bytes 1 857 → 328 KB.
+
+8. **The owner's edit surface.** A `DEMO_LINK` typed without a scheme became
+   a 404 on the site's own domain; it is now repaired (`https://` added, said
+   in the console) or falls back to the address. A `DEMO_AUDIO` pointing at a
+   file that does not exist was swallowed silently; the failed load is now
+   named for the owner in the `[glas] demo:` voice, the control says „Snimak
+   uskoro” from then on, and pressing it runs the self-test (round 7b). The
+   recording is fetched when the pointer reaches its control, not at boot —
+   182 KB that every first visit downloaded for a file nobody had asked for.
+   The file itself is a 192 kbps stereo 48 kHz encode of a seven-second
+   telephone-band voice; re-encoding it is the owner's call (§8).
+
+9. **Two browsers older than the file assumed.** Without `@property` (Safari
+   before 16.4, Firefox before 128) `var(--lid)` is invalid at computed-value
+   time, the laptop's whole `transform` collapses to `none`, and its back
+   cover paints over the page's only email address — under reduced motion or
+   a GSAP failure, the two paths with no script to save them; both `--lid`
+   uses carry a `0deg` fallback now. `viewport-fit=cover` had been opted into
+   with `env()` nowhere in the stylesheet, so in iPhone landscape 10–25 px of
+   the wordmark, every heading and the footer sat under the sensor housing;
+   the gutter token, the skip link and the footer carry the insets. The
+   menu's `safe center` (Chrome 129+, no Safari) became auto margins, which
+   centre where there is room and collapse where there is not, in every
+   engine; the laptop's `cqw` sizing has fallback arithmetic for Safari 15;
+   the skip link answers plain `:focus` beside `:focus-visible`; and the
+   recording claims Safari's `audioSession` for playback while it plays,
+   handing it back on stop. All reasoned and asserted where Chromium can
+   assert them; none executed in those engines (§8).
+
+10. **What the console says.** The widget bundles a WebRTC SDK that narrates
+    every connection at `info` — three lines per attempt, one of them about
+    two thousand characters carrying a base64 join request — and pushed the
+    page's own eighteen `[glas] demo:` lines off the screen. The SDK's logger
+    reads its level from `localStorage` when it is built, so one key written
+    in the head, before the widget's async script can run, silences the
+    narration and keeps the warnings; round 14c asserts no vendor line and
+    every page line. Set the key to `DEBUG` in devtools to get the SDK back.
+
+11. **Two lines the visitor reads that the brief did not supply.** While
+    „Povezujem…” stands — it can stand for twelve seconds on a slow link —
+    the note underneath used to say „Govorite naglas…”; the connecting state
+    has its own note now, which also tells the visitor to allow the
+    microphone if the browser asks. And a page that takes the microphone and
+    names no processor now says, in one line under the control, what the
+    microphone is for and who processes the call. Both are declared in
+    `copy-check` as non-brief strings, beside the earlier ones. One word was
+    corrected in the same voice: the microphone notice said „pretraživač”,
+    which is the search engine; the browser is „pregledač”.
+
+12. **The head.** An inline SVG favicon, an `apple-touch-icon.png` (180×180,
+    the same mark), `canonical`, `og:url`, a 1200×630 `og.png` made only of
+    page copy (wordmark, eyebrow, H1, two microstats, the domain) with its
+    type, size and alt declared, `twitter:card`, `robots` with the large
+    preview allowed, and a `preconnect` to unpkg for the widget. Every URL
+    names `https://glasai.online/`, inferred from the support address and
+    **not confirmed** (§8).
+
+13. **Smaller repairs, listed so they are not re-found:** an unused colour
+    token deleted and two rule pairs merged; the burger's icon centred (its
+    bars were positioned against the wrong box); the mobile menu scrolling in
+    a short landscape viewport instead of losing its ends; the pricing cards
+    on the container's rail below 980 px; `data-step` attributes that nothing
+    read; `role="status"` taken off the end card (it announced the whole card
+    on every show); the terms box a `div`, not a `section`; the play
+    label's box drawn only in the „uskoro” states, as every other pending
+    thing on the page; the
+    demo block's control described by whichever note is showing; the start
+    label hoisted to one constant so the two runtime paths cannot drift from
+    the client's wording; links the owner puts in the terms sheet opening in
+    a new window, since a same-tab navigation from there would drop the
+    half-built attempt and the held microphone; a print stylesheet that
+    prints; and the head's assets in the repository, not just in the head.
+
+14. **Deliberately not changed — and why, so the next pass does not
+    re-litigate:** the two defensive `!important`s (a `no-js` recovery rule
+    and the marquee's JS handover); the three redundant entries in the
+    reduced-motion block (the block is an inventory, and deleting entries
+    makes the reduce path depend on every animation staying inside a
+    `no-preference` query forever); the thirteen hard-coded durations that
+    are not duplicates of a token (tokenising them re-times what the author
+    chose); the featured card's symmetric lift (a design, not a bug); the two
+    `aria-label`s on the nav landmarks — the dialog and the list inside it
+    really are both announced as „Meni”, but dropping either name fails
+    html-validate's `unique-landmark` rule and any second name is Serbian the
+    brief does not supply; the uniform `gsap` parameter across the fourteen
+    motion modules; `Object.assign` and `Promise` (the ES5 rule here is a
+    syntax rule, and the page already requires `closest`, `inert` and custom
+    properties); `TALK_CONNECT_MS`/`TALK_RTC_MS` (five assertions pin the
+    twelve-second verdict and the budget is a recorded decision); a second
+    ScrollTrigger over the hero (two scrubbed tweens on one transform are
+    last-write-wins); throttling the reduced-motion meter (a stutter is worse
+    than motion); deferring the widget bundle and pinning its URL (the
+    snippet line); a page-lifetime `audioSession` and the `NO_WEBAUDIO`
+    guard (an unproven failure traded for a certain regression on iOS ≤ 16.3);
+    unlocking a throwaway `AudioContext` in the click (refuted against
+    WebKit's own source); reordering „Nije pronađen mikrofon.” (verb-first is
+    ordinary Serbian); trimming the meta description (Google cuts at a word
+    boundary; a question for the client, not a defect); `data-nosnippet` on
+    the duplicated run (ignored on a `<p>`); „Glavna navigacija” for the
+    desktop nav (composed Serbian); moving the lede earlier in the intro
+    (choreography, not performance); a lowercase „s” in „MANJE OD 2 S”
+    (correct SI, but a design sign-off); JSON-LD structured data (held until
+    the origin is confirmed); and „Auto servisi” → „Auto-servisi”, which the
+    copy lens found to be the Pravopis form — client copy, so a question (§8),
+    not an edit.
+
+15. **What the harness gained**, so each of the above stays fixed: a static
+    round 0 (every class the script writes has a rule or a documented
+    reader; the skip link's `:focus`; the `--lid` fallback; the logger key);
+    the per-frame hero sampler in round 1; the fold's reason in round 4 and
+    the slow bundle in 4b; the strip and the meter under reduced motion in
+    round 5; the recording fetched on approach in round 7 and the missing
+    recording in 7b; in round 10 the ring-against-rest predicate, the play
+    ring by name, landmarks and lists, `role="status"`, the plan headings,
+    the six anchors and both wordmarks, the burger's centring, the trap's
+    cycle, the menu at 812×375 and 900×500, Escape, the description and the
+    safe-area token; print in 10b; the live name in round 14; the terms
+    links and the group role in 14b; in 14c the names while listening and
+    thinking, the vendor silence, and the block's height ramp; and in
+    `copy-check` the connecting note, the privacy line, the start label
+    pinned to one literal, every declared extra proven present, and the
+    head's icon, canonical, share card and its files at their declared sizes.
+
 ### 4 · What could **not** be verified, and how the rest was
 
 - **No conversation was ever held.** ElevenLabs' API and WebSocket are blocked
@@ -989,16 +1223,20 @@ headless Chromium against the real file.
 
 | # | round | result |
 |---|---|---|
-| 1 | Console — network idle + 5 s of animation | zero `console.error`, zero `pageerror`, zero unhandled rejections; GSAP + ScrollTrigger + Lenis all live |
+| 1 | Console — network idle + 5 s of animation | the hero's lede is sampled every frame from before the first paint and is never painted and then erased (§3i); zero `console.error`, zero `pageerror`, zero unhandled rejections; GSAP + ScrollTrigger + Lenis all live |
 | 2 | Horizontal overflow @ 360/390/414/768/1024/1280/1440/1920 | `scrollWidth ≤ clientWidth` at every width, at the top **and** after a full scroll-through |
 | 3 | Screenshots | stepped viewport frames at all 8 widths + 6 phone-loop states + degraded states |
-| 4 | **CDN blocked (F1)** — cdnjs, jsDelivr, unpkg and elevenlabs.io aborted at the network layer | GSAP genuinely absent; every `[data-reveal]` block visible; hero copy visible; the phone falls back to a readable booked state; page scrolls; ~4 900 characters of body text; the live-demo block folds away with no dead button and no empty box; zero console errors before and after the fold |
-| 5 | `prefers-reduced-motion: reduce` | marquee static, Lenis never constructed, no `js-motion`/`js-loop`, phone at rest in the booked state, the meter renders one settled frame |
+| 4 | **CDN blocked (F1)** — cdnjs, jsDelivr, unpkg and elevenlabs.io aborted at the network layer | GSAP genuinely absent; the hero is released and visible without it; every `[data-reveal]` block visible; hero copy visible; the phone falls back to a readable booked state; page scrolls; ~4 900 characters of body text; the live-demo block folds away with no dead button and no empty box; zero console errors before and after the fold |
+| 5 | `prefers-reduced-motion: reduce` | the industry strip sets as a wrapped, centred list with all eight readable at 1280 and at 412, its duplicate run out of view; the meter is still at rest, only its playhead moves while a recording plays, and a stop restores the resting frame pixel for pixel; marquee static, Lenis never constructed, no `js-motion`/`js-loop`, phone at rest in the booked state, the meter renders one settled frame |
 | 6 | Diacritics | `fonts.check` true, glyphs pixel-distinct from their bases, no `.notdef`, in all three families |
-| 7 | CONFIG, empty **and** filled | CONFIG is rewritten on the wire in both directions, so each state is tested for itself rather than whichever one ships; empty: no number, no placeholder, nothing says „uskoro", the laptop's row holds the copy button alone, the self-test sweep is measured; filled: three live `tel:` links (nav, menu, screen) and the number beside the copy button; and every booking link on the page — seven of them — lands on `#kontakt` |
+| 7 | CONFIG, empty **and** filled | the recording is not fetched at boot and is fetched the moment the pointer reaches its control; CONFIG is rewritten on the wire in both directions, so each state is tested for itself rather than whichever one ships; empty: no number, no placeholder, nothing says „uskoro", the laptop's row holds the copy button alone, the self-test sweep is measured; filled: three live `tel:` links (nav, menu, screen) and the number beside the copy button; and every booking link on the page — seven of them — lands on `#kontakt` |
 | 8 | Phone loop — 3 cycles + a 30 s tab switch | never two states at once, typing never overlaps its own bubble, timer never runs backwards, 3 clean wraps, no flash across the seam |
 | 9 | Contrast | 15 token pairs computed + every text node measured in situ against its real composited background — 0 failures |
-| 10 | Accessibility & interaction | landmarks, one `h1`, heading order, skip link, real accordion semantics, 28 keyboard tab stops each with a visible ring, focus never inside a closed panel, menu lock/unlock across a breakpoint |
+| 10 | Accessibility & interaction | landmarks, one `h1`, heading order, skip link, real accordion semantics; every keyboard tab stop with a ring that **differs from its resting shadow** (the original check tested `boxShadow !== 'none'` and so passed the play control on its decorative halo — §3i), the play control's ring asserted by name; no `region`/`article` landmark, nine lists, `role="status"` nowhere, an `h3` in every plan card; the five nav anchors landing 24 px under the stuck nav from mid-page **and** from the top, both wordmarks back to the top of the document; the burger's icon centred; the trap's full cycle (Tab from „Zakaži demo” → burger, never the skip link or the wordmark), the open menu scrolling at 812×375 and 900×500, Escape leaving the tab order at once; focus never inside a closed panel, menu lock/unlock across a breakpoint |
+| 0 | Static — the file against itself | every class the script writes has a rule in the stylesheet or a documented reader (`is-done`, read by rounds 13 and 15); the skip link answers plain `:focus`; the laptop lid carries a `--lid` fallback; the vendor logger's level is written before the widget's script |
+| 4b | The widget's script arrives late | the bundle is served ten seconds after it is asked for — past the eight-second render budget — and the block still goes live, not folded |
+| 7b | CONFIG names a recording the server does not have | the control reads „Poslušaj agenta” until someone reaches for it; the failed load is named for the owner in the console and the control says „Snimak uskoro” from then on; no error escapes |
+| 10b | Print | under `print` media no reveal, hero or card is left at opacity 0, every FAQ answer is visible, the tokens are black on white, the amber button prints as dark amber, the skip link is gone; the PDF sets in six A4 pages |
 | 11 | Motion QA | 1920 → 360 resize *while the hero is pinned*, portrait ↔ landscape mid-scroll, instant scroll to the bottom skips no reveal |
 | 12 | Throttle + motion system | the recording plays and the meter answers it, and the playhead walks the passband without ever going blank; boots and scrolls under 4× CPU throttle; every trigger measured against the pinned layout; all 12 `[data-lines]` hosts split with **zero** height change to any element and zero change to the document; line masks preserve the text exactly; the band fills its canvas without clipping and breathes rather than drones; the probe sweeps below, through and above the telephone band |
 | 13 | Touch (Pixel 7) | sway replaces cursor tilt, magnetism never engages, no pin, menu works by tap, the player answers a tap without erroring; the laptop stands open at the bottom, its button and address are real tap targets, a tap copies |
@@ -1036,7 +1274,7 @@ it flagged as uncertain. **23 were real and are fixed.** The ones that mattered:
 | 6 | the debounced resize handler called `ScrollTrigger.refresh()` on every resize, defeating `ignoreMobileResize` set twelve lines away — a mobile URL-bar collapse would jump the pinned hero | refresh is gated on a **width** change; `orientationchange` forces it |
 | 7 | collapsed FAQ panels were zero-height but still in the a11y tree, in find-in-page and in tab order | `visibility: hidden` with a delayed transition, restored for the no-JS path |
 | 8 | the phone was fully exposed to assistive tech while a 24 s timeline rewrote it every few seconds | `aria-hidden` **only while the loop runs**; the static, reduced-motion and no-JS states stay fully exposed |
-| 9 | the menu's focus trap excluded its own visible close control, and nothing outside was inerted | the burger joined the trap; `main` and `footer` go `inert`; the overlay is a real `role="dialog" aria-modal` |
+| 9 | the menu's focus trap excluded its own visible close control, and nothing outside was inerted | the burger joined the trap; `main` and `footer` go `inert`; the overlay is a real `role="dialog" aria-modal`. **Correction (§3i):** the burger was *appended*, but it precedes `#menu` in the DOM, so the trap's last item was never the forward end and Tab from „Zakaži demo” escaped to the skip link and the wordmark behind the overlay. The polish pass makes the burger the trap's first stop, and round 10 walks the whole cycle |
 | 10 | two `<nav>` landmarks with the identical name `GLAS AI` | the footer link list is no longer a landmark |
 | 11 | the marquee band was named after the first industry inside it | the bogus `aria-label` is gone |
 | 13 | `initHero`'s font race could resolve **after** its own teardown, building a timeline no context owned and that nothing would ever kill | a `dead` flag closes the continuation |
@@ -1302,16 +1540,18 @@ Stated plainly, because a false green tick means the bug ships.
    the page degrades correctly (no smooth scroll, everything else intact) —
    that is the F1 path and it is tested.
 4. **No real slow connection.** Round 12 throttles CPU 4×; it does not throttle
-   the network. The font-race timeout (1200 ms before the hero animates
-   regardless) is reasoned, not measured against 3G.
+   the network. The font gate before the intro (the two hero faces by name,
+   400 ms cap — §3i) is reasoned, not measured against 3G; the one
+   slow-link case that is measured is the widget's bundle arriving late
+   (round 4b), because that one used to delete the demo.
 5. **`prefers-contrast: more` is written but not asserted.** The tokens are
    overridden and the contrast maths for them is trivially higher, but no round
    emulates that media feature.
-6. **The `DEMO_AUDIO` analyser path is only half-exercised.** Round 7 loads a
-   generated silent WAV and drives the play/pause states; a real recording with
-   real amplitude was never played, so the band's audio-reactive gain
-   (`sum / data.length / 110`) is a reasoned constant, not a tuned one. Expect
-   to adjust that divisor once a real demo file exists.
+6. **The `DEMO_AUDIO` analyser path** was half-exercised at the time of the
+   first build; since the motion round the gain is measured against the
+   shipped recording (§3c) and round 12 plays that file. What remains
+   unmeasured is a *different* recording — the floor and span are set for
+   this one.
 7. **Nobody with eyes has seen this page.** Both design reviews were run by
    subagents against still frames. Stills cannot judge easing, timing feel, or
    whether a scrub reads as smooth — every motion judgement in §7 is inferred
@@ -1330,6 +1570,49 @@ Stated plainly, because a false green tick means the bug ships.
    whole-page reference. (The skip link appearing mid-page in
    `cdn-blocked.png` is this artefact — verified separately that it sits at
    `top: -57px` until the first Tab.)
+
+10. **The production origin is assumed, not confirmed.** `canonical`,
+    `og:url` and `og:image` name `https://glasai.online/`, inferred from the
+    support address; the repository holds no CNAME or host configuration. A
+    canonical pointing at a host that does not serve the page is worse than
+    none, so **confirm the origin before launch**. If it differs: change the
+    three head lines, and re-render `og.png` (the domain is drawn into its
+    pixels; `scratchpad` kept the renderer, and the card is only page copy).
+    The JSON-LD block the SEO lens drafted (Organization, WebSite, Service —
+    no telephone, since none is published) is held for the same reason.
+11. **Questions for the client that only copy can answer** — none of them
+    invented here, each listed so there is one place to answer from:
+    a privacy notice beyond the one line under the demo (a policy page, the
+    processor named, retention); the legal identity in the footer (registered
+    name, seat, MB, PIB); whether 99 € / 199 € include PDV and what happens
+    past the monthly call cap; how calls reach the agent (does the clinic keep
+    its number, is forwarding the mechanism, who arranges it with the carrier);
+    what FAQ 8's „u skladu sa propisima” rests on (where recordings and
+    transcripts are stored, for how long, whether a written processing
+    agreement is provided); the demo number (`DEMO_TELEFON`); „Auto servisi” →
+    „Auto-servisi” (the Pravopis hyphenated form); „Koliko juče propuštenih
+    poziva” → „jučerašnjih” (the adverb cannot attach to the calls); whether
+    the end card's body should match its button's informal verb; whether the
+    meta description should end at the em dash so Google's snippet keeps the
+    24/7 promise whole; and whether the stop word should be shown during the
+    call beside „SLUŠAM”.
+12. **Safari-only paths are written, not executed** (item 1 applies): the
+    safe-area insets, `audioSession`, the `--lid` and `cqw` fallbacks, the
+    menu's auto-margin centring where `safe center` is missing, and the skip
+    link's `:focus`. Round 0 asserts their presence in the source; only a
+    real Safari can assert their effect.
+13. **The recording's bytes.** `demo.mp3` is 182 KB — 192 kbps stereo at
+    48 kHz for a seven-second mono telephone-band clip. It is no longer
+    fetched at boot, so the cost is paid only by a visitor who presses play,
+    but a mono 24 kHz encode at 64 kbps would be about a third of the size
+    with nothing audible lost inside 300–3 400 Hz. No encoder is installed
+    here and the file is the client's master, so it is left as supplied;
+    after any re-encode re-run round 12, which measures the meter against it.
+14. **The nav's double name is accepted.** With the menu open a screen reader
+    announces `dialog "Meni"` and, inside it, `navigation "Meni"`. Every fix
+    either composes a second Serbian name or unnames a landmark that
+    html-validate's `unique-landmark` rule then rejects; recorded here so it
+    is not "fixed" into a lint failure.
 
 ---
 
