@@ -155,10 +155,10 @@ const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-119
 const ctx = await b.newContext({ viewport: { width: 1440, height: 900 } });
 await ctx.route(/fonts\.googleapis\.com/, r => r.fulfill({ status: 200, contentType: 'text/css', body: fontCss }));
 await ctx.route(/fonts\.gstatic\.com/, r => { const f = path.join(FIX, 'gstatic', r.request().url().replace('https://fonts.gstatic.com/', '').replace(/\//g, '_')); r.fulfill({ status: 200, contentType: 'font/woff2', body: fs.readFileSync(f) }); });
-await ctx.route(/cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net/, r => { const u = r.request().url(); const f = /gsap\.min/.test(u) ? 'gsap/dist/gsap.min.js' : /ScrollTrigger/.test(u) ? 'gsap/dist/ScrollTrigger.min.js' : 'lenis/dist/lenis.min.js'; r.fulfill({ status: 200, contentType: 'text/javascript', body: fs.readFileSync(path.join(NM, f)) }); });
+await ctx.route(/cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net/, r => { const u = r.request().url(); const f = /gsap\.min/.test(u) ? 'gsap/dist/gsap.min.js' : /ScrollTrigger/.test(u) ? 'gsap/dist/ScrollTrigger.min.js' : 'lenis/dist/lenis.min.js'; r.fulfill({ status: 200, contentType: 'text/javascript', headers: { 'access-control-allow-origin': '*' }, body: fs.readFileSync(path.join(NM, f)) }); });
 /* the live-demo widget, served locally so this check is hermetic and never
    waits on a network that is not there */
-await ctx.route(/unpkg\.com/, r => r.fulfill({ status: 200, contentType: 'text/javascript', body: fs.readFileSync(path.join(NM, '@elevenlabs/convai-widget-embed/dist/index.js')) }));
+await ctx.route(/unpkg\.com/, r => r.fulfill({ status: 200, contentType: 'text/javascript', headers: { 'access-control-allow-origin': '*' }, body: fs.readFileSync(path.join(NM, '@elevenlabs/convai-widget-embed/dist/index.js')) }));
 await ctx.route(/storage\.googleapis\.com\/eleven-public-cdn/, r => r.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64') }));
 await ctx.route(/elevenlabs\.io/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ widget_config: { variant: 'full', placement: 'bottom-right', avatar: { type: 'orb', color_1: '#2792dc', color_2: '#9ce6e6' }, feedback_mode: 'none', language: 'sr', mic_muting_enabled: false, transcript_enabled: false, text_input_enabled: false, default_expanded: false, always_expanded: false, dismissible: false, text_contents: {}, language_presets: {}, disable_banner: true, text_only: false, supports_text_only: false } }) }));
 const page = await ctx.newPage();
@@ -328,11 +328,10 @@ ok('the AI disclosure is stated in the footer', /Agent na po(č|c)etku svakog po
 ok('talk: the state labels exist only in the script, verbatim', /"Povezujem…"/.test(html) && /"Slušam"/.test(html));
 ok('talk: no SMS anywhere in the file — markup, comments, meta, script', !/sms/i.test(html));
 ok('talk: the start label exists once in the script, verbatim — one constant, two call sites', (html.match(/"Razgovaraj sa agentom"/g) || []).length === 1);
-/* the snippet as supplied, with one deliberate change: the bundle is pinned to
-   the version the forty-second cap was verified against */
-/* the client's snippet, byte for byte — the one thing on this page that is
-   quoted rather than written, so it is asserted as a literal */
-ok('talk: the widget snippet is present, exactly as supplied', html.includes('<elevenlabs-convai agent-id="agent_5701m14n57q9e25ryes2tg8tdjhd"></elevenlabs-convai><script src="https://unpkg.com/@elevenlabs/convai-widget-embed" async type="text/javascript"></script>'));
+/* Keep the audited release and SRI requirements aligned with the fixture versions. */
+ok('talk: the widget keeps its public agent and uses the audited release with SRI',
+  /<elevenlabs-convai agent-id="agent_5701m14n57q9e25ryes2tg8tdjhd"><\/elevenlabs-convai>/.test(html) &&
+  /<script src="https:\/\/unpkg\.com\/@elevenlabs\/convai-widget-embed@0\.19\.0" integrity="sha384-[A-Za-z0-9+/=]+" crossorigin="anonymous" async type="text\/javascript"><\/script>/.test(html));
 ok('talk: the ending, stop and thinking words exist only in the script, verbatim', /"Završavam…"/.test(html) && /"Prekini demo"/.test(html) && /"Razmišljam…"/.test(html));
 ok('the AI disclosure is the first line of the transcript', /Ja sam ve(š|s)ta(č|c)ka inteligencija, poziv se snima/.test(html));
 ok('a human is always reachable — stated in copy', /Dovoljno je re(ć|c)i „operater” i poziv ide na va(š|s) broj\./.test(html));
